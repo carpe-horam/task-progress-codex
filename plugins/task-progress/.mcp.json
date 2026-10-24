@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "task_progress": {
+      "command": "./scripts/launch_progress_mcp",
+      "args": ["./server.py"],
+      "cwd": ".",
+      "enabled": true,
+      "env_vars": [
+        "HOME",
+        "USERPROFILE",
+        "PATH",
+        "CODEX_MCP_PYTHON_PATH",
+        "CODEX_PYTHON_PATH",
+        "XDG_CACHE_HOME"
+      ],
+      "startup_timeout_sec": 10,
+      "tool_timeout_sec": 30
+    }
+  }
+}

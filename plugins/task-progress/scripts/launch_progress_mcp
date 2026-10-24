@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+# Task Progress MCP 启动器 — 查找可用 Python 运行时并执行 server.py
+
+PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin"
+export PATH
+
+# 优先使用 CODEX 环境提供的 Python
+for candidate in \
+  "${CODEX_MCP_PYTHON_PATH:-}" \
+  "${CODEX_PYTHON_PATH:-}" \
+  "$(command -v python3 2>/dev/null)" \
+  "$(command -v python 2>/dev/null)"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    exec "$candidate" "$@"
+  fi
+done
+
+printf '%s\n' 'task-progress: 未找到 Python 运行时。请安装 Python 3。' >&2
+exit 127

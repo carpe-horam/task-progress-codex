@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Progress</title>
+<style>
+:root{color-scheme:dark;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#e6e9ef;background:transparent}
+*{box-sizing:border-box}body{margin:0;padding:12px}button,summary{-webkit-tap-highlight-color:transparent}button{font:inherit}button:focus-visible,summary:focus-visible{outline:2px solid #89aaff;outline-offset:4px}
+.card{max-width:900px;margin:auto;border:1px solid #303642;border-radius:14px;background:#151920;overflow:hidden;box-shadow:0 6px 24px #0002}.header{padding:22px 24px 18px;border-bottom:1px solid #2b303b}.topline,.titleline,.progressline,.sectionline{display:flex;align-items:center;justify-content:space-between;gap:12px}.eyebrow{display:flex;align-items:center;gap:8px;color:#9aa5b7;font-size:11px;letter-spacing:.12em;text-transform:uppercase}.brandmark{width:13px;height:13px;border:2px solid #8294b2;border-radius:3px;transform:rotate(45deg)}.refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid #394150;border-radius:7px;background:#222833;color:#d5deed;padding:6px 10px;cursor:pointer;font-size:12px;flex-shrink:0}.refresh:hover:enabled{background:#2e3745}.refresh:disabled{opacity:.45;cursor:default}.refresh svg{width:13px;height:13px}.titleline{align-items:flex-start;margin-top:19px}h1{font-size:20px;line-height:1.45;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere;font-weight:620}.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 9px;border:1px solid #404854;border-radius:5px;color:#a9b1c0;background:#252b34;white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}.badge.running{color:#99bcff;background:#21324e;border-color:#34527e}.badge.completed{color:#91ddb6;background:#1b372c;border-color:#2e5a45}.progressline{margin-top:22px;align-items:baseline}.percent{font-size:32px;font-weight:650;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.percent small{font-size:17px;margin-left:3px;color:#8e9bb0}.fraction{font-size:12px;color:#a5afbf;font-variant-numeric:tabular-nums}.track{margin-top:10px;height:7px;background:#2c323d;border-radius:10px;overflow:hidden}.fill{height:100%;width:0;background:#7d9ff7;border-radius:inherit;transition:width .25s ease}.fill.completed{background:#6bc49b}.meta{display:flex;flex-wrap:wrap;gap:10px 24px;margin-top:18px;font-size:11px;color:#818d9f}.meta span{display:inline-flex;gap:7px}.meta time{color:#b1bac8;font-variant-numeric:tabular-nums}.steps-section{padding:18px 24px 8px}.sectionline{font-size:11px;color:#8390a3;margin-bottom:10px}.sectionline h2{font-weight:600;color:#b9c3d1;font-size:12px;letter-spacing:.04em;margin:0}.steps{list-style:none;padding:0;margin:0}.step{position:relative;border-bottom:1px solid #272e39;padding:13px 0}.step:last-child{border-bottom:0}.step summary{list-style:none;cursor:pointer}.step summary::-webkit-details-marker{display:none}.step-main{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:start;gap:10px}.step-icon{display:flex;justify-content:center;align-items:center;width:22px;height:22px;border:1px solid #465060;border-radius:50%;color:#8290a5;font-size:10px;font-variant-numeric:tabular-nums}.step.completed > :is(details,div) > .step-main > .step-icon{color:#4ade80;background:#173b2b;border-color:#388e5b}.step.running > :is(details,div) > .step-main > .step-icon{color:#a4c2ff;background:#223859;border-color:#7299e4;box-shadow:0 0 0 3px #283c5b66}.step-title{padding-top:2px;line-height:1.5;overflow-wrap:anywhere;font-size:13px;color:#b7c1d0}.step.running > :is(details,div) > .step-main > .step-title{color:#e2ebfc}.step.completed > :is(details,div) > .step-main > .step-title{color:#bbc9c2}.step-right{display:flex;align-items:center;gap:8px;padding-top:4px;font-size:10px;color:#78869b;white-space:nowrap}.step.running > :is(details,div) > .step-main > .step-right{color:#9ab9ef}.step.completed > :is(details,div) > .step-main > .step-right{color:#79b598}.chevron{display:inline-block;width:6px;height:6px;border-right:1px solid #8291a7;border-bottom:1px solid #8291a7;transform:rotate(45deg);margin:0 3px 3px 1px}details[open] > summary .chevron{transform:rotate(225deg);margin-top:4px}.note{margin:10px 0 1px 34px;padding:11px 13px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:#a9b8ce}.footer{border-top:1px solid #282f3a;padding:11px 24px;font-size:10px;color:#768297;display:flex;gap:10px;justify-content:space-between;align-items:center}.session{max-width:75%;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,monospace}.empty{padding:37px 24px 40px;text-align:center;color:#94a1b5}.empty-icon{display:inline-flex;border:1px solid #414c5e;border-radius:10px;width:38px;height:38px;align-items:center;justify-content:center;font-size:20px;color:#8c9db6}.empty h2{font-size:15px;font-weight:550;margin:15px 0 7px;color:#c9d3e2}.empty p{font-size:12px;line-height:1.7;margin:0}.error{margin:0;padding:12px 24px;background:#3b2724;border-top:1px solid #67463e;color:#f1b5a3;font-size:12px;line-height:1.6}.hidden{display:none!important}.superseded-notice{margin:0;padding:15px 20px;color:#8f9cb0;font-size:12px;line-height:1.6}.card.superseded>:not(#superseded-notice){display:none!important}
+@media(max-width:480px){body{padding:6px}.header{padding:17px 16px}.steps-section{padding:16px 16px 6px}.footer{padding:11px 16px}.titleline{flex-direction:column;gap:9px}h1{font-size:18px}.meta{gap:8px 15px}.step-main{gap:8px;grid-template-columns:22px minmax(0,1fr) auto}.step-right{gap:5px}.step-title{font-size:12px}.note{margin-left:30px}.percent{font-size:29px}.error{padding:12px 16px}}
+@media(prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+<style>
+.topline-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.auto-refresh-status{display:inline-flex;align-items:center;gap:5px;color:#8290a3;font-size:10px;white-space:nowrap;font-variant-numeric:tabular-nums}.auto-refresh-dot{width:6px;height:6px;border-radius:50%;background:#79b598;flex:none}.auto-refresh-status.paused .auto-refresh-dot{background:#78869b}.auto-refresh-time{color:#718096}.step-elapsed{white-space:nowrap;font-variant-numeric:tabular-nums;color:#94a4bb}.step-right.has-elapsed{flex-wrap:wrap;justify-content:flex-end;max-width:165px}.step-right.has-elapsed .step-elapsed{flex-basis:100%;text-align:right}
+@media(max-width:480px){.topline-actions{gap:6px}.auto-refresh-time{display:none}.step-right.has-elapsed{max-width:112px}.task-tree .step-right.has-elapsed{max-width:none;justify-content:flex-start}.task-tree .step-right.has-elapsed .step-elapsed{flex-basis:auto;text-align:left}}
+</style>
+<style>
+.badge.ready{color:#a1d7ef;background:#1d3441;border-color:#36566a}.badge.open,.badge.waiting_synthesis{color:#e8c58d;background:#3a3020;border-color:#665135}.badge.failed{color:#f1a9aa;background:#3d252b;border-color:#70414a}.badge.cancelled{color:#a6adbb;background:#2a2d35;border-color:#494e5a}.step.ready > :is(details,div) > .step-main > .step-icon{color:#a1d7ef;border-color:#52768b;background:#20333f}.step.open > :is(details,div) > .step-main > .step-icon,.step.waiting_synthesis > :is(details,div) > .step-main > .step-icon{color:#e8c58d;border-color:#665135;background:#352c20}.step.failed > :is(details,div) > .step-main > .step-icon{color:#f1a9aa;border-color:#70414a;background:#3d252b}.step.cancelled > :is(details,div) > .step-main > .step-icon{color:#a6adbb}.step.blocked > :is(details,div) > .step-main > .step-right{color:#d2b38e}.network-meta{display:flex;flex-wrap:wrap;gap:7px 15px;margin-top:15px;font-size:11px;line-height:1.6;color:#94a4bc}.network-meta strong{font-weight:500;color:#c4d0e1}.task-tree .children{list-style:none;margin:12px 0 0 10px;padding:0 0 0 16px;border-left:1px solid #394355}.task-tree .children>.step:last-child{padding-bottom:0}.task-tree .step-right{flex-wrap:wrap;justify-content:flex-end;white-space:normal;text-align:right;max-width:170px}.task-tree .child-count{color:#8c9bb0}.task-tree .step-id{display:block;font-size:10px;color:#7f8ca0;margin-top:3px;font-family:ui-monospace,SFMono-Regular,monospace}.task-details{margin:10px 0 0 34px;display:grid;gap:9px}.task-details .note{margin:0}.detail-field{font-size:11px;line-height:1.7;color:#a9b8ce;overflow-wrap:anywhere}.detail-label{display:block;color:#7f8fa6;font-size:10px;margin-bottom:2px}.detail-value{white-space:pre-wrap}.detail-list{margin:0;padding-left:17px}.detail-list a{color:#a4c2ff;text-decoration:underline;text-underline-offset:2px}.assignment{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,max(220px,calc(50% - 8px))),1fr));gap:6px 16px;margin:0;font-size:11px;line-height:1.6;color:#b2bfd2;overflow-wrap:anywhere}.assignment-item{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:start;min-width:0}.assignment dt{color:#7f8fa6}.assignment dd{margin:0;min-width:0;white-space:pre-wrap}.compact-detail{min-width:0;white-space:normal}.compact-detail>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:baseline;list-style:none}.compact-detail>summary .detail-label{margin:0}.detail-preview{grid-column:1/-1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}.detail-toggle{font-size:10px;color:#a4c2ff;white-space:nowrap}.compact-detail .when-open,.compact-detail[open]>summary .when-closed,.compact-detail[open]>summary .detail-preview{display:none}.compact-detail[open]>summary .when-open{display:inline}.compact-detail>.detail-value{margin-top:6px}.attempt-value{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.attempt-id{flex:1 1 160px;min-width:0}.attempt-id>summary{grid-template-columns:auto minmax(0,1fr) auto;gap:6px}.attempt-id>summary .detail-preview{grid-column:auto;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,monospace}.attempt-id>.detail-value{font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.dispatch{border:1px solid #303b4c;background:#1a212c;border-radius:6px;padding:9px 11px}.dispatch>summary{color:#9eafd0;font-size:11px;cursor:pointer;list-style:disclosure-closed}.dispatch[open]>summary{list-style:disclosure-open}.dispatch .detail-value{margin-top:8px;font-size:11px;line-height:1.65;overflow-wrap:anywhere;color:#b2bfd2}.history-section{border-top:1px solid #282f3a;padding:15px 24px}.history-section>summary{font-size:12px;color:#b9c3d1;cursor:pointer}.history-list{margin:12px 0 0;padding:0;list-style:none}.history-item{border-top:1px solid #303642;padding:11px 0}.history-item>details>summary{font-size:12px;color:#c4cede;cursor:pointer}.history-meta{margin:9px 0;color:#8c9bb0;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.history-section .steps{margin-top:8px}.network-help{font-size:10px;color:#7e8ca2;line-height:1.6;margin:0 0 9px}
+@media(max-width:480px){.task-tree .children{margin-left:5px;padding-left:10px}.task-tree .step-right{max-width:92px}.task-details{margin-left:30px}.assignment{grid-template-columns:1fr;gap:6px}.assignment-item{grid-template-columns:64px minmax(0,1fr)}.history-section{padding:14px 16px}.task-tree .step-main{grid-template-columns:22px minmax(0,1fr)}.task-tree .step-right{grid-column:2;max-width:none;justify-content:flex-start;padding-top:0;text-align:left}}
+</style>
+<style>
+.step-execution-meta{display:block;margin-top:1px;font-size:10px;line-height:1.35;font-weight:400;color:#8290a5;overflow-wrap:anywhere}
+.step.running > :is(details,div) > .step-main > .step-title > .step-execution-meta{color:#9cacc5}.step.completed > :is(details,div) > .step-main > .step-title > .step-execution-meta{color:#849a8d}
+</style>
+<style>
+.detail-group{min-width:0;padding:8px 10px;border:1px solid #303b4c;border-radius:6px;background:#1a212c}.detail-group>summary{cursor:pointer;list-style:none;color:#b2bfd2;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.detail-group>summary::-webkit-details-marker{display:none}.detail-group>summary:before{content:'›';display:inline-block;width:13px;color:#91a5c7;transition:transform .15s}.detail-group[open]>summary:before{transform:rotate(90deg)}.detail-group-content{display:grid;gap:8px;margin-top:8px}.detail-group-content>.detail-field{margin:0}.detail-group-content>.assignment{padding-top:2px}.detail-evidence{padding:0;border:0;background:transparent}.detail-evidence>summary{font-size:10px;color:#9eafd0}.detail-evidence .detail-list{margin:7px 0 0;max-height:150px;overflow:auto;padding-left:17px}.detail-evidence .detail-list li{margin:3px 0;overflow-wrap:anywhere}.detail-evidence .detail-list a{overflow-wrap:anywhere}.dependency-detail>summary,.assignment-group>summary{font-weight:550}.dependency-detail .detail-value{max-height:120px;overflow:auto}.assignment-group .assignment{margin:0}.assignment-group .attempt-value{min-width:0}.assignment-group .compact-detail{max-width:100%}.dispatch{padding:8px 10px}.dispatch .detail-value{max-height:180px;overflow:auto;white-space:pre-wrap}
+</style>
+<style>
+.export-feedback{margin:0;padding:8px 24px;border-top:1px solid #282f3a;color:#91a5c7;font-size:10px;line-height:1.5;overflow-wrap:anywhere}.export-feedback.error{color:#f1b5a3;background:#3b2724}
+@media(max-width:480px){.export-feedback{padding:8px 16px}}
+</style>
+<style>
+/* Compact the default task card while keeping task identity, status and assignments visible. */
+body{padding:5px}
+.card{border-radius:11px;box-shadow:0 3px 14px #0002}
+.eyebrow{display:flex;gap:6px;font-size:9px;letter-spacing:.1em}
+.brandmark{width:10px;height:10px}
+.header{padding:12px 16px 10px}
+.topline-actions{gap:5px}
+.auto-refresh-status{font-size:9px}
+.refresh{padding:5px 8px;font-size:11px}
+.titleline{margin-top:8px;gap:8px}
+h1{font-size:18px;line-height:1.35}
+.badge{padding:3px 7px;font-size:10px}
+.progressline{margin-top:10px}
+.percent{font-size:27px}
+.percent small{font-size:15px}
+.track{height:5px;margin-top:6px}
+.meta{gap:5px 14px;margin-top:7px;font-size:10px}
+.network-meta{gap:3px 10px;margin-top:7px;font-size:10px;line-height:1.45}
+.network-help,.step-id{display:none!important}
+.steps-section{padding:10px 16px 2px}
+.sectionline{margin-bottom:4px;font-size:10px}
+.sectionline h2{font-size:11px}
+.step{padding:7px 0}
+.step-main{grid-template-columns:20px minmax(0,1fr) auto;gap:7px}
+.step-icon{width:19px;height:19px}
+.step-title{padding-top:1px;font-size:12px;line-height:1.35}
+.step-right{gap:6px;padding-top:2px;font-size:9px}
+.step-elapsed{font-size:9px}
+.task-tree .children{margin-top:5px;margin-left:6px;padding-left:10px}
+.task-details{gap:6px;margin-top:6px}
+.detail-group{padding:6px 8px}
+.assignment{font-size:10px}
+.history-section{padding:8px 16px}
+.task-history-summary{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px}.task-history-name{flex:1 1 180px}.task-history-progress{font-size:10px;color:#91a5c7}.task-history-plans{margin-top:8px;padding-left:10px;border-left:1px solid #394355}.task-history-plans>summary{font-size:11px;color:#b9c3d1;cursor:pointer}
+.history-section>summary{font-size:11px}
+.history-list{margin-top:7px}
+.history-item{padding:7px 0}
+.history-meta{margin:6px 0;font-size:10px}
+.empty{padding:22px 16px 24px}
+.empty-icon{width:32px;height:32px;font-size:17px}
+.empty h2{margin:9px 0 4px;font-size:14px}
+.empty p{font-size:11px}
+.error{padding:7px 16px;font-size:11px}
+.export-feedback{padding:6px 16px}
+@media(max-width:480px){body{padding:4px}.header{padding:10px 12px 8px}.titleline{margin-top:7px}h1{font-size:16px}.steps-section{padding:8px 12px 1px}.step{padding:6px 0}.task-tree .children{margin-top:4px;margin-left:4px;padding-left:8px}.history-section{padding:7px 12px}.empty{padding:18px 12px 20px}}
+</style>
+</head>
+<body>
+<main class="card" aria-label="任务进度">
+  <p id="superseded-notice" class="superseded-notice hidden" role="status">此进度卡片已折叠，请查看本会话最新的任务进度。</p>
+  <header class="header">
+    <div class="topline"><div class="eyebrow"><span class="brandmark" aria-hidden="true"></span>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
+    <div id="summary" class="hidden">
+      <div class="titleline"><h1 id="task-title"></h1><span id="task-status" class="badge"><span class="dot" aria-hidden="true"></span><span id="task-status-label"></span></span></div>
+      <div class="progressline"><div class="percent"><span id="percent">0</span><small>%</small></div><span id="fraction" class="fraction"></span></div>
+      <div id="progressbar" class="track" role="progressbar" aria-label="任务完成比例" aria-valuemin="0" aria-valuemax="100"><div id="fill" class="fill"></div></div>
+      <div class="meta"><span>开始 <time id="created"></time></span><span>更新 <time id="updated"></time></span></div><div id="network-meta" class="network-meta hidden"></div>
+    </div>
+  </header>
+  <section id="empty" class="empty"><span class="empty-icon" aria-hidden="true">☷</span><h2>当前会话暂无任务</h2><p>任务开始后，进度与步骤会显示在这里。</p></section>
+  <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比表示叶子任务的执行结束比例。</p><ol id="steps" class="steps"></ol></section>
+  <details id="history-section" class="history-section hidden"><summary id="history-title">历史计划</summary><ol id="history-list" class="history-list"></ol></details>
+  <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
+  <p id="export-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
+  <p id="error" class="error hidden" role="alert"></p>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let sessionId = null;
+  const viewId = 'view-' + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+  let displayMode = null;
+  let viewRegistrationStarted = false;
+  let viewRegistered = false;
+  let viewTimer = null;
+  let viewCheckBusy = false;
+  let superseded = false;
+  let disposed = false;
+  let bridgeReady = false;
+  let busy = false;
+  let pollTimer = null;
+  let hasCurrentProgress = false;
+  let latestProgress = null;
+  let documentVisible = document.visibilityState === 'visible';
+  let cardInViewport = true;
+  let lastCheckedAt = '';
+  let hostCapabilities = {};
+  let rpcId = 0;
+  const pending = new Map();
+  const statusInfo = value => {
+    if (value === 'completed' || value === 'complete' || value === 'resolved') return { key: 'completed', label: '已完成' };
+    if (value === 'in_progress' || value === 'running' || value === 'executing') return { key: 'running', label: '进行中' };
+    const labels = { ready: '可执行', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', waiting_synthesis: '待汇总验收', decomposing: '子任务可执行' };
+    if (Object.prototype.hasOwnProperty.call(labels, value)) return { key: value, label: labels[value] };
+    return { key: 'pending', label: '待开始' };
+  };
+  const canPoll = () => !superseded && !disposed && hasCurrentProgress && bridgeReady && !!sessionId && documentVisible && cardInViewport;
+  function syncAutoRefreshStatus() {
+    const status = $('auto-refresh-status');
+    status.classList.toggle('hidden', !hasCurrentProgress || superseded);
+    const polling = canPoll();
+    status.classList.toggle('paused', !polling);
+    $('auto-refresh-label').textContent = polling ? '每 5 秒自动刷新' : '自动刷新暂停';
+    $('auto-refresh-time').textContent = lastCheckedAt ? '最近 ' + lastCheckedAt : '';
+  }
+  function stopPolling() {
+    if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
+  }
+  function syncPolling() {
+    syncAutoRefreshStatus();
+    if (!canPoll()) { stopPolling(); return; }
+    if (pollTimer === null) pollTimer = window.setInterval(() => { if (canPoll()) void refreshProgress(true); }, 5000);
+  }
+  const notify = (method, params) => window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = ++rpcId;
+    const timeout = setTimeout(() => { pending.delete(id); reject(new Error('宿主响应超时，请重新打开进度卡片。')); }, 15000);
+    pending.set(id, { resolve, reject, timeout });
+    window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+  });
+  function stopViewChecks() {
+    if (viewTimer !== null) { clearInterval(viewTimer); viewTimer = null; }
+  }
+  function startViewChecks() {
+    if (displayMode !== 'inline' || !viewRegistered || viewTimer !== null || superseded || disposed) return;
+    viewTimer = window.setInterval(() => { void checkLatestView(); }, 5000);
+  }
+  function collapseSupersededView(reason) {
+    if (superseded || disposed) return;
+    superseded = true;
+    stopPolling(); stopViewChecks();
+    document.querySelector('.card').classList.add('superseded');
+    $('superseded-notice').textContent = reason === 'missing_progress' ? '此会话的任务进度已清除，卡片已折叠。' : '此进度卡片已折叠，请查看本会话最新的任务进度。';
+    $('superseded-notice').classList.remove('hidden');
+    syncButton();
+    if (bridgeReady) notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
+  }
+  async function checkLatestView() {
+    if (displayMode !== 'inline' || !viewRegistered || !bridgeReady || !sessionId || superseded || disposed || viewCheckBusy || !documentVisible) return;
+    viewCheckBusy = true;
+    try {
+      const result = await request('tools/call', { name: 'check_ui_view', arguments: { session_id: sessionId, view_id: viewId } });
+      const state = result?.structuredContent;
+      // Collapse only an explicit replacement or removed session; unsupported tools remain optional.
+      if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && ['superseded', 'missing_progress'].includes(state.status) && state.is_latest === false) collapseSupersededView(state.status);
+    } catch (_) { /* View coordination is optional; progress display remains available. */ }
+    finally { viewCheckBusy = false; }
+  }
+  async function registerView() {
+    if (displayMode !== 'inline' || !bridgeReady || !sessionId || viewRegistrationStarted || superseded || disposed) return;
+    // Register once for this iframe. Progress refreshes must never reclaim an older card.
+    viewRegistrationStarted = true;
+    try {
+      const result = await request('tools/call', { name: 'register_ui_view', arguments: { session_id: sessionId, view_id: viewId } });
+      const state = result?.structuredContent;
+      if (disposed || result?.isError || state?.session_id !== sessionId || state.view_id !== viewId || state.is_latest !== true) return;
+      viewRegistered = true;
+      startViewChecks();
+    } catch (_) { /* Older servers can continue showing and refreshing progress. */ }
+  }
+  const setError = text => { $('error').textContent = text; $('error').classList.toggle('hidden', !text); };
+  const syncButton = () => { $('refresh').disabled = !bridgeReady || !sessionId || busy || superseded || disposed; $('refresh-label').textContent = busy ? '刷新中…' : '刷新'; syncAutoRefreshStatus(); };
+  const date = value => {
+    if (!value) return '—';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+  const timestamp = value => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  function appendElapsed(target, item) {
+    const start = timestamp(item.started_at);
+    if (start === null) return;
+    const finish = timestamp(item.finished_at);
+    const terminal = ['finished', 'failed', 'cancelled'].includes(item.execution_status)
+      || ['completed', 'complete', 'resolved', 'open', 'finished', 'failed', 'cancelled'].includes(item.status);
+    const elapsed = document.createElement('span'); elapsed.className = 'step-elapsed';
+    if (terminal && finish === null) {
+      elapsed.textContent = '总耗时 —';
+      elapsed.title = '开始 ' + date(item.started_at) + '；未记录结束时间';
+    } else {
+      const seconds = Math.max(0, Math.floor(((finish ?? Date.now()) - start) / 1000));
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor(seconds % 3600 / 60);
+      const remaining = seconds % 60;
+      const duration = hours ? hours + '小时' + minutes + '分' + remaining + '秒' : minutes ? minutes + '分' + remaining + '秒' : remaining + '秒';
+      elapsed.textContent = (finish !== null ? '总耗时 ' : '已用 ') + duration;
+      elapsed.title = '开始 ' + date(item.started_at) + (finish !== null ? '；结束 ' + date(item.finished_at) : '；每 5 秒刷新');
+    }
+    target.classList.add('has-elapsed'); target.append(elapsed);
+  }
+  const list = value => Array.isArray(value) ? value : [];
+  const nodesFrom = value => (Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : []).filter(node => node && typeof node === 'object' && node.id);
+  const printable = value => typeof value === 'string' ? value : value == null ? '' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+  const exportExecutor = assignment => {
+    const data = assignment && typeof assignment === 'object' ? assignment : {};
+    const mode = data.execution_mode;
+    return mode === 'main_session' ? '主会话' : mode === 'subagent' || data.agent_name || data.tool_identifier ? '子智能体' : '执行者未记录';
+  };
+  function exportDuration(startedAt, finishedAt) {
+    const start = timestamp(startedAt);
+    if (start === null) return '';
+    const finish = timestamp(finishedAt) ?? Date.now();
+    return String(Math.max(0, Math.round((finish - start) / 1000)));
+  }
+  function exportNetworkStatus(node, byId, childMap, cache = new Map(), path = new Set()) {
+    const id = String(node.id);
+    if (cache.has(id)) return cache.get(id);
+    if (path.has(id)) return 'blocked';
+    if (node.status) { cache.set(id, node.status); return node.status; }
+    if (node.execution_status === 'finished') return node.outcome || 'finished';
+    if (['running', 'failed', 'cancelled'].includes(node.execution_status)) return node.execution_status;
+    const children = childMap.get(id) || [];
+    const nextPath = new Set(path); nextPath.add(id);
+    let result;
+    if (children.length) {
+      const states = children.map(childId => exportNetworkStatus(byId.get(childId), byId, childMap, cache, nextPath));
+      result = states.some(value => ['running', 'executing'].includes(value)) ? 'running'
+        : states.every(value => ['resolved', 'open', 'finished', 'failed', 'cancelled'].includes(value)) ? 'waiting_synthesis'
+        : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : 'blocked';
+    } else {
+      const ready = node.ready ?? list(node.depends_on).every(dependencyId => {
+        const dependency = byId.get(String(dependencyId));
+        if (!dependency) return false;
+        return node.dependency_policy === 'finished'
+          ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
+          : dependency.execution_status === 'finished' && dependency.outcome === 'resolved';
+      });
+      result = ready ? 'ready' : 'blocked';
+    }
+    cache.set(id, result); return result;
+  }
+  function collectSingleTaskExportData(progress) {
+    const generatedAt = new Date().toISOString();
+    const history = list(progress.history);
+    const plans = [];
+    const tasks = [];
+    const attempts = [];
+    const network = progress.schema_version === 2;
+    const currentEpoch = network ? Number(progress.epoch || 0) : null;
+    const roundKey = epoch => epoch == null ? 'linear' : String(epoch);
+    const appendNetworkRound = (epoch, snapshot, current) => {
+      const nodes = nodesFrom(snapshot.nodes);
+      const byId = new Map(nodes.map(node => [String(node.id), node]));
+      const childMap = new Map(nodes.map(node => [String(node.id), list(node.children).map(String).filter(id => byId.has(id))]));
+      for (const node of nodes) {
+        const parentId = node.parent_id == null ? '' : String(node.parent_id);
+        if (parentId && childMap.has(parentId) && !childMap.get(parentId).includes(String(node.id))) childMap.get(parentId).push(String(node.id));
+      }
+      const statusCache = new Map();
+      const key = roundKey(epoch);
+      const root = byId.get(String(snapshot.root_id || ''));
+      const planStatus = root ? statusInfo(exportNetworkStatus(root, byId, childMap, statusCache)).label : current ? statusInfo(progress.status).label : '—';
+      plans.push({
+        epoch: epoch == null ? '' : String(epoch), roundKey: key,
+        roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
+        title: String(snapshot.task_title || progress.task_title || '未命名计划'),
+        rootId: String(snapshot.root_id || ''), current,
+        status: planStatus, closedAt: snapshot.closed_at || '', reason: snapshot.reason || '', taskCount: nodes.length
+      });
+      for (const node of nodes) {
+        const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
+        const statusValue = exportNetworkStatus(node, byId, childMap, statusCache);
+        const depends = list(node.depends_on).map(id => String(id));
+        const blocked = list(node.blocked_by).map(id => String(id));
+        tasks.push({
+          epoch: epoch == null ? '' : String(epoch), roundKey: key,
+          roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
+          taskId: String(node.id), parentId: node.parent_id == null ? '' : String(node.parent_id),
+          title: String(node.title || '未命名任务'), type: list(node.children).length ? '分组任务' : '叶任务',
+          status: statusInfo(statusValue).label, executionStatus: String(node.execution_status || ''), outcome: String(node.outcome || ''),
+          dependencies: depends.join('、'), blockedBy: blocked.join('、'), dependencyPolicy: String(node.dependency_policy || ''),
+          executor: exportExecutor(assignment), model: String(assignment.model || ''), thinking: String(assignment.reasoning_effort || ''),
+          profile: String(assignment.profile || node.profile || ''), attempt: node.attempt == null ? '' : String(node.attempt), attemptId: String(node.attempt_id || ''),
+          startedAt: String(node.started_at || ''), finishedAt: String(node.finished_at || ''), durationSeconds: exportDuration(node.started_at, node.finished_at),
+          summary: String(node.summary || ''), evidence: list(node.evidence).map(printable).join('\n'),
+          dispatchText: String(assignment.dispatch_text || '')
+        });
+        list(node.attempts).forEach(attempt => {
+          const attemptAssignment = attempt.assignment && typeof attempt.assignment === 'object' ? attempt.assignment : assignment;
+          attempts.push({
+            epoch: epoch == null ? '' : String(epoch), roundKey: key, roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
+            taskId: String(node.id), taskTitle: String(node.title || '未命名任务'), number: attempt.attempt == null ? '' : String(attempt.attempt),
+            attemptId: String(attempt.attempt_id || ''), status: statusInfo(attempt.execution_status || 'pending').label,
+            outcome: String(attempt.outcome || ''), executor: exportExecutor(attemptAssignment), model: String(attemptAssignment.model || ''),
+            thinking: String(attemptAssignment.reasoning_effort || ''), startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
+            durationSeconds: exportDuration(attempt.started_at, attempt.finished_at), summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n')
+          });
+        });
+      }
+    };
+    if (network) {
+      history.forEach(snapshot => appendNetworkRound(snapshot.epoch, snapshot, false));
+      appendNetworkRound(currentEpoch, progress, true);
+    } else {
+      const key = roundKey(null);
+      plans.push({ epoch: '', roundKey: key, roundLabel: '顺序步骤', title: String(progress.task_title || '未命名任务'), rootId: '', current: true, status: statusInfo(progress.status).label, closedAt: '', reason: '', taskCount: list(progress.steps).length });
+      list(progress.steps).forEach((step, position) => {
+        const assignment = step.assignment && typeof step.assignment === 'object' ? step.assignment : {};
+        tasks.push({
+          epoch: '', roundKey: key, roundLabel: '顺序步骤', taskId: String(step.index ?? position), parentId: '',
+          title: String(step.description || '未命名步骤'), type: '步骤', status: statusInfo(step.status).label,
+          executionStatus: String(step.status || ''), outcome: step.status === 'completed' ? 'resolved' : '', dependencies: '', blockedBy: '', dependencyPolicy: '',
+          executor: exportExecutor(assignment), model: String(assignment.model || ''), thinking: String(assignment.reasoning_effort || ''),
+          profile: String(assignment.profile || ''), attempt: '', attemptId: '', startedAt: String(step.started_at || ''),
+          finishedAt: String(step.finished_at || ''), durationSeconds: exportDuration(step.started_at, step.finished_at), summary: String(step.note || ''), evidence: '', dispatchText: String(assignment.dispatch_text || '')
+        });
+      });
+    }
+    return {
+      taskTitle: String(progress.task_title || '未命名任务'), sessionId: String(sessionId || progress.session_id || ''),
+      generatedAt, mode: network ? 'HTN 任务网络' : '顺序步骤', currentEpoch: currentEpoch == null ? '' : String(currentEpoch),
+      currentRoundKey: roundKey(currentEpoch), status: statusInfo(progress.status).label,
+      percent: Number.isFinite(progress.percent) ? Math.round(progress.percent) : 0,
+      completed: Number.isFinite(progress.completed) ? progress.completed : tasks.filter(task => task.status === '已完成').length,
+      total: Number.isFinite(progress.total) ? progress.total : tasks.length,
+      plans, tasks, attempts
+    };
+  }
+  // Task identity and plan epoch form separate namespaces, including old payloads without IDs.
+  function taskIdentity(progress) {
+    return String(progress.task_instance_id || ['legacy', progress.created_at || '', progress.task_title || '', progress.schema_version || 1].join(':'));
+  }
+  function taskScope(progress) { return 'task:' + encodeURIComponent(taskIdentity(progress)); }
+  function archivedTaskScope(progress, position) {
+    return taskScope(progress) + ':archive' + (progress.task_instance_id ? '' : ':' + encodeURIComponent(progress.archived_at || '') + ':' + position);
+  }
+  function collectExportData(progress) {
+    const report = collectSingleTaskExportData(progress);
+    report.plans = []; report.tasks = []; report.attempts = [];
+    const archived = list(progress.task_history).filter(item => item && typeof item === 'object');
+    const appendTask = (task, isCurrent, position) => {
+      const item = collectSingleTaskExportData(task);
+      const key = isCurrent ? taskScope(task) : archivedTaskScope(task, position);
+      const label = (isCurrent ? '当前任务' : '历史任务') + ' · ' + String(task.task_title || '未命名任务');
+      const enrich = row => ({ ...row, taskInstanceId: taskIdentity(task), taskTitle: String(task.task_title || '未命名任务'),
+        taskScope: key, archivedAt: task.archived_at || '', taskCurrent: isCurrent,
+        roundKey: key + '/round:' + row.roundKey, roundLabel: label + ' / ' + row.roundLabel });
+      item.plans.forEach(plan => report.plans.push({ ...enrich(plan), current: isCurrent && plan.current,
+        taskLatestRound: plan.current, closedAt: plan.closedAt || (!isCurrent ? task.archived_at || '' : '') }));
+      item.tasks.forEach(row => report.tasks.push(enrich(row)));
+      item.attempts.forEach(row => report.attempts.push(enrich(row)));
+      if (isCurrent) report.currentRoundKey = key + '/round:' + item.currentRoundKey;
+    };
+    archived.forEach((task, position) => appendTask(task, false, position));
+    appendTask(progress, true, archived.length);
+    report.archivedTaskCount = archived.length;
+    return report;
+  }
+  const exportXml = value => String(value ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  function crc32(bytes) {
+    let crc = -1;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return (crc ^ -1) >>> 0;
+  }
+  function zipStore(files) {
+    const encoder = new TextEncoder(); const chunks = []; const central = []; let offset = 0;
+    for (const file of files) {
+      const name = encoder.encode(file.name); const data = file.content instanceof Uint8Array ? file.content : encoder.encode(String(file.content)); const crc = crc32(data);
+      const local = new Uint8Array(30 + name.length + data.length); const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true); lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0x21, true);
+      lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true); lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true);
+      local.set(name, 30); local.set(data, 30 + name.length); chunks.push(local);
+      const entry = new Uint8Array(46 + name.length); const cv = new DataView(entry.buffer);
+      cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x0800, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true); cv.setUint16(14, 0x21, true);
+      cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true); cv.setUint16(28, name.length, true); cv.setUint16(30, 0, true); cv.setUint16(32, 0, true); cv.setUint16(34, 0, true); cv.setUint16(36, 0, true); cv.setUint32(38, 0, true); cv.setUint32(42, offset, true);
+      entry.set(name, 46); central.push(entry); offset += local.length;
+    }
+    const centralOffset = offset; const centralSize = central.reduce((size, part) => size + part.length, 0); chunks.push(...central);
+    const end = new Uint8Array(22); const ev = new DataView(end.buffer); ev.setUint32(0, 0x06054b50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true); ev.setUint32(12, centralSize, true); ev.setUint32(16, centralOffset, true); ev.setUint16(20, 0, true); chunks.push(end);
+    const result = new Uint8Array(chunks.reduce((size, part) => size + part.length, 0)); let cursor = 0;
+    for (const part of chunks) { result.set(part, cursor); cursor += part.length; }
+    return result;
+  }
+  function buildXlsx(data) {
+    const taskHeaders = ['计划轮次','任务 ID','父任务 ID','任务名称','类型','状态','执行状态','结果','依赖任务','当前阻塞','依赖放行条件','执行者','模型','思考强度','配置档','尝试次数','Attempt ID','开始时间','完成时间','耗时（秒）','结果摘要','证据','派发任务'];
+    const planHeaders = ['计划轮次','计划名称','状态','是否当前计划','根任务 ID','节点数','关闭时间','重规划原因'];
+    const attemptHeaders = ['计划轮次','任务 ID','任务名称','尝试次数','Attempt ID','状态','结果','执行者','模型','思考强度','开始时间','完成时间','耗时（秒）','结果摘要','证据'];
+    const taskRows = data.tasks.map(task => [task.roundLabel,task.taskId,task.parentId,task.title,task.type,task.status,task.executionStatus,task.outcome,task.dependencies,task.blockedBy,task.dependencyPolicy === 'finished' ? '前置执行结束' : task.dependencyPolicy ? '前置已解决' : '',task.executor,task.model,task.thinking,task.profile,task.attempt,task.attemptId,task.startedAt,task.finishedAt,task.durationSeconds,task.summary,task.evidence,task.dispatchText]);
+    const planRows = data.plans.map(plan => [plan.roundLabel,plan.title,plan.status,plan.current ? '是' : '否',plan.rootId,plan.taskCount,plan.closedAt,plan.reason]);
+    const attemptRows = data.attempts.map(attempt => [attempt.roundLabel,attempt.taskId,attempt.taskTitle,attempt.number,attempt.attemptId,attempt.status,attempt.outcome,attempt.executor,attempt.model,attempt.thinking,attempt.startedAt,attempt.finishedAt,attempt.durationSeconds,attempt.summary,attempt.evidence]);
+    const identityHeaders = ['任务实例 ID','轮次标识','当前任务','任务归档时间'];
+    [taskHeaders, planHeaders, attemptHeaders].forEach(headers => headers.push(...identityHeaders));
+    [[taskRows, data.tasks], [planRows, data.plans], [attemptRows, data.attempts]].forEach(([rows, items]) => {
+      rows.forEach((row, index) => row.push(items[index].taskInstanceId, items[index].roundKey, items[index].taskCurrent ? '是' : '否', items[index].archivedAt));
+    });
+    const colName = index => { let value = index + 1; let name = ''; while (value) { const remainder = (value - 1) % 26; name = String.fromCharCode(65 + remainder) + name; value = Math.floor((value - 1) / 26); } return name; };
+    const sheetXml = rows => {
+      const xmlRows = rows.map((row, rowIndex) => '<row r="' + (rowIndex + 1) + '">' + row.map((value, columnIndex) => {
+        const text = Array.from(String(value ?? '')).slice(0, 32767).join('');
+        return '<c r="' + colName(columnIndex) + (rowIndex + 1) + '" t="inlineStr"><is><t xml:space="preserve">' + exportXml(text) + '</t></is></c>';
+      }).join('') + '</row>').join('');
+      const lastCell = colName(Math.max(0, rows[0].length - 1)) + Math.max(1, rows.length);
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><sheetData>' + xmlRows + '</sheetData><autoFilter ref="A1:' + lastCell + '"/></worksheet>';
+    };
+    const sheets = [{name:'任务明细',rows:[taskHeaders,...taskRows]},{name:'计划轮次',rows:[planHeaders,...planRows]},{name:'执行尝试',rows:[attemptHeaders,...attemptRows]}];
+    const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' + sheets.map((_, index) => '<Override PartName="/xl/worksheets/sheet' + (index + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') + '</Types>';
+    const workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + sheets.map((sheet, index) => '<sheet name="' + exportXml(sheet.name) + '" sheetId="' + (index + 1) + '" r:id="rId' + (index + 1) + '"/>').join('') + '</sheets></workbook>';
+    const workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((_, index) => '<Relationship Id="rId' + (index + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (index + 1) + '.xml"/>').join('') + '</Relationships>';
+    const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+    const files = [{name:'[Content_Types].xml',content:contentTypes},{name:'_rels/.rels',content:rootRels},{name:'xl/workbook.xml',content:workbook},{name:'xl/_rels/workbook.xml.rels',content:workbookRels},...sheets.map((sheet,index)=>({name:'xl/worksheets/sheet' + (index + 1) + '.xml',content:sheetXml(sheet.rows)}))];
+    return zipStore(files);
+  }
+  function buildVisualHtml(data) {
+    const safeData = JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Progress · 任务执行报告</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#172033;font:14px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:1180px;margin:32px auto;padding:0 20px}.hero,.panel,.metric{background:#fff;border:1px solid #e1e7f0;border-radius:14px;box-shadow:0 8px 24px #2538580a}.hero{padding:26px 30px;background:linear-gradient(130deg,#fff,#f5f8ff)}.eyebrow{color:#61718d;font-size:11px;letter-spacing:.14em;font-weight:700}.hero h1{margin:7px 0 3px;font-size:26px;line-height:1.3}.sub{color:#75839a;font-size:12px;overflow-wrap:anywhere}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.metric{padding:15px 17px}.metric span{display:block;color:#75839a;font-size:11px}.metric b{display:block;margin-top:3px;font-size:22px;font-variant-numeric:tabular-nums}.progress{height:8px;background:#e6ebf3;border-radius:9px;overflow:hidden;margin-top:17px}.progress i{display:block;height:100%;background:#718ff0;border-radius:inherit}.panel{padding:19px 21px;margin-top:14px}.panel h2{margin:0 0 13px;font-size:15px}.rounds{display:flex;flex-wrap:wrap;gap:8px}.round{border:1px solid #dce3ef;border-radius:8px;background:#fff;padding:8px 11px;color:#40506b;text-align:left;cursor:pointer}.round.active{border-color:#6d8de8;background:#edf2ff;color:#294b9c}.round b{display:block}.round small{color:#7a879c}.round-detail{margin-top:12px;padding:12px 14px;background:#f7f9fc;border-radius:9px;color:#58677e;font-size:12px;white-space:pre-wrap}.dist{display:grid;gap:8px}.dist-row{display:grid;grid-template-columns:92px minmax(0,1fr) 58px;align-items:center;gap:10px;font-size:12px}.bar{height:8px;background:#edf0f5;border-radius:8px;overflow:hidden}.bar i{display:block;height:100%;background:#9aa7bd}.bar i.done{background:#4da87a}.bar i.running{background:#6688e8}.bar i.ready{background:#e0a94c}.toolbar{display:flex;gap:9px;margin-bottom:12px}.toolbar input,.toolbar select{min-height:36px;border:1px solid #dbe2ed;border-radius:7px;background:#fff;padding:7px 10px;color:#28364e}.toolbar input{flex:1;min-width:140px}.table-wrap{overflow:auto;border:1px solid #e5eaf1;border-radius:8px}table{width:100%;border-collapse:collapse;min-width:950px;font-size:12px}th,td{padding:9px 10px;border-bottom:1px solid #e9edf3;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#f7f9fc;color:#62718a;font-size:10px;white-space:nowrap}tbody tr:last-child td{border-bottom:0}td small{display:block;color:#7c899e;margin-top:2px}.pill{display:inline-block;padding:2px 7px;border-radius:99px;background:#eef1f5;color:#647087;white-space:nowrap}.pill.done{background:#e7f5ed;color:#347858}.pill.running{background:#eaf0ff;color:#395cae}.pill.ready{background:#fff3dd;color:#966719}.empty{padding:20px;text-align:center;color:#7c899e}.foot{padding:14px 2px;color:#8792a4;font-size:10px}@media(max-width:680px){.wrap{margin:14px auto;padding:0 10px}.hero{padding:20px}.hero h1{font-size:21px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:15px}.toolbar{flex-direction:column}.dist-row{grid-template-columns:75px minmax(0,1fr) 50px}}
+</style></head><body><main class="wrap"><header class="hero"><div class="eyebrow">TASK PROGRESS · 执行数据快照</div><h1 id="title"></h1><div class="sub" id="meta"></div><div class="progress"><i id="progress-bar"></i></div></header><section class="metrics"><article class="metric"><span>当前进度</span><b id="percent"></b></article><article class="metric"><span>已结束 / 总任务</span><b id="completion"></b></article><article class="metric"><span>计划轮次</span><b id="round-count"></b></article><article class="metric"><span>任务记录</span><b id="task-count"></b></article></section><section class="panel"><h2>当前任务与历史任务的计划轮次</h2><div class="rounds" id="rounds"></div><div class="round-detail" id="round-detail"></div></section><section class="panel"><h2>所选计划状态分布</h2><div class="dist" id="distribution"></div></section><section class="panel"><h2>任务明细</h2><div class="toolbar"><input id="search" type="search" placeholder="搜索任务、摘要、模型或执行者"><select id="status"><option value="">全部状态</option><option>已完成</option><option>进行中</option><option>可执行</option><option>依赖阻塞</option><option>待开始</option><option>子任务可执行</option><option>待汇总验收</option><option>执行结束</option><option>仍未解决</option><option>执行失败</option><option>已取消</option></select></div><div class="table-wrap"><table><thead><tr><th>任务</th><th>类型</th><th>状态</th><th>依赖</th><th>执行者 / 模型 / 思考</th><th>尝试</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要 / 证据</th></tr></thead><tbody id="tasks"></tbody></table></div><div class="empty" id="empty" hidden>没有匹配的任务</div></section><section class="panel"><h2>执行尝试记录 <span id="attempt-count"></span></h2><div class="table-wrap"><table><thead><tr><th>任务</th><th>尝试</th><th>状态 / 结果</th><th>执行者 / 模型 / 思考</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要</th></tr></thead><tbody id="attempts"></tbody></table></div><div class="empty" id="attempt-empty" hidden>当前计划没有重试记录</div></section><footer class="foot">本文件是导出时生成的离线快照。包含当前任务、归档任务及各自的计划轮次；任务实例 ID 与轮次标识用于区分记录。</footer></main><script>const DATA=${safeData};
+const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");const dt=value=>value?new Date(value).toLocaleString("zh-CN"):"—";document.getElementById("title").textContent=DATA.taskTitle;document.getElementById("meta").textContent=DATA.mode+" · "+DATA.status+" · 会话 "+(DATA.sessionId||"—")+" · 导出 "+dt(DATA.generatedAt);document.getElementById("percent").textContent=DATA.percent+"%";document.getElementById("completion").textContent=DATA.completed+" / "+DATA.total;document.getElementById("round-count").textContent=DATA.plans.length;document.getElementById("task-count").textContent=DATA.tasks.length;document.getElementById("progress-bar").style.width=Math.max(0,Math.min(100,DATA.percent))+"%";let selected=DATA.currentRoundKey;const planFor=key=>DATA.plans.find(plan=>plan.roundKey===key);function renderRounds(){const host=document.getElementById("rounds");host.innerHTML=DATA.plans.map(plan=>'<button class="round '+(plan.roundKey===selected?'active':'')+'" data-key="'+esc(plan.roundKey)+'"><b>'+esc(plan.roundLabel)+(plan.current?' · 当前计划':'')+'</b><small>'+esc(plan.title)+' · '+esc(plan.status)+'</small></button>').join("");host.querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{selected=button.dataset.key;renderRounds();renderTasks();renderAttempts();renderDistribution()}));const plan=planFor(selected);document.getElementById("round-detail").textContent=plan?plan.title+"\\n任务实例："+plan.taskInstanceId+(plan.archivedAt?"\\n任务归档："+dt(plan.archivedAt):"")+"\\n"+(plan.current?"当前计划":"关闭时间："+dt(plan.closedAt))+ (plan.reason?"\\n重规划原因："+plan.reason:"")+"\\n节点："+plan.taskCount:"没有计划记录";}function selectedTasks(){return DATA.tasks.filter(task=>task.roundKey===selected)}function renderDistribution(){const tasks=selectedTasks(),statuses=["已完成","进行中","可执行","依赖阻塞","待开始","子任务可执行","待汇总验收","执行结束","仍未解决","执行失败","已取消"],host=document.getElementById("distribution");host.innerHTML=statuses.map(label=>{const count=tasks.filter(task=>task.status===label).length,ratio=tasks.length?Math.round(count/tasks.length*100):0,cls=label==="已完成"?"done":label==="进行中"?"running":label==="可执行"?"ready":"";return '<div class="dist-row"><b>'+label+'</b><div class="bar"><i class="'+cls+'" style="width:'+ratio+'%"></i></div><span>'+count+' · '+ratio+'%</span></div>'}).join("")}function renderTasks(){const query=document.getElementById("search").value.trim().toLowerCase(),state=document.getElementById("status").value;const rows=selectedTasks().filter(task=>(!state||task.status===state)&&(!query||Object.values(task).join(" ").toLowerCase().includes(query)));document.getElementById("tasks").innerHTML=rows.map(task=>'<tr><td><b>'+esc(task.title)+'</b><small>'+esc(task.taskId)+(task.parentId?' · 父任务 '+esc(task.parentId):'')+'</small></td><td>'+esc(task.type)+'</td><td><span class="pill '+(task.status==='已完成'?'done':task.status==='进行中'?'running':task.status==='可执行'?'ready':'')+'">'+esc(task.status)+'</span></td><td>'+esc(task.dependencies||'—')+(task.blockedBy?'<small>阻塞：'+esc(task.blockedBy)+'</small>':'')+'</td><td>'+esc([task.executor,task.model,task.thinking?'思考 '+task.thinking:''].filter(Boolean).join(' · ')||'—')+'</td><td>'+esc(task.attempt||'—')+(task.attemptId?'<small>'+esc(task.attemptId)+'</small>':'')+'</td><td>'+esc(dt(task.startedAt))+'</td><td>'+esc(dt(task.finishedAt))+'</td><td>'+esc(task.durationSeconds?task.durationSeconds+' 秒':'—')+'</td><td>'+esc(task.summary||'—')+(task.evidence?'<small>'+esc(task.evidence)+'</small>':'')+'</td></tr>').join("");document.getElementById("empty").hidden=rows.length>0}function renderAttempts(){const query=document.getElementById("search").value.trim().toLowerCase(),rows=DATA.attempts.filter(attempt=>attempt.roundKey===selected&&(!query||Object.values(attempt).join(" ").toLowerCase().includes(query)));document.getElementById("attempt-count").textContent="· "+rows.length+" 次";document.getElementById("attempts").innerHTML=rows.map(attempt=>"<tr><td><b>"+esc(attempt.taskTitle)+"</b><small>"+esc(attempt.taskId)+"</small></td><td>第 "+esc(attempt.number||"—")+" 次<small>"+esc(attempt.attemptId)+"</small></td><td>"+esc(attempt.status)+(attempt.outcome?" · "+esc(attempt.outcome):"")+"</td><td>"+esc([attempt.executor,attempt.model,attempt.thinking?"思考 "+attempt.thinking:""].filter(Boolean).join(" · ")||"—")+"</td><td>"+esc(dt(attempt.startedAt))+"</td><td>"+esc(dt(attempt.finishedAt))+"</td><td>"+esc(attempt.durationSeconds?attempt.durationSeconds+" 秒":"—")+"</td><td>"+esc(attempt.summary||"—")+"</td></tr>").join("");document.getElementById("attempt-empty").hidden=rows.length>0}document.getElementById("search").addEventListener("input",()=>{renderTasks();renderAttempts()});document.getElementById("status").addEventListener("change",renderTasks);renderRounds();renderTasks();renderAttempts();renderDistribution();</scr`+`ipt></body></html>`;
+  }
+  function base64FromBytes(bytes) {
+    let binary = '';
+    const chunkSize = 0x6000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    return btoa(binary);
+  }
+  async function exportCurrentProgress() {
+    if (!latestProgress || superseded || disposed) return;
+    const feedback = $('export-feedback'); const button = $('export-all');
+    feedback.classList.remove('error'); feedback.classList.remove('hidden'); feedback.textContent = '正在生成并交付导出文件…'; button.disabled = true;
+    try {
+      const data = collectExportData(latestProgress);
+      const titlePart = data.taskTitle.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').slice(0, 48) || '任务进度';
+      const sessionPart = data.sessionId ? '-' + data.sessionId.slice(0, 8) : '';
+      const exportStamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+      const fileStem = 'Task-Progress-' + titlePart + sessionPart + '-' + exportStamp;
+      const xlsxName = fileStem + '.xlsx';
+      const htmlName = fileStem + '.html';
+      const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const files = [
+        { name: xlsxName, mime_type: xlsxMime, encoding: 'base64', content: base64FromBytes(buildXlsx(data)) },
+        { name: htmlName, mime_type: 'text/html', encoding: 'utf-8', content: buildVisualHtml(data) }
+      ];
+
+      if (hostCapabilities?.downloadFile) {
+        try {
+          const result = await request('ui/download-file', { contents: [
+            { type: 'resource', resource: { uri: 'file:///' + encodeURIComponent(xlsxName), mimeType: xlsxMime, blob: files[0].content } },
+            { type: 'resource', resource: { uri: 'file:///' + encodeURIComponent(htmlName), mimeType: 'text/html', text: files[1].content } }
+          ] });
+          if (result?.isError) throw new Error('已取消宿主下载。');
+          feedback.textContent = '已将 Excel 和可视化 HTML 交给宿主下载：' + xlsxName + '、' + htmlName;
+          return;
+        } catch (error) {
+          if (!/method not found/i.test(error?.message || '')) throw error;
+        }
+      }
+
+      const saved = await request('tools/call', { name: 'save_export_files', arguments: { files } });
+      if (saved?.isError) {
+        const detail = list(saved?.content).map(item => item?.text).filter(Boolean).join('\n');
+        throw new Error(detail || 'Codex 无法保存导出文件。');
+      }
+      const output = saved?.structuredContent;
+      if (!output?.saved || !Array.isArray(output.files) || output.files.length !== 2) throw new Error('Codex 未确认两个导出文件已保存。');
+      feedback.textContent = '已导出 Excel 和可视化 HTML，保存位置：' + output.output_directory + '\n' + output.files.map(file => file.path).join('\n');
+    } catch (error) {
+      feedback.classList.add('error'); feedback.textContent = '导出失败：' + (error?.message || '无法生成文件');
+    } finally {
+      button.disabled = false;
+    }
+  }
+  function executionSummary(assignment, status) {
+    const data = assignment && typeof assignment === 'object' ? assignment : {};
+    const hasRecord = Object.keys(data).length > 0;
+    if (!hasRecord && !['running', 'in_progress'].includes(status)) return '';
+    const value = key => typeof data[key] === 'string' ? data[key].trim() : '';
+    const mode = value('execution_mode');
+    const legacySubagent = !mode && (value('agent_name') || value('fork_turns') === 'none' || /spawn[_ -]?agent|创建子智能体/i.test([value('tool_identifier'), value('tool_name')].join(' ')));
+    const executor = mode === 'main_session' ? '主会话' : mode === 'subagent' || legacySubagent ? '子智能体' : '执行者未记录';
+    const model = value('model') || '模型未记录';
+    const effort = value('reasoning_effort') ? '思考 ' + value('reasoning_effort') : '思考未记录';
+    return [executor, model, effort].join(' · ');
+  }
+  function appendExecutionSummary(target, assignment, status) {
+    const summary = executionSummary(assignment, status);
+    if (!summary) return;
+    const line = document.createElement('span'); line.className = 'step-execution-meta'; line.textContent = summary; target.append(line);
+  }
+  function field(label, value, className = '') {
+    const block = document.createElement('div'); block.className = 'detail-field ' + className;
+    const heading = document.createElement('span'); heading.className = 'detail-label'; heading.textContent = label;
+    const content = document.createElement('div'); content.className = 'detail-value'; content.textContent = printable(value);
+    block.append(heading, content); return block;
+  }
+  function collapsibleField(label, value, key, openDetails, className = '', previewLimit = 140) {
+    const text = printable(value);
+    const block = document.createElement('details'); block.className = 'detail-field compact-detail ' + className;
+    block.dataset.key = key; block.open = openDetails.get(key) || false;
+    const heading = document.createElement('summary');
+    const title = document.createElement('span'); title.className = 'detail-label'; title.textContent = label;
+    const preview = document.createElement('span'); preview.className = 'detail-preview';
+    const characters = Array.from(text);
+    preview.textContent = characters.length > previewLimit ? characters.slice(0, previewLimit).join('') + '…' : text;
+    const toggle = document.createElement('span'); toggle.className = 'detail-toggle'; toggle.setAttribute('aria-hidden', 'true');
+    const expand = document.createElement('span'); expand.className = 'when-closed'; expand.textContent = '展开';
+    const collapse = document.createElement('span'); collapse.className = 'when-open'; collapse.textContent = '收起';
+    toggle.append(expand, collapse);
+    if (className === 'attempt-id') heading.append(title, preview, toggle); else heading.append(title, toggle, preview);
+    const content = document.createElement('div'); content.className = 'detail-value'; content.textContent = text;
+    heading.setAttribute('aria-label', label + '：' + preview.textContent);
+    block.append(heading, content); return block;
+  }
+  function evidenceField(evidence, key = 'evidence', openDetails = new Map()) {
+    const entries = list(evidence); const block = document.createElement('details'); block.className = 'detail-field detail-group detail-evidence'; block.dataset.key = key; block.open = openDetails.get(key) || false;
+    const heading = document.createElement('summary'); heading.textContent = '证据 · ' + entries.length + ' 项'; const items = document.createElement('ul'); items.className = 'detail-list';
+    entries.forEach(value => {
+      const item = document.createElement('li'); const text = printable(value);
+      if (/^https?:\/\/[^\s]+$/i.test(text)) {
+        const link = document.createElement('a'); link.href = text; link.textContent = text; link.target = '_blank'; link.rel = 'noopener noreferrer'; item.append(link);
+      } else item.textContent = text;
+      items.append(item);
+    });
+    block.append(heading, items); return block;
+  }
+  function compactField(label, value, key, openDetails, className = '', previewLimit = 96) {
+    const text = printable(value);
+    return Array.from(text).length > previewLimit || text.split('\n').length > 2
+      ? collapsibleField(label, text, key, openDetails, className, previewLimit)
+      : field(label, text, className);
+  }
+  function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false) {
+    const fragment = document.createDocumentFragment();
+    const byId = new Map(nodes.map(node => [String(node.id), node]));
+    const children = new Map(nodes.map(node => [String(node.id), []]));
+    // Respect explicit child ordering, while accepting parent-only payloads as well.
+    for (const node of nodes) {
+      for (const id of list(node.children)) if (byId.has(String(id))) children.get(String(node.id)).push(String(id));
+    }
+    for (const node of nodes) {
+      const parent = children.get(String(node.parent_id));
+      if (parent && !parent.includes(String(node.id))) parent.push(String(node.id));
+    }
+    const referenced = new Set([...children.values()].flat());
+    const seen = new Set();
+    const derivedStatuses = new Map();
+    function nodeStatus(id, path = new Set()) {
+      if (derivedStatuses.has(id)) return derivedStatuses.get(id);
+      const node = byId.get(id);
+      if (!node || path.has(id)) return 'blocked';
+      if (node.status) return node.status;
+      if (node.execution_status === 'finished') return node.outcome || 'finished';
+      if (['running', 'failed', 'cancelled'].includes(node.execution_status)) return node.execution_status;
+      const nextPath = new Set(path); nextPath.add(id);
+      const childIds = children.get(id);
+      let status;
+      if (childIds.length) {
+        const states = childIds.map(child => nodeStatus(child, nextPath));
+        status = states.some(value => ['running', 'executing'].includes(value)) ? 'running'
+          : states.every(value => ['resolved', 'open', 'finished', 'failed', 'cancelled'].includes(value)) ? 'waiting_synthesis'
+          : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : 'blocked';
+      } else {
+        const ready = node.ready ?? list(node.depends_on).every(dependencyId => {
+          const dependency = byId.get(String(dependencyId));
+          return dependency && (node.dependency_policy === 'finished'
+            ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
+            : dependency.execution_status === 'finished' && dependency.outcome === 'resolved');
+        });
+        status = ready ? 'ready' : 'blocked';
+      }
+      derivedStatuses.set(id, status); return status;
+    }
+    const reference = id => { const node = byId.get(String(id)); return node ? node.title + ' (' + id + ')' : String(id); };
+    function appendNode(id, target) {
+      if (seen.has(id) || !byId.has(id)) return;
+      seen.add(id);
+      const node = byId.get(id); const childIds = children.get(id).filter(child => !seen.has(child));
+      const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
+      const info = statusInfo(nodeStatus(id));
+      const li = document.createElement('li'); li.className = 'step ' + info.key;
+      const details = document.createElement('details'); details.dataset.key = prefix + ':' + id;
+      details.open = openDetails.has(details.dataset.key) ? openDetails.get(details.dataset.key) : defaultOpen && childIds.length > 0;
+      const row = document.createElement('summary'); row.className = 'step-main';
+      const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : info.key === 'failed' ? '!' : info.key === 'cancelled' ? '×' : '·';
+      const title = document.createElement('span'); title.className = 'step-title'; title.textContent = String(node.title || '未命名任务');
+      const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
+      appendExecutionSummary(title, assignment, node.execution_status);
+      const right = document.createElement('span'); right.className = 'step-right';
+      const label = document.createElement('span'); label.textContent = info.label;
+      right.append(label);
+      if (childIds.length) {
+        const count = document.createElement('span'); count.className = 'child-count'; count.textContent = childIds.length + ' 个子任务';
+        const arrow = document.createElement('span'); arrow.className = 'chevron'; arrow.setAttribute('aria-hidden', 'true');
+        row.setAttribute('aria-label', String(node.title || '未命名任务') + '，' + childIds.length + ' 个子任务，可展开');
+        right.append(count, arrow);
+      }
+      appendElapsed(right, node);
+      row.append(icon, title, right); details.append(row);
+      const body = document.createElement('div'); body.className = 'task-details';
+      const more = document.createElement('details'); more.className = 'detail-group more-details';
+      more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
+      const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
+      const moreContent = document.createElement('div'); moreContent.className = 'detail-group-content';
+      if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
+      if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
+      if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束（包括未解决、失败或取消）' : '前置任务已解决'));
+      if (node.summary) {
+        const summary = printable(node.summary);
+        body.append(compactField('结果摘要', summary, prefix + ':' + id + ':result-summary', openDetails, 'note', 120));
+      }
+      if (list(node.evidence).length) moreContent.append(evidenceField(node.evidence, prefix + ':' + id + ':evidence', openDetails));
+      const dependencies = list(node.dependencies).filter(dependency => dependency && (dependency.summary || list(dependency.evidence).length));
+      for (const dependency of dependencies) {
+        const dependencyKey = prefix + ':' + id + ':dependency:' + (dependency.id || dependency.title || dependencies.indexOf(dependency));
+        const dependencyBlock = document.createElement('details'); dependencyBlock.className = 'detail-group dependency-detail'; dependencyBlock.dataset.key = dependencyKey; dependencyBlock.open = openDetails.get(dependencyKey) || false;
+        const heading = document.createElement('summary'); heading.textContent = '前置结果 · ' + (dependency.title || dependency.id || '未命名任务');
+        const content = document.createElement('div'); content.className = 'detail-group-content';
+        if (dependency.summary) content.append(compactField('结果摘要', dependency.summary, dependencyKey + ':summary', openDetails));
+        if (list(dependency.evidence).length) content.append(evidenceField(dependency.evidence, dependencyKey + ':evidence', openDetails));
+        dependencyBlock.append(heading, content); moreContent.append(dependencyBlock);
+      }
+      if (assignment.dispatch_text) {
+        const dispatch = document.createElement('details'); dispatch.className = 'dispatch'; dispatch.dataset.key = prefix + ':' + id + ':dispatch'; dispatch.open = openDetails.get(dispatch.dataset.key) || false;
+        const heading = document.createElement('summary'); heading.textContent = '完整派发任务';
+        const text = document.createElement('div'); text.className = 'detail-value'; text.textContent = printable(assignment.dispatch_text); dispatch.append(heading, text); moreContent.append(dispatch);
+      }
+      if (moreContent.childElementCount) { more.append(moreHeading, moreContent); body.append(more); }
+      if (body.childElementCount) details.append(body);
+      if (childIds.length) {
+        const nested = document.createElement('ol'); nested.className = 'children'; childIds.forEach(child => appendNode(child, nested)); details.append(nested);
+      }
+      li.append(details); target.append(li);
+    }
+    if (rootId) appendNode(String(rootId), fragment);
+    nodes.filter(node => !referenced.has(String(node.id))).forEach(node => appendNode(String(node.id), fragment));
+    nodes.forEach(node => appendNode(String(node.id), fragment));
+    return fragment;
+  }
+  function linearSteps(steps, prefix, openDetails) {
+    const fragment = document.createDocumentFragment();
+    steps.forEach((step, position) => {
+      if (!step || typeof step !== 'object') return;
+      const info = statusInfo(step.status);
+      const li = document.createElement('li'); li.className = 'step ' + info.key;
+      const index = String(step.index ?? position + 1);
+      const hasNote = typeof step.note === 'string' && step.note.trim().length > 0;
+      const container = document.createElement(hasNote ? 'details' : 'div');
+      if (hasNote) { container.dataset.key = prefix + ':' + index; container.open = openDetails.get(container.dataset.key) || false; }
+      const row = document.createElement(hasNote ? 'summary' : 'div'); row.className = 'step-main';
+      const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true'); icon.textContent = info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : String(position + 1);
+      const title = document.createElement('span'); title.className = 'step-title'; title.textContent = String(step.description || '未命名步骤');
+      appendExecutionSummary(title, step.assignment, step.status);
+      const right = document.createElement('span'); right.className = 'step-right';
+      const label = document.createElement('span'); label.textContent = info.label; right.append(label);
+      if (hasNote) { const arrow = document.createElement('span'); arrow.className = 'chevron'; arrow.setAttribute('aria-hidden', 'true'); right.append(arrow); }
+      appendElapsed(right, step);
+      row.append(icon, title, right); container.append(row);
+      if (hasNote) { const note = document.createElement('div'); note.className = 'note'; note.textContent = step.note; container.append(note); }
+      li.append(container); fragment.append(li);
+    });
+    return fragment;
+  }
+  function renderNetwork(progress, nodes, openDetails) {
+    $('steps').className = 'steps task-tree';
+    $('steps').replaceChildren(networkTree(nodes, progress.root_id, taskScope(progress) + ':epoch:' + progress.epoch, openDetails, true));
+    $('network-meta').replaceChildren();
+    const metadata = [
+      ['计划', '第 ' + (Number(progress.epoch || 0) + 1) + ' 轮'],
+      ['可执行', (progress.ready_count ?? list(progress.ready_tasks).length) + ' · 进行中 ' + (progress.executing_count ?? nodes.filter(node => node.execution_status === 'running').length) + ' · 阻塞 ' + (progress.blocked_count ?? nodes.filter(node => list(node.blocked_by).length).length)]
+    ];
+    const mainSession = progress.main_session && typeof progress.main_session === 'object' ? progress.main_session : {};
+    metadata.push(['主会话', [mainSession.model || '模型未记录', mainSession.reasoning_effort ? '思考 ' + mainSession.reasoning_effort : '思考强度未记录'].join(' · ')]);
+    for (const [label, value] of metadata) { const span = document.createElement('span'); span.textContent = label + ' '; const strong = document.createElement('strong'); strong.textContent = String(value); span.append(strong); $('network-meta').append(span); }
+    const history = list(progress.history); $('history-section').classList.toggle('hidden', !history.length); $('history-title').textContent = '当前任务的历史计划 · ' + history.length + ' 轮';
+    $('history-list').replaceChildren(planHistory(progress, taskScope(progress), openDetails));
+  }
+  function planHistory(progress, prefix, openDetails) {
+    const fragment = document.createDocumentFragment();
+    list(progress.history).forEach((snapshot, position) => {
+      if (!snapshot || typeof snapshot !== 'object') return;
+      const key = prefix + ':plan:' + (snapshot.epoch ?? position);
+      const li = document.createElement('li'); li.className = 'history-item';
+      const details = document.createElement('details'); details.dataset.key = key; details.open = openDetails.get(key) || false;
+      const heading = document.createElement('summary'); heading.textContent = '第 ' + (Number(snapshot.epoch ?? position) + 1) + ' 轮 · ' + (snapshot.task_title || '未命名计划');
+      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '结束 ' + date(snapshot.closed_at) + (snapshot.reason ? '\n重建原因：' + snapshot.reason : '');
+      const tree = document.createElement('ol'); tree.className = 'steps task-tree'; tree.append(networkTree(nodesFrom(snapshot.nodes), snapshot.root_id, key, openDetails, false));
+      details.append(heading, meta, tree); li.append(details); fragment.append(li);
+    });
+    return fragment;
+  }
+  function renderTaskHistory(progress, openDetails) {
+    const history = list(progress?.task_history).filter(item => item && typeof item === 'object');
+    $('task-history-section').classList.toggle('hidden', !history.length);
+    $('task-history-title').textContent = '历史任务 · ' + history.length + ' 项';
+    const fragment = document.createDocumentFragment();
+    history.map((task, position) => ({task, position})).reverse().forEach(({task, position}) => {
+      const prefix = archivedTaskScope(task, position);
+      const li = document.createElement('li'); li.className = 'history-item';
+      const details = document.createElement('details'); details.dataset.key = prefix; details.open = openDetails.get(prefix) || false;
+      const heading = document.createElement('summary'); heading.className = 'task-history-summary';
+      const title = document.createElement('span'); title.className = 'task-history-name'; title.textContent = task.task_title || '未命名任务';
+      const status = document.createElement('span'); status.className = 'task-history-progress';
+      const total = Number.isFinite(task.total) ? task.total : task.schema_version === 2 ? nodesFrom(task.nodes).filter(node => !list(node.children).length).length : list(task.steps).length;
+      const completed = Number.isFinite(task.completed) ? task.completed : 0;
+      const percent = Math.round(Math.max(0, Math.min(100, Number.isFinite(task.percent) ? task.percent : total ? completed / total * 100 : 0)));
+      status.textContent = statusInfo(task.status).label + ' · ' + completed + '/' + total + ' · ' + percent + '%';
+      const archivedAt = document.createElement('span'); archivedAt.className = 'task-history-progress'; archivedAt.textContent = '归档 ' + date(task.archived_at);
+      heading.append(title, status, archivedAt);
+      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '归档 ' + date(task.archived_at) + ' · ' + (task.schema_version === 2 ? '第 ' + (Number(task.epoch || 0) + 1) + ' 轮计划' : '顺序步骤');
+      const tree = document.createElement('ol'); tree.className = task.schema_version === 2 ? 'steps task-tree' : 'steps';
+      tree.append(task.schema_version === 2 ? networkTree(nodesFrom(task.nodes), task.root_id, prefix + ':current-plan', openDetails, true) : linearSteps(list(task.steps), prefix + ':steps', openDetails));
+      details.append(heading, meta, tree);
+      if (task.schema_version === 2 && list(task.history).length) {
+        const plans = document.createElement('details'); plans.className = 'task-history-plans'; plans.dataset.key = prefix + ':plans'; plans.open = openDetails.get(plans.dataset.key) || false;
+        const label = document.createElement('summary'); label.textContent = '此任务的历史计划 · ' + task.history.length + ' 轮';
+        const items = document.createElement('ol'); items.className = 'history-list'; items.append(planHistory(task, prefix, openDetails)); plans.append(label, items); details.append(plans);
+      }
+      li.append(details); fragment.append(li);
+    });
+    $('task-history-list').replaceChildren(fragment);
+  }
+
+  function render(progress) {
+    const hasProgress = !!progress && typeof progress === 'object';
+    latestProgress = hasProgress ? progress : null;
+    $('export-all').classList.toggle('hidden', !hasProgress || superseded || disposed);
+    if (!hasProgress) $('export-feedback').classList.add('hidden');
+    const steps = Array.isArray(progress?.steps) ? progress.steps : [];
+    const network = progress?.schema_version === 2;
+    const nodes = network ? nodesFrom(progress.nodes) : [];
+    const openDetails = new Map(Array.from(document.querySelectorAll('details[data-key]')).map(el => [el.dataset.key, el.open]));
+    renderTaskHistory(progress, openDetails);
+    hasCurrentProgress = hasProgress;
+    syncPolling();
+    $('summary').classList.toggle('hidden', !hasProgress);
+    $('steps-section').classList.toggle('hidden', !hasProgress);
+    $('empty').classList.toggle('hidden', hasProgress);
+    $('network-meta').classList.toggle('hidden', !hasProgress || !network);
+    $('network-help').classList.toggle('hidden', !hasProgress || !network);
+    $('steps-title').textContent = network ? '当前任务 · 任务网络' : '当前任务 · 执行步骤';
+    if (!network || !hasProgress) { $('history-section').classList.add('hidden'); $('history-list').replaceChildren(); }
+    if (!hasProgress) { $('steps').replaceChildren(); syncButton(); return; }
+    const state = statusInfo(progress.status);
+    const total = Number.isFinite(progress.total) ? Math.max(0, progress.total) : network ? nodes.filter(node => !list(node.children).length).length : steps.length;
+    const completed = Number.isFinite(progress.completed) ? Math.max(0, Math.min(total, progress.completed)) : network ? nodes.filter(node => !list(node.children).length && ['finished', 'failed', 'cancelled'].includes(node.execution_status)).length : steps.filter(s => s && statusInfo(s.status).key === 'completed').length;
+    const rawPercent = Number.isFinite(progress.percent) ? progress.percent : total ? completed / total * 100 : 0;
+    const percent = Math.max(0, Math.min(100, rawPercent));
+    $('task-title').textContent = String(progress.task_title || '未命名任务');
+    $('task-status').className = 'badge ' + state.key;
+    $('task-status-label').textContent = state.label;
+    $('percent').textContent = String(Math.round(percent));
+    $('fraction').textContent = completed + ' / ' + total + (network ? ' 项执行结束' : ' 步已完成');
+    $('progressbar').setAttribute('aria-valuenow', String(percent));
+    $('progressbar').setAttribute('aria-label', network ? '叶子任务执行结束比例' : '任务完成比例');
+    $('fill').className = 'fill ' + state.key;
+    $('fill').style.width = percent + '%';
+    for (const [id, value] of [['created', progress.created_at], ['updated', progress.updated_at]]) {
+      $(id).textContent = date(value);
+      $(id).title = typeof value === 'string' ? value : '';
+      if (typeof value === 'string') $(id).dateTime = value; else $(id).removeAttribute('datetime');
+    }
+    $('step-count').textContent = network ? nodes.length + ' 个节点 · ' + total + ' 个叶子任务' : total + ' 个步骤';
+    if (network) { renderNetwork(progress, nodes, openDetails); syncButton(); return; }
+    $('steps').className = 'steps';
+    $('steps').replaceChildren(linearSteps(steps, taskScope(progress) + ':steps', openDetails));
+    syncButton();
+  }
+  $('export-all').addEventListener('click', exportCurrentProgress);
+  function receiveResult(result) {
+    if (superseded || disposed) return;
+    const structured = result?.structuredContent;
+    if (!structured || typeof structured !== 'object') return;
+    const incomingSession = structured.session_id || structured.progress?.session_id;
+    // Each card stays bound to its original conversation, even if the host forwards another result.
+    if (sessionId && incomingSession && incomingSession !== sessionId) return;
+    if (typeof incomingSession === 'string' && incomingSession) { sessionId = incomingSession; void registerView(); }
+    if (Object.prototype.hasOwnProperty.call(structured, 'progress')) {
+      lastCheckedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      setError(''); render(structured.progress);
+    }
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || !event.data || event.data.jsonrpc !== '2.0') return;
+    const message = event.data;
+    if (message.id !== undefined && pending.has(message.id)) {
+      const item = pending.get(message.id); pending.delete(message.id); clearTimeout(item.timeout);
+      if (message.error) item.reject(new Error(message.error.message || '宿主请求失败。')); else item.resolve(message.result);
+      return;
+    }
+    if (message.method === 'ui/notifications/tool-input' && !sessionId) {
+      const value = message.params?.arguments?.session_id;
+      if (typeof value === 'string' && value) { sessionId = value; syncButton(); void registerView(); }
+    }
+    if (message.method === 'ui/notifications/host-context-changed') {
+      const nextMode = message.params?.displayMode;
+      if (['inline', 'fullscreen', 'pip'].includes(nextMode) && nextMode !== displayMode) {
+        displayMode = nextMode;
+        if (displayMode === 'inline') {
+          if (viewRegistered) { startViewChecks(); void checkLatestView(); }
+          else void registerView();
+        } else stopViewChecks();
+      }
+    }
+    if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
+    if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
+      disposed = true; stopPolling(); stopViewChecks();
+      window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, '*');
+    }
+  });
+  async function refreshProgress(silent = false) {
+    if (!sessionId || !bridgeReady || busy || superseded || disposed) return;
+    busy = true; syncButton();
+    if (!silent) setError('');
+    try {
+      const result = await request('tools/call', { name: 'get_progress', arguments: { session_id: sessionId } });
+      if (result?.isError) throw new Error('未能读取当前会话进度，请稍后刷新。');
+      receiveResult(result);
+    } catch (error) { if (!silent) setError(error.message || '刷新失败，请稍后重试。'); }
+    finally { busy = false; syncButton(); }
+  }
+  $('refresh').addEventListener('click', () => { void refreshProgress(false); });
+  document.addEventListener('visibilitychange', () => {
+    documentVisible = document.visibilityState === 'visible';
+    syncPolling();
+    if (documentVisible) void checkLatestView();
+    if (canPoll()) void refreshProgress(true);
+  });
+  if (typeof IntersectionObserver !== 'undefined') {
+    new IntersectionObserver(entries => {
+      const wasVisible = cardInViewport;
+      cardInViewport = entries.some(entry => entry.isIntersecting);
+      syncPolling();
+      if (!wasVisible && cardInViewport && canPoll()) void refreshProgress(true);
+    }, { threshold: 0 }).observe(document.querySelector('.card'));
+  }
+  render(null);
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+    .then(result => { displayMode = result?.hostContext?.displayMode ?? null; hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
+    .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
+  if (typeof ResizeObserver !== 'undefined') {
+    let previousHeight = 0;
+    new ResizeObserver(() => {
+      const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+      if (bridgeReady && height !== previousHeight) { previousHeight = height; notify('ui/notifications/size-changed', { height }); }
+    }).observe(document.body);
+  }
+})();
+</script>
+</body>
+</html>
