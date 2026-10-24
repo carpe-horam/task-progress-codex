@@ -1,0 +1,126 @@
+# Task Progress
+
+[简体中文](README.md) | English
+
+**Turn multi-step Codex work into a clear, trackable, reviewable task network.**
+
+[![License: MIT](https://img.shields.io/github/license/machengling/task-progress-codex)](LICENSE)
+[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fmachengling.github.io%2Ftask-progress-codex%2F&label=User%20Guide)](https://machengling.github.io/task-progress-codex/)
+
+Task Progress is a Codex plugin with an interactive task panel, an MCP server, and the `track-progress` skill. It helps Codex break complex goals into tasks with dependencies, record progress, results, and evidence, and keep that work visible in Codex.
+
+> [Open the interactive guide and demo](https://machengling.github.io/task-progress-codex/) · [Browse the plugin source](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+
+## Animated demo
+
+[![Task Progress animated demo: a task card progresses from 0% to 100%](docs/assets/task-progress-demo.gif)](https://machengling.github.io/task-progress-codex/#demo)
+
+## Features
+
+| Feature | Description |
+| --- | --- |
+| **Automatic planning for multi-step work** | When the Codex main session or an agent has two or more identifiable steps, the plugin uses an HTN task network by default. No extra project-level rules are required. |
+| **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
+| **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
+| **Execution and model records** | See whether work was done by the main session or a subagent, along with the model and reasoning effort used. |
+| **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
+| **Automatic refresh** | The task panel refreshes every five seconds and also supports manual refresh. |
+| **Export execution records** | Export an Excel workbook and a visual HTML report together to `~/Downloads/Task Progress Exports`. |
+| **Support for different clients** | Clients that support MCP Apps display an interactive task card. Other clients receive a readable plain-text progress summary. |
+
+## How it works
+
+Task Progress uses an HTN (Hierarchical Task Network) to represent multi-step work. Parent tasks can be decomposed into subtasks, and dependencies connect related work. Ready tasks without dependencies can run in parallel; tasks with unmet prerequisites wait.
+
+```mermaid
+flowchart LR
+    A[Task goal] --> B[Decompose into subtasks]
+    B --> C[Check dependencies and ready tasks]
+    C --> D[Execute or delegate tasks]
+    D --> E[Record results and evidence]
+    E --> F{Replan?}
+    F -- Yes --> G[Save planning round and update task network]
+    G --> C
+    F -- No --> H[Review and complete]
+```
+
+The plugin stores the task network, dispatch details, status, results, and evidence. The Codex main session performs the work, creates and coordinates subagents, and reviews their results. Recording a subagent task does not mean the plugin created the subagent.
+
+For long-running work, the skill asks Codex to consider breaking down any individual task that runs for more than 10 minutes. It only creates smaller, independently verifiable tasks when that would improve execution or progress visibility.
+
+## Installation
+
+### Install from the GitHub Marketplace
+
+Add this marketplace from a terminal:
+
+```sh
+codex plugin marketplace add machengling/task-progress-codex
+```
+
+Then open **Plugins Directory** in the Codex desktop app, find **Task Progress**, and install it. Reload or restart Codex if the marketplace listing has not updated.
+
+### Install from a local clone
+
+```sh
+git clone https://github.com/machengling/task-progress-codex.git
+codex plugin marketplace add ./task-progress-codex
+```
+
+Then install **Task Progress** from **Plugins Directory**.
+
+## Getting started
+
+After installing and enabling the plugin, ask Codex to work on a multi-step task. The skill will track it automatically. For example:
+
+> Break this issue into implementation and verification steps based on their dependencies, and keep the task progress up to date.
+
+You can also explicitly ask Codex to use Task Progress. The panel shows the current task network, execution status, completion percentage, summaries, and planning history. Use **Refresh** to sync the latest status, or **Export** to save the current task as an Excel workbook and HTML report.
+
+Default behavior:
+
+- Multi-step tasks use an HTN task network. The linear-step mode is reserved for workflows explicitly requested as linear or for resuming an existing legacy task.
+- Reuse the same `session_id` within a conversation. Starting a new task moves the previous task into history.
+- Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
+- Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.”
+
+## Data and requirements
+
+- The MCP server runs locally over stdio. Task progress is stored on the current device under `~/.cache/task-progress/sessions`; it is not uploaded with this GitHub repository or shared with other users.
+- Python 3 is required to run the MCP server. The current `.mcp.json` launcher configuration targets macOS and Linux. A Windows launcher is included, but the Windows MCP configuration has not been verified.
+- Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
+- Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.
+
+## Project structure
+
+```text
+.
+├── .agents/plugins/marketplace.json    # Codex Marketplace manifest
+├── docs/index.html                     # GitHub Pages interactive guide
+└── plugins/task-progress/
+    ├── .codex-plugin/plugin.json       # Plugin manifest
+    ├── .mcp.json                       # Local MCP server configuration
+    ├── app.html                        # Interactive task progress UI
+    ├── server.py                       # MCP server and local progress storage
+    └── skills/track-progress/          # Automatic planning and tracking rules
+```
+
+## FAQ
+
+**I added the plugin, but it does not appear in Codex.** Reload or restart Codex, then install the plugin from **Plugins Directory**. Adding a marketplace only registers its source; it does not install the plugins in it.
+
+**Why don't I see an interactive task card?** The card requires client support for MCP Apps. Clients without that support still receive a plain-text progress summary.
+
+**Will the plugin create or schedule subagents for me?** No. The plugin represents task hierarchy, dependencies, and dispatch records. The Codex main session creates and coordinates subagents.
+
+**Is my task progress uploaded to the repository?** No. The repository contains the plugin and its guide; runtime progress stays in the local user cache. Records leave the device only if you explicitly export or share them.
+
+## Links
+
+- [Task Progress interactive guide](https://machengling.github.io/task-progress-codex/)
+- [GitHub repository and issue tracker](https://github.com/machengling/task-progress-codex)
+- [Task Progress plugin source](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

@@ -1,5 +1,7 @@
 # Task Progress
 
+简体中文 | [English](README.en.md)
+
 **把 Codex 的多步骤工作变成清楚、可追踪、可复盘的任务网络。**
 
 [![License: MIT](https://img.shields.io/github/license/machengling/task-progress-codex)](LICENSE)
