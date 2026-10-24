@@ -83,10 +83,13 @@ Default behavior:
 - Reuse the same `session_id` within a conversation. Starting a new task moves the previous task into history.
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
 - Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.”
+- By default, v3 stores sessions, plans, scheduling actions, execution reports, and node results transactionally in SQLite. Existing JSON records remain readable.
+- Outputs, acceptance checks, unresolved items, and evidence appear under their task nodes. The root node carries the overall explanation. Prior plans and other archived tasks remain separate.
+- The plugin records and coordinates execution without a Dagu dependency. The Codex host invokes agents or external tools and reports their actual outcomes.
 
 ## Data and requirements
 
-- The MCP server runs locally over stdio. Task progress is stored on the current device under `~/.cache/task-progress/sessions`; it is not uploaded with this GitHub repository or shared with other users.
+- The MCP server runs locally over stdio. Legacy JSON tasks live under `~/.cache/task-progress/sessions`; the v3 database is `~/.cache/task-progress/progress-v3.sqlite3`. Data stays on the current device.
 - Python 3 is required to run the MCP server. The current `.mcp.json` launcher configuration targets macOS and Linux. A Windows launcher is included, but the Windows MCP configuration has not been verified.
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
 - Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.
@@ -101,7 +104,8 @@ Default behavior:
     ├── .codex-plugin/plugin.json       # Plugin manifest
     ├── .mcp.json                       # Local MCP server configuration
     ├── app.html                        # Interactive task progress UI
-    ├── server.py                       # MCP server and local progress storage
+    ├── server.py                       # MCP API and legacy compatibility layer
+    ├── task_progress_v3.py             # v3 SQLite task, action, and report storage
     └── skills/track-progress/          # Automatic planning and tracking rules
 ```
 
@@ -120,6 +124,15 @@ Default behavior:
 - [Task Progress interactive guide](https://carpe-horam.github.io/task-progress-codex/)
 - [GitHub repository and issue tracker](https://github.com/carpe-horam/task-progress-codex)
 - [Task Progress plugin source](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
+
+## Development documents
+
+These documents describe planned work, not capabilities implemented in the current release. They are written in Chinese.
+
+- [Task orchestration design](docs/design/task-orchestration-v3.md): decomposition, scheduling, actual dispatch, verification, recovery, and data/API contracts.
+- [UX design](docs/design/task-orchestration-v3-ux.md) · [Interactive prototype](docs/design/ux-v3/index.html): a compact task tree with all tasks visible and details expanded in place.
+- [Development and acceptance plan](docs/development/task-orchestration-v3-plan.md): delivery stages, risk tests, real usage scenarios, migration, and release gates.
+- [Development decisions](docs/reviews/2026-10-24-development-decisions.md), [plugin audit](docs/reviews/2026-10-24-plugin-audit.md), and [paper comparison](docs/reviews/2026-10-24-htn-orchestrate-alignment.md): scope and evidence.
 
 ## License
 

@@ -5,6 +5,20 @@ description: 对 Codex 主会话与 agent 中包含两个或以上可辨识步�
 
 # Track Progress — 任务进度跟踪与展示
 
+## v3 默认工作流
+
+多步骤任务默认使用 v3 编排接口。首先用 `task_open` 创建任务或恢复当前任务，明确 objective、requirements 和验收条件，并附带 UUID `request_id`；保存返回的 `session_id`、`task_instance_id`、`epoch` 与 `revision`。同一 Codex 会话中的独立新任务复用 `session_id` 并使用新的 `request_id` 与 `mode: "new"`；调整方案但仍是同一任务时使用 `task_decide(kind: "rebuild")`。卡片中的“当前任务的历史计划”记录旧 epoch，“历史任务”记录本会话已归档的其他任务。
+
+每次根据最新 scope 先调用 `task_advance(mode: "preview")` 查看下一步；写操作使用 `task_advance(mode: "claim")` 原子认领，并为每次写请求生成新的 UUID `request_id`。所有后续读写携带当前 `scope: {session_id, task_instance_id, epoch}`。PLAN 动作用 `task_decide` 提交 `plan.execute` 或 `plan.decompose`；后者必须给出覆盖需求且有独立验收条件的子任务，并明确依赖。执行动作由主会话依据 assignment 实际运行或分发；插件记录与对账，不会代替宿主创建 agent 或启动外部命令。派发前先以 `task_report(event_kind: "dispatch_begin")` 记录调用边界；确认、失败、超时未知、运行状态和 worker 结果分别通过相应 `task_report` 事件登记。未知结果先对账，禁止盲目重复分发。
+
+任务项结果直接保存在对应节点：完成时用 `task_decide(kind: "orchestrate.finish")` 记录摘要、产出、逐项验收、未解决项和证据引用。不要另建独立的“任务结果”区。根节点摘要显示整体说明；普通节点显示自己的完成情况、产出、检查、未解决项和证据。使用 `task_control` 管理暂停、继续、取消和受影响分支重开；使用 `task_history` 分页读取归档任务、旧计划和执行尝试。
+
+发生 `SCOPE_STALE`、`REVISION_CONFLICT` 或 `LEASE_STALE` 时，重新 `task_read`，基于最新 revision 与 scope 重新判断；不要机械重放旧决策。所有写操作都要有幂等 `request_id`；同一个 ID 只能用于完全相同的请求。执行路由由宿主和用户环境决定，插件不依赖 Dagu。
+
+## 兼容旧版工具流程
+
+以下旧版流程只用于继续维护已经存在的 v1/v2 JSON 任务；新任务优先使用上面的 v3 接口。
+
 ## 何时使用与模式选择
 
 ### 自动调用（Codex 主会话与 agent 均适用）
@@ -13,7 +27,7 @@ description: 对 Codex 主会话与 agent 中包含两个或以上可辨识步�
 
 若 agent 收到的工作已由主会话的 Task Progress 任务树表示，沿用派发信息中提供的任务节点与尝试标识更新该节点，不另建重复根任务；若 agent 独立承担多步骤工作且没有可更新的父任务节点，则在自己的会话中初始化并维护进度。单步查询或简单操作无需初始化。
 
-多步骤新任务默认使用 HTN 任务网络：`init_task_network` → `decompose_task` → `get_ready_tasks` → `update_task`。不得因任务看起来简单、顺序执行或不需要并行而改用线性 API。`init_progress` 对两个及以上步骤默认会被服务端拒绝；只有用户明确要求线性步骤时才可传 `legacy_linear=true`。
+旧版多步骤任务使用 HTN 任务网络：`init_task_network` → `decompose_task` → `get_ready_tasks` → `update_task`。`init_progress` 对两个及以上步骤默认会被服务端拒绝；只有用户明确要求线性步骤时才可传 `legacy_linear=true`。
 
 - 任务有子任务分解、依赖、并行、委派或重规划时，继续使用 HTN 任务网络表达结构与状态。
 - 仅当用户明确要求线性步骤，或恢复已有旧版线性任务时，使用 `init_progress` → `update_step`；恢复时先 `get_progress`，再按原数据模式继续，不要求把旧状态迁移成网络。需要按步骤显示执行者、模型和思考强度时，在启动步骤的 `update_step` 调用中附上 `assignment`。

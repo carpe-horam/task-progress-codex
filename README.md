@@ -83,10 +83,13 @@ codex plugin marketplace add ./task-progress-codex
 - 同一会话复用 session ID；开始新任务时，当前任务进入历史记录。
 - 同一任务需要调整方案时，使用重规划轮次；重试会保留新的执行尝试记录。
 - 对不确定的模型或思考强度不猜测；未知值会显示为未记录。
+- v3 默认通过 SQLite 事务保存会话、任务计划、调度动作、执行报告和节点结果；已有 JSON 记录仍可读取。
+- 任务产出、验收检查、未解决项和证据显示在对应任务项详情中；根任务显示整体说明。当前任务的旧计划与本会话的其他历史任务分开展示。
+- 插件记录并协调执行，不绑定 Dagu；Codex 主会话负责实际调用 agent 或外部执行工具，并把真实返回写回任务记录。
 
 ## 数据与运行要求
 
-- MCP 服务通过本机 stdio 启动。任务进度保存在当前用户设备的 `~/.cache/task-progress/sessions`，不会随着 GitHub 仓库上传或与其他用户共享。
+- MCP 服务通过本机 stdio 启动。旧版 JSON 任务保存在 `~/.cache/task-progress/sessions`；v3 数据库为 `~/.cache/task-progress/progress-v3.sqlite3`。数据留在当前设备，不会随着 GitHub 仓库上传或与其他用户共享。
 - 运行 MCP 服务需要 Python 3。当前 `.mcp.json` 启动配置面向 macOS/Linux；仓库包含 Windows 启动器，但 Windows MCP 配置尚未验证。
 - 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
 - Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。
@@ -101,7 +104,8 @@ codex plugin marketplace add ./task-progress-codex
     ├── .codex-plugin/plugin.json       # 插件清单
     ├── .mcp.json                       # 本机 MCP 服务配置
     ├── app.html                        # 交互式任务进度界面
-    ├── server.py                       # MCP 服务与本地进度存储
+    ├── server.py                       # MCP 接口与旧版兼容层
+    ├── task_progress_v3.py             # v3 SQLite 任务、动作与报告存储
     └── skills/track-progress/          # 自动规划与跟踪规则
 ```
 
@@ -120,6 +124,15 @@ codex plugin marketplace add ./task-progress-codex
 - [Task Progress 交互式宣传手册](https://carpe-horam.github.io/task-progress-codex/)
 - [GitHub 仓库与问题反馈](https://github.com/carpe-horam/task-progress-codex)
 - [Task Progress 插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
+
+## 开发文档
+
+以下为下一阶段的设计与开发计划，尚未实现，不代表当前插件已具备完整编排能力。
+
+- [任务编排设计](docs/design/task-orchestration-v3.md)：任务拆分、调度、实际分发、验收与恢复，以及状态、接口和存储契约。
+- [UX 优化设计](docs/design/task-orchestration-v3-ux.md) · [交互设计稿](docs/design/ux-v3/index.html)：保留紧凑任务树，同屏查看全部任务，详情原位展开。
+- [开发与验收计划](docs/development/task-orchestration-v3-plan.md)：A～D 开发项、风险测试、真实场景验收及升级发布步骤。
+- [开发决策](docs/reviews/2026-10-24-development-decisions.md)、[插件审查](docs/reviews/2026-10-24-plugin-audit.md)、[论文对照](docs/reviews/2026-10-24-htn-orchestrate-alignment.md)：范围与依据。
 
 ## 许可证
 

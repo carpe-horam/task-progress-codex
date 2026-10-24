@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Task Progress · UX 交互设计稿</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="dark">
+  <header class="studio-header">
+    <h1>Task Progress · 紧凑任务树</h1>
+    <p>修订稿 · 保留现有卡片结构，全部为演示数据。</p>
+  </header>
+  <section class="preview-tools" aria-label="设计预览控制">
+    <label>场景<select id="scenario">
+      <option value="running">01 · 执行与核验</option><option value="simple">02 · 简单任务</option>
+      <option value="input">03 · 需要用户输入</option><option value="pausing">04 · 暂停收尾中</option>
+      <option value="paused">05 · 已暂停</option><option value="stopping">06 · 正在停止</option>
+      <option value="cancelled">07 · 已取消</option><option value="unknown">08 · 执行状态未知</option>
+      <option value="synthesis">09 · 最终验收</option><option value="done">10 · 已完成</option>
+      <option value="open">11 · 仍有未解决项</option><option value="replan">12 · 方案已调整（两类历史）</option>
+      <option value="empty">13 · 暂无任务</option><option value="error">14 · 读取失败</option>
+    </select></label>
+    <label>卡片宽度<select id="width"><option value="normal">标准 · 620px</option><option value="narrow">窄屏 · 360px</option></select></label>
+    <label>主题<select id="theme"><option value="dark">深色</option><option value="light">浅色</option></select></label>
+    <button id="observe" class="lab-button" hidden>模拟执行已结束</button>
+    <button id="reset" class="lab-button">重置场景</button>
+  </section>
+  <main class="preview-stage">
+    <div id="preview" class="preview-frame">
+      <article id="card" class="task-card" aria-label="任务进度设计预览"></article>
+    </div>
+  </main>
+  <footer class="studio-footer"><span>任务树默认展开 · 详情原位展开</span><a href="../task-orchestration-v3-ux.md">设计说明 ↗</a></footer>
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="toast" class="toast" hidden></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+  <script src="prototype.js"></script>
+</body>
+</html>

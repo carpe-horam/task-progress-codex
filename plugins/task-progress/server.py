@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from task_progress_v3 import V3Error, V3Store
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
@@ -31,6 +33,7 @@ except ImportError:  # pragma: no cover - POSIX fallback
 CACHE_DIR = Path.home() / ".cache" / "task-progress"
 SESSION_DIR = CACHE_DIR / "sessions"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
+V3_STORE = V3Store(CACHE_DIR / "progress-v3.sqlite3")
 
 RESOURCE_URI = "ui://task-progress/progress-inspector/v2"
 RESOURCE_MIME = "text/html;profile=mcp-app"
@@ -785,7 +788,9 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
             prefix = "  " * depth
             lines.append(f"{prefix}- [{node['id']}] {node['title']} — {node['status']}")
             if node.get("depends_on"):
-                lines.append(f"{prefix}  依赖：{', '.join(node['depends_on'])}（{node['dependency_policy']}）")
+                edges = node['depends_on']
+                labels = [str(edge.get('node_id')) + ('（执行结束即可）' if edge.get('policy') == 'returned' else '（需要已解决）') if isinstance(edge, dict) else str(edge) for edge in edges]
+                lines.append(f"{prefix}  依赖：{', '.join(labels)}")
             assignment = node.get("assignment", {})
             if assignment:
                 execution_mode = assignment.get("execution_mode")
@@ -799,9 +804,16 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
                     executor = "执行者未记录"
                 lines.append(f"{prefix}  执行：{executor}；model={assignment.get('model') or '未记录'}；reasoning={assignment.get('reasoning_effort') or '未记录'}")
             if node.get("summary"):
-                lines.append(f"{prefix}  结果：{node['summary']}")
-            for evidence in node.get("evidence", []):
+                label = "整体说明" if node_id == progress.get("root_id") else "完成情况"
+                lines.append(f"{prefix}  {label}：{node['summary']}")
+            for output in node.get("outputs", []):
+                lines.append(f"{prefix}  产出：{output}")
+            for check in node.get("checks", []):
+                lines.append(f"{prefix}  验收检查：{check}")
+            for evidence in node.get("evidence_refs", node.get("evidence", [])):
                 lines.append(f"{prefix}  证据：{evidence}")
+            for unresolved in node.get("unresolved", []):
+                lines.append(f"{prefix}  尚未解决：{unresolved}")
             for child_id in node.get("children", []):
                 visit(child_id, depth + 1)
 
@@ -825,6 +837,7 @@ def _tool_result(
     return {
         "content": [{"type": "text", "text": text}],
         "structuredContent": {
+            **({"api_version": 3} if progress and progress.get("api_version") == 3 else {}),
             "progress": progress,
             "session_id": session_id,
         },
@@ -951,6 +964,16 @@ def update_step(
 
 def get_progress(session_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
+    if V3_STORE.has_session(sid):
+        progress = V3_STORE.read_progress(sid)
+        legacy = _read(sid)
+        if progress is not None and legacy is not None:
+            archived = _progress_payload(legacy)
+            archived["archived_at"] = legacy.get("updated_at") or legacy.get("created_at")
+            existing = {item.get("task_instance_id") for item in progress.get("task_history", []) if isinstance(item, dict)}
+            if archived.get("task_instance_id") not in existing and archived.get("task_instance_id") != progress.get("task_instance_id"):
+                progress["task_history"] = [*progress.get("task_history", []), archived]
+        return _tool_result(_format_detail(progress), progress, sid)
     data = _read(sid)
     progress = _progress_payload(data) if data is not None else None
     return _tool_result(_format_detail(progress), progress, sid)
@@ -983,6 +1006,9 @@ def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any
 def register_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
+    if V3_STORE.has_session(sid):
+        result = V3_STORE.register_view(sid, vid)
+        return _ui_view_result(sid, vid, "registered")
     with _session_lock(sid):
         if not _session_file(sid).exists():
             return _ui_view_result(sid, vid, "missing_progress")
@@ -1002,6 +1028,10 @@ def register_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
 def check_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
+    if V3_STORE.has_session(sid):
+        result = V3_STORE.check_view(sid, vid)
+        status = {"current": "latest"}.get(result["status"], result["status"])
+        return _ui_view_result(sid, vid, status)
     with _session_lock(sid):
         if not _session_file(sid).exists():
             return _ui_view_result(sid, vid, "missing_progress")
@@ -1020,6 +1050,7 @@ def clear_progress(session_id: str) -> dict[str, Any]:
         if path.exists():
             path.unlink()
         _ui_view_file(sid).unlink(missing_ok=True)
+        V3_STORE.clear_session(sid)
     return _tool_result("当前会话的进度数据已清除。", None, sid)
 
 
@@ -1404,7 +1435,69 @@ TOOLS = [
 ]
 
 
+def _v3_tool(name: str, title: str, description: str, properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "name": name, "title": title, "description": description,
+        "inputSchema": {"type": "object", "properties": properties, "required": required or []},
+        "_meta": _tool_meta(),
+    }
+
+
+_scope_schema = {"type": "object", "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "task_instance_id": {"type": "string"}, "epoch": {"type": "integer"},
+}}
+_request_id = {"type": "string", "minLength": 1, "description": "写操作的幂等 UUID"}
+_revision = {"type": "integer", "minimum": 0}
+TOOLS.extend([
+    _v3_tool("task_open", "创建或恢复任务", "v3 入口：先记录目标和验收需求，再通过 PLAN 动作选择直接执行或拆分。", {
+        "session_id": _session_property(), "mode": {"type": "string", "enum": ["ensure", "new", "resume"]}, "request_id": _request_id,
+        "task_title": {"type": "string"}, "objective": {"type": "string"}, "requirements": {"type": "array", "items": {"type": "object"}},
+        "acceptance_criteria": {"type": "array"}, "main_session": {"type": "object"}, "binding": {"type": "object"},
+    }, ["request_id"]),
+    _v3_tool("task_read", "读取任务详情", "按范围读取当前任务、单个任务项、执行上下文或事件增量。", {
+        "scope": _scope_schema, "session_id": _session_property(), "projection": {"type": "string", "enum": ["summary", "node", "context", "events"]},
+        "node_id": {"type": "string"}, "after_event_seq": {"type": "integer"}, "limit": {"type": "integer"},
+    }, ["session_id"]),
+    _v3_tool("task_advance", "读取或认领待办动作", "preview 只读展示动作；claim 以 lease 原子认领 PLAN、ORCHESTRATE、SYNTHESIZE 或 DISPATCH 动作。", {
+        "scope": _scope_schema, "session_id": _session_property(), "mode": {"type": "string", "enum": ["preview", "claim"]},
+        "max_actions": {"type": "integer", "minimum": 1, "maximum": 8}, "request_id": _request_id, "expected_revision": _revision,
+    }, ["session_id"]),
+    _v3_tool("task_decide", "提交规划或协调决策", "提交计划执行/拆分、分发/等待/完成验收或同任务重规划决策。", {
+        "scope": _scope_schema, "session_id": _session_property(), "request_id": _request_id, "expected_revision": _revision,
+        "action_id": {"type": "string"}, "lease_token": {"type": "string"}, "kind": {"type": "string"}, "node_id": {"type": "string"},
+        "rationale": {"type": "string"}, "tasks": {"type": "array", "items": {"type": "object"}}, "role": {"type": "string"},
+        "instructions": {"type": "string"}, "deliverables": {"type": "array"}, "profile": {"type": "string"}, "resources": {"type": "array"},
+        "execution_mode": {"type": "string", "enum": ["subagent"]}, "model": {"type": "string"}, "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS)},
+        "assignment_id": {"type": "string"}, "wait_for": {"type": "string"}, "outcome": {"type": "string"}, "summary": {"type": "string"},
+        "outputs": {"type": "array"}, "unresolved": {"type": "array"}, "requirement_results": {"type": "array"}, "evidence_refs": {"type": "array"}, "reason": {"type": "string"},
+    }, ["session_id", "request_id", "kind"]),
+    _v3_tool("task_report", "记录执行与对账", "记录外部派发前后的事实、worker 报告、观察状态、未知结果对账、停止确认或主会话执行结果。", {
+        "scope": _scope_schema, "session_id": _session_property(), "request_id": _request_id, "expected_revision": _revision,
+        "event_kind": {"type": "string"}, "assignment_id": {"type": "string"}, "action_id": {"type": "string"}, "lease_token": {"type": "string"},
+        "provider_ref": {"type": "object"}, "observed_status": {"type": "string"}, "source_identity": {"type": "string"}, "evidence": {"type": "array"},
+        "summary": {"type": "string"}, "outputs": {"type": "array"}, "evidence_refs": {"type": "array"}, "unresolved": {"type": "array"},
+        "report_seq": {"type": "integer"}, "final": {"type": "boolean"}, "node_id": {"type": "string"}, "assignment": {"type": "object"}, "outcome": {"type": "string"},
+    }, ["session_id", "request_id", "event_kind"]),
+    _v3_tool("task_control", "控制当前任务", "暂停、继续、取消、确认停止或重新打开受结果影响的任务分支。", {
+        "scope": _scope_schema, "session_id": _session_property(), "request_id": _request_id, "expected_revision": _revision,
+        "operation": {"type": "string"}, "node_id": {"type": "string"}, "input_request_id": {"type": "string"}, "input_version": {"type": "integer"}, "answer": {}, "source": {"type": "string"},
+    }, ["session_id", "request_id", "operation"]),
+    _v3_tool("task_history", "查询任务历史", "分页查询当前会话归档任务、同一任务旧计划轮次或执行尝试。", {
+        "session_id": _session_property(), "type": {"type": "string", "enum": ["task", "epoch", "attempt"]}, "task_instance_id": {"type": "string"},
+        "node_id": {"type": "string"}, "limit": {"type": "integer"}, "cursor": {"type": "string"},
+    }, ["session_id", "type"]),
+])
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "task_open": lambda args: V3_STORE.call("task_open", args),
+    "task_read": lambda args: V3_STORE.call("task_read", args),
+    "task_advance": lambda args: V3_STORE.call("task_advance", args),
+    "task_decide": lambda args: V3_STORE.call("task_decide", args),
+    "task_report": lambda args: V3_STORE.call("task_report", args),
+    "task_control": lambda args: V3_STORE.call("task_control", args),
+    "task_history": lambda args: V3_STORE.call("task_history", args),
     "register_ui_view": lambda args: register_ui_view(
         args.get("session_id"), args.get("view_id")
     ),
@@ -1492,7 +1585,7 @@ def handle(message: dict[str, Any]) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.0"},
+                "serverInfo": {"name": "task-progress", "version": "0.2.0"},
             },
         )
 
@@ -1548,6 +1641,9 @@ def handle(message: dict[str, Any]) -> str | None:
             return _err(message_id, -32601, f"未知工具：{name}")
         try:
             return _ok(message_id, handler(args))
+        except V3Error as exc:
+            payload = {"api_version": 3, "error": {"code": exc.code, "message": str(exc), "recovery": exc.recovery}}
+            return _ok(message_id, {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}], "structuredContent": payload, "isError": True})
         except ProgressError as exc:
             return _ok(
                 message_id,

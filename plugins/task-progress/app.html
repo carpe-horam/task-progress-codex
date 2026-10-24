@@ -76,6 +76,7 @@ h1{font-size:18px;line-height:1.35}
 .error{padding:7px 16px;font-size:11px}
 .export-feedback{padding:6px 16px}
 @media(max-width:480px){body{padding:4px}.header{padding:10px 12px 8px}.titleline{margin-top:7px}h1{font-size:16px}.steps-section{padding:8px 12px 1px}.step{padding:6px 0}.task-tree .children{margin-top:4px;margin-left:4px;padding-left:8px}.history-section{padding:7px 12px}.empty{padding:18px 12px 20px}}
+.control-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.control-actions [data-control="cancel"]{color:#e6b4a6;border-color:#63453e;background:#302420}
 </style>
 </head>
 <body>
@@ -94,6 +95,7 @@ h1{font-size:18px;line-height:1.35}
   <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比表示叶子任务的执行结束比例。</p><ol id="steps" class="steps"></ol></section>
   <details id="history-section" class="history-section hidden"><summary id="history-title">历史计划</summary><ol id="history-list" class="history-list"></ol></details>
   <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
+  <details id="task-controls" class="history-section hidden"><summary>任务控制</summary><div class="control-actions"><button class="refresh" data-control="pause" type="button">暂停新增工作</button><button class="refresh" data-control="resume" type="button">继续任务</button><button class="refresh" data-control="cancel" type="button">请求取消</button></div></details>
   <p id="export-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
   <p id="error" class="error hidden" role="alert"></p>
 </main>
@@ -124,7 +126,7 @@ h1{font-size:18px;line-height:1.35}
   const statusInfo = value => {
     if (value === 'completed' || value === 'complete' || value === 'resolved') return { key: 'completed', label: '已完成' };
     if (value === 'in_progress' || value === 'running' || value === 'executing') return { key: 'running', label: '进行中' };
-    const labels = { ready: '可执行', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', waiting_synthesis: '待汇总验收', decomposing: '子任务可执行' };
+    const labels = { ready: '可执行', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', waiting_synthesis: '待汇总验收', decomposing: '子任务可执行', planning: '子任务待规划', deferred: '待规划' };
     if (Object.prototype.hasOwnProperty.call(labels, value)) return { key: value, label: labels[value] };
     return { key: 'pending', label: '待开始' };
   };
@@ -540,9 +542,9 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     heading.setAttribute('aria-label', label + '：' + preview.textContent);
     block.append(heading, content); return block;
   }
-  function evidenceField(evidence, key = 'evidence', openDetails = new Map()) {
+  function evidenceField(evidence, key = 'evidence', openDetails = new Map(), label = '证据') {
     const entries = list(evidence); const block = document.createElement('details'); block.className = 'detail-field detail-group detail-evidence'; block.dataset.key = key; block.open = openDetails.get(key) || false;
-    const heading = document.createElement('summary'); heading.textContent = '证据 · ' + entries.length + ' 项'; const items = document.createElement('ul'); items.className = 'detail-list';
+    const heading = document.createElement('summary'); heading.textContent = label + ' · ' + entries.length + ' 项'; const items = document.createElement('ul'); items.className = 'detail-list';
     entries.forEach(value => {
       const item = document.createElement('li'); const text = printable(value);
       if (/^https?:\/\/[^\s]+$/i.test(text)) {
@@ -580,6 +582,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       if (node.status) return node.status;
       if (node.execution_status === 'finished') return node.outcome || 'finished';
       if (['running', 'failed', 'cancelled'].includes(node.execution_status)) return node.execution_status;
+      if (node.planning_state === 'deferred') return 'deferred';
       const nextPath = new Set(path); nextPath.add(id);
       const childIds = children.get(id);
       let status;
@@ -587,24 +590,28 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
         const states = childIds.map(child => nodeStatus(child, nextPath));
         status = states.some(value => ['running', 'executing'].includes(value)) ? 'running'
           : states.every(value => ['resolved', 'open', 'finished', 'failed', 'cancelled'].includes(value)) ? 'waiting_synthesis'
-          : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : 'blocked';
+          : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : states.some(value => ['deferred', 'planning'].includes(value)) ? 'planning' : 'blocked';
       } else {
-        const ready = node.ready ?? list(node.depends_on).every(dependencyId => {
+        const ready = node.ready ?? list(node.depends_on).every(edge => {
+          const dependencyId = typeof edge === 'object' ? edge.node_id : edge;
           const dependency = byId.get(String(dependencyId));
-          return dependency && (node.dependency_policy === 'finished'
+          const policy = typeof edge === 'object' ? edge.policy : node.dependency_policy;
+          return dependency && (policy === 'returned' || policy === 'finished'
             ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
             : dependency.execution_status === 'finished' && dependency.outcome === 'resolved');
         });
-        status = ready ? 'ready' : 'blocked';
+        status = node.planning_state === 'executable' ? (ready ? 'ready' : 'blocked') : (ready ? 'deferred' : 'blocked');
       }
       derivedStatuses.set(id, status); return status;
     }
-    const reference = id => { const node = byId.get(String(id)); return node ? node.title + ' (' + id + ')' : String(id); };
+    const reference = edge => { const id = typeof edge === 'object' ? edge.node_id : edge; const node = byId.get(String(id)); return node ? node.title + ' (' + id + ')' : String(id); };
     function appendNode(id, target) {
       if (seen.has(id) || !byId.has(id)) return;
       seen.add(id);
       const node = byId.get(id); const childIds = children.get(id).filter(child => !seen.has(child));
-      const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
+      const recordedAssignments = Object.values(node.assignments && typeof node.assignments === 'object' ? node.assignments : {});
+      const latestAssignment = recordedAssignments.sort((left, right) => String(right.created_at || '').localeCompare(String(left.created_at || '')))[0];
+      const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : (latestAssignment || {});
       const info = statusInfo(nodeStatus(id));
       const li = document.createElement('li'); li.className = 'step ' + info.key;
       const details = document.createElement('details'); details.dataset.key = prefix + ':' + id;
@@ -631,14 +638,16 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
       const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
       const moreContent = document.createElement('div'); moreContent.className = 'detail-group-content';
-      if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
+      if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(edge => reference(edge) + (typeof edge === 'object' ? ' · ' + (edge.policy === 'returned' ? '执行结束即可' : '需要已解决') : '')).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
       if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束（包括未解决、失败或取消）' : '前置任务已解决'));
-      if (node.summary) {
-        const summary = printable(node.summary);
-        body.append(compactField('结果摘要', summary, prefix + ':' + id + ':result-summary', openDetails, 'note', 120));
-      }
-      if (list(node.evidence).length) moreContent.append(evidenceField(node.evidence, prefix + ':' + id + ':evidence', openDetails));
+      if (node.summary) body.append(compactField(String(id) === String(rootId) ? '整体说明' : '完成情况', node.summary, prefix + ':' + id + ':result-summary', openDetails, 'note', 120));
+      const outputs = list(node.outputs);
+      if (outputs.length) moreContent.append(evidenceField(outputs, prefix + ':' + id + ':outputs', openDetails, '产出'));
+      const evidence = list(node.evidence_refs).length ? node.evidence_refs : list(node.evidence);
+      if (evidence.length) moreContent.append(evidenceField(evidence, prefix + ':' + id + ':evidence', openDetails));
+      if (list(node.unresolved).length) moreContent.append(compactField('尚未解决', node.unresolved.map(printable).join('\n'), prefix + ':' + id + ':unresolved', openDetails));
+      if (list(node.checks).length) moreContent.append(evidenceField(node.checks, prefix + ':' + id + ':checks', openDetails, '验收检查'));
       const dependencies = list(node.dependencies).filter(dependency => dependency && (dependency.summary || list(dependency.evidence).length));
       for (const dependency of dependencies) {
         const dependencyKey = prefix + ':' + id + ':dependency:' + (dependency.id || dependency.title || dependencies.indexOf(dependency));
@@ -649,10 +658,12 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
         if (list(dependency.evidence).length) content.append(evidenceField(dependency.evidence, dependencyKey + ':evidence', openDetails));
         dependencyBlock.append(heading, content); moreContent.append(dependencyBlock);
       }
-      if (assignment.dispatch_text) {
+      if (assignment.dispatch_text || assignment.instructions || assignment.role || list(assignment.deliverables).length || assignment.provider_ref) {
         const dispatch = document.createElement('details'); dispatch.className = 'dispatch'; dispatch.dataset.key = prefix + ':' + id + ':dispatch'; dispatch.open = openDetails.get(dispatch.dataset.key) || false;
-        const heading = document.createElement('summary'); heading.textContent = '完整派发任务';
-        const text = document.createElement('div'); text.className = 'detail-value'; text.textContent = printable(assignment.dispatch_text); dispatch.append(heading, text); moreContent.append(dispatch);
+        const heading = document.createElement('summary'); heading.textContent = '执行安排' + (assignment.status ? ' · ' + assignment.status : '');
+        const text = document.createElement('div'); text.className = 'detail-value';
+        text.textContent = [assignment.role ? '执行角色：' + assignment.role : '', assignment.instructions ? '任务说明：' + assignment.instructions : assignment.dispatch_text || '', list(assignment.deliverables).length ? '交付要求：\n' + assignment.deliverables.map(printable).join('\n') : '', list(assignment.resources).length ? '资源：\n' + assignment.resources.map(printable).join('\n') : '', assignment.provider_ref ? '外部执行：\n' + printable(assignment.provider_ref) : ''].filter(Boolean).join('\n\n');
+        dispatch.append(heading, text); moreContent.append(dispatch);
       }
       if (moreContent.childElementCount) { more.append(moreHeading, moreContent); body.append(more); }
       if (body.childElementCount) details.append(body);
@@ -753,6 +764,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
     latestProgress = hasProgress ? progress : null;
+    syncTaskControls(progress);
     $('export-all').classList.toggle('hidden', !hasProgress || superseded || disposed);
     if (!hasProgress) $('export-feedback').classList.add('hidden');
     const steps = Array.isArray(progress?.steps) ? progress.steps : [];
@@ -795,6 +807,32 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     $('steps').replaceChildren(linearSteps(steps, taskScope(progress) + ':steps', openDetails));
     syncButton();
   }
+  function syncTaskControls(progress) {
+    const section = $('task-controls');
+    const available = !!progress && progress.api_version === 3 && !superseded && !disposed;
+    section.classList.toggle('hidden', !available);
+    if (!available) return;
+    const state = progress.control_state || 'active';
+    section.querySelector('[data-control="pause"]').classList.toggle('hidden', !['active'].includes(state));
+    section.querySelector('[data-control="resume"]').classList.toggle('hidden', !['paused', 'pause_requested'].includes(state));
+    section.querySelector('[data-control="cancel"]').classList.toggle('hidden', !['active', 'pause_requested', 'paused'].includes(state));
+  }
+  async function applyTaskControl(operation) {
+    const progress = latestProgress;
+    if (!progress || progress.api_version !== 3 || busy || !sessionId) return;
+    const requestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : 'control-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    try {
+      const result = await request('tools/call', { name: 'task_control', arguments: {
+        session_id: sessionId, scope: { session_id: sessionId, task_instance_id: progress.task_instance_id, epoch: progress.epoch },
+        expected_revision: progress.revision, request_id: requestId, operation
+      }});
+      if (result?.isError) throw new Error(list(result.content).map(item => item?.text).filter(Boolean).join('\n') || '任务控制操作未被接受。');
+      receiveResult(result);
+      $('task-controls').open = false;
+      setError('');
+    } catch (error) { setError(error?.message || '任务控制操作失败，请刷新后重试。'); }
+  }
+  document.querySelectorAll('[data-control]').forEach(button => button.addEventListener('click', () => { void applyTaskControl(button.dataset.control); }));
   $('export-all').addEventListener('click', exportCurrentProgress);
   function receiveResult(result) {
     if (superseded || disposed) return;
@@ -864,7 +902,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     }, { threshold: 0 }).observe(document.querySelector('.card'));
   }
   render(null);
-  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.2.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
     .then(result => { displayMode = result?.hostContext?.displayMode ?? null; hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {

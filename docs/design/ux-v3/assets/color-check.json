@@ -1,0 +1,114 @@
+{
+  "revision": 2,
+  "scope": "compact tree CSS token pairs only, not full accessibility audit",
+  "checks": [
+    {
+      "theme": "light",
+      "pair": "text/surface",
+      "ratio": 12.89,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "muted/surface",
+      "ratio": 6.21,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "muted/surface-alt",
+      "ratio": 5.79,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "accent/accent-soft",
+      "ratio": 6.23,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "blue/blue-soft",
+      "ratio": 6.23,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "green/green-soft",
+      "ratio": 6.43,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "amber/amber-soft",
+      "ratio": 6.02,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "red/red-soft",
+      "ratio": 5.92,
+      "pass": true
+    },
+    {
+      "theme": "light",
+      "pair": "surface/accent",
+      "ratio": 6.93,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "text/surface",
+      "ratio": 14.18,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "muted/surface",
+      "ratio": 8.23,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "muted/surface-alt",
+      "ratio": 7.38,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "accent/accent-soft",
+      "ratio": 7.17,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "blue/blue-soft",
+      "ratio": 7.17,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "green/green-soft",
+      "ratio": 7.76,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "amber/amber-soft",
+      "ratio": 8.39,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "red/red-soft",
+      "ratio": 7.78,
+      "pass": true
+    },
+    {
+      "theme": "dark",
+      "pair": "surface/accent",
+      "ratio": 10.05,
+      "pass": true
+    }
+  ]
+}
