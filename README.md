@@ -4,16 +4,16 @@
 
 **把 Codex 的多步骤工作变成清楚、可追踪、可复盘的任务网络。**
 
-[![License: MIT](https://img.shields.io/github/license/machengling/task-progress-codex)](LICENSE)
-[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fmachengling.github.io%2Ftask-progress-codex%2F&label=用户指南)](https://machengling.github.io/task-progress-codex/)
+[![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
+[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fcarpe-horam.github.io%2Ftask-progress-codex%2F&label=用户指南)](https://carpe-horam.github.io/task-progress-codex/)
 
 Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务和 `track-progress` skill。它帮助 Codex 把复杂目标拆成有依赖关系的任务，记录执行进度、结果与证据，并在 Codex 中持续展示。
 
-> [打开交互式宣传手册与功能演示](https://machengling.github.io/task-progress-codex/) · [查看插件源码](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+> [打开交互式宣传手册与功能演示](https://carpe-horam.github.io/task-progress-codex/) · [查看插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
 ## 效果图与动态演示
 
-[![Task Progress 任务卡片从 0% 推进到 100% 的动态演示](docs/assets/task-progress-demo.gif)](https://machengling.github.io/task-progress-codex/#demo)
+[![Task Progress 任务卡片从 0% 推进到 100% 的动态演示](docs/assets/task-progress-demo.gif)](https://carpe-horam.github.io/task-progress-codex/#demo)
 
 ## 能做什么
 
@@ -55,7 +55,7 @@ flowchart LR
 在终端添加此 Marketplace：
 
 ```sh
-codex plugin marketplace add machengling/task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex
 ```
 
 然后在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装。如果插件目录尚未更新，重载或重启 Codex 后再查看。
@@ -63,7 +63,7 @@ codex plugin marketplace add machengling/task-progress-codex
 ### 从本地克隆安装
 
 ```sh
-git clone https://github.com/machengling/task-progress-codex.git
+git clone https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
 ```
 
@@ -117,9 +117,9 @@ codex plugin marketplace add ./task-progress-codex
 
 ## 相关链接
 
-- [Task Progress 交互式宣传手册](https://machengling.github.io/task-progress-codex/)
-- [GitHub 仓库与问题反馈](https://github.com/machengling/task-progress-codex)
-- [Task Progress 插件源码](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+- [Task Progress 交互式宣传手册](https://carpe-horam.github.io/task-progress-codex/)
+- [GitHub 仓库与问题反馈](https://github.com/carpe-horam/task-progress-codex)
+- [Task Progress 插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
 ## 许可证
 

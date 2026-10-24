@@ -4,16 +4,16 @@
 
 **Turn multi-step Codex work into a clear, trackable, reviewable task network.**
 
-[![License: MIT](https://img.shields.io/github/license/machengling/task-progress-codex)](LICENSE)
-[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fmachengling.github.io%2Ftask-progress-codex%2F&label=User%20Guide)](https://machengling.github.io/task-progress-codex/)
+[![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
+[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fcarpe-horam.github.io%2Ftask-progress-codex%2F&label=User%20Guide)](https://carpe-horam.github.io/task-progress-codex/)
 
 Task Progress is a Codex plugin with an interactive task panel, an MCP server, and the `track-progress` skill. It helps Codex break complex goals into tasks with dependencies, record progress, results, and evidence, and keep that work visible in Codex.
 
-> [Open the interactive guide and demo](https://machengling.github.io/task-progress-codex/) · [Browse the plugin source](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+> [Open the interactive guide and demo](https://carpe-horam.github.io/task-progress-codex/) · [Browse the plugin source](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
 ## Animated demo
 
-[![Task Progress animated demo: a task card progresses from 0% to 100%](docs/assets/task-progress-demo.gif)](https://machengling.github.io/task-progress-codex/#demo)
+[![Task Progress animated demo: a task card progresses from 0% to 100%](docs/assets/task-progress-demo.gif)](https://carpe-horam.github.io/task-progress-codex/#demo)
 
 ## Features
 
@@ -55,7 +55,7 @@ For long-running work, the skill asks Codex to consider breaking down any indivi
 Add this marketplace from a terminal:
 
 ```sh
-codex plugin marketplace add machengling/task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex
 ```
 
 Then open **Plugins Directory** in the Codex desktop app, find **Task Progress**, and install it. Reload or restart Codex if the marketplace listing has not updated.
@@ -63,7 +63,7 @@ Then open **Plugins Directory** in the Codex desktop app, find **Task Progress**
 ### Install from a local clone
 
 ```sh
-git clone https://github.com/machengling/task-progress-codex.git
+git clone https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
 ```
 
@@ -117,9 +117,9 @@ Default behavior:
 
 ## Links
 
-- [Task Progress interactive guide](https://machengling.github.io/task-progress-codex/)
-- [GitHub repository and issue tracker](https://github.com/machengling/task-progress-codex)
-- [Task Progress plugin source](https://github.com/machengling/task-progress-codex/tree/main/plugins/task-progress)
+- [Task Progress interactive guide](https://carpe-horam.github.io/task-progress-codex/)
+- [GitHub repository and issue tracker](https://github.com/carpe-horam/task-progress-codex)
+- [Task Progress plugin source](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
 ## License
 

@@ -33,8 +33,8 @@
       "修复这个 bug，展示每步进度",
       "重构这个模块，显示任务进度卡片"
     ],
-    "websiteURL": "https://machengling.github.io/task-progress-codex/"
+    "websiteURL": "https://carpe-horam.github.io/task-progress-codex/"
   },
-  "repository": "https://github.com/machengling/task-progress-codex",
-  "homepage": "https://machengling.github.io/task-progress-codex/"
+  "repository": "https://github.com/carpe-horam/task-progress-codex",
+  "homepage": "https://carpe-horam.github.io/task-progress-codex/"
 }
