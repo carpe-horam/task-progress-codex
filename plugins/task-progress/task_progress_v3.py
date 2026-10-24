@@ -377,11 +377,13 @@ class V3Store:
         out=[]
         for node in state["nodes"].values():
             ready=self._node_ready(state,node)
+            assignments=[node.get("assignments",{}).get(aid,{}) for aid in node.get("assignment_ids",[])]
+            in_flight=any(a.get("status") in ("planned","dispatching","queued","running","unknown","stopping") for a in assignments)
             if ready and node.get("planning_state")=="deferred":out.append({"kind":"PLAN","node_id":node["id"],"title":node["title"],"reason":"任务项等待规划"})
-            elif ready and node.get("planning_state")=="executable":out.append({"kind":"ORCHESTRATE","node_id":node["id"],"title":node["title"],"reason":"任务项可以开始执行"})
+            elif ready and node.get("planning_state")=="executable" and not in_flight:out.append({"kind":"ORCHESTRATE","node_id":node["id"],"title":node["title"],"reason":"任务项可以开始执行"})
+            elif node.get("execution_status")=="running" and assignments and not in_flight and any(a.get("report_final") or a.get("status") in ("finished","failed","cancelled") for a in assignments):out.append({"kind":"COLLECT","node_id":node["id"],"title":node["title"],"reason":"执行报告已返回，等待主会话验收"})
             if node.get("planning_state")=="expanded" and node.get("children") and all(self._terminal(state["nodes"][i]) for i in node["children"]) and node.get("execution_status")=="pending":out.append({"kind":"SYNTHESIZE","node_id":node["id"],"title":node["title"],"reason":"子任务已结束，等待本级综合验收"})
-            for aid in node.get("assignment_ids",[]):
-                ass=node.get("assignments",{}).get(aid,{})
+            for aid,ass in zip(node.get("assignment_ids",[]),assignments):
                 if ass.get("status")=="planned":out.append({"kind":"DISPATCH","node_id":node["id"],"assignment_id":aid,"title":node["title"],"reason":"派发已获准，需由宿主执行"})
         return out
 
@@ -418,7 +420,7 @@ class V3Store:
                 else:self._install_plan(state,node,a)
             elif kind in ("orchestrate.dispatch","orchestrate.wait","orchestrate.finish"):
                 if not node:raise V3Error("SCOPE_STALE","任务项不存在。")
-                if action and action["kind"] not in ("ORCHESTRATE","SYNTHESIZE"):raise V3Error("LEASE_STALE","动作类型与协调决策不符。")
+                if action and action["kind"] not in ("ORCHESTRATE","COLLECT","SYNTHESIZE"):raise V3Error("LEASE_STALE","动作类型与协调决策不符。")
                 if kind=="orchestrate.dispatch":
                     if not node.get("attempt_id") or not a.get("role") or not a.get("instructions") or not a.get("deliverables"):raise V3Error("PLAN_INVALID","派发决定需要 role、完整 instructions 和 deliverables。")
                     if a.get("execution_mode")!="subagent" or not a.get("model") or not a.get("reasoning_effort"):

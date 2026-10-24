@@ -1459,7 +1459,7 @@ TOOLS.extend([
         "scope": _scope_schema, "session_id": _session_property(), "projection": {"type": "string", "enum": ["summary", "node", "context", "events"]},
         "node_id": {"type": "string"}, "after_event_seq": {"type": "integer"}, "limit": {"type": "integer"},
     }, ["session_id"]),
-    _v3_tool("task_advance", "读取或认领待办动作", "preview 只读展示动作；claim 以 lease 原子认领 PLAN、ORCHESTRATE、SYNTHESIZE 或 DISPATCH 动作。", {
+    _v3_tool("task_advance", "读取或认领待办动作", "preview 只读展示动作；claim 以 lease 原子认领 PLAN、ORCHESTRATE、DISPATCH、COLLECT 或 SYNTHESIZE 动作。", {
         "scope": _scope_schema, "session_id": _session_property(), "mode": {"type": "string", "enum": ["preview", "claim"]},
         "max_actions": {"type": "integer", "minimum": 1, "maximum": 8}, "request_id": _request_id, "expected_revision": _revision,
     }, ["session_id"]),

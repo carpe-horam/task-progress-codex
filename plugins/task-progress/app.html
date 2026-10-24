@@ -76,7 +76,6 @@ h1{font-size:18px;line-height:1.35}
 .error{padding:7px 16px;font-size:11px}
 .export-feedback{padding:6px 16px}
 @media(max-width:480px){body{padding:4px}.header{padding:10px 12px 8px}.titleline{margin-top:7px}h1{font-size:16px}.steps-section{padding:8px 12px 1px}.step{padding:6px 0}.task-tree .children{margin-top:4px;margin-left:4px;padding-left:8px}.history-section{padding:7px 12px}.empty{padding:18px 12px 20px}}
-.control-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.control-actions [data-control="cancel"]{color:#e6b4a6;border-color:#63453e;background:#302420}
 </style>
 </head>
 <body>
@@ -95,7 +94,6 @@ h1{font-size:18px;line-height:1.35}
   <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比表示叶子任务的执行结束比例。</p><ol id="steps" class="steps"></ol></section>
   <details id="history-section" class="history-section hidden"><summary id="history-title">历史计划</summary><ol id="history-list" class="history-list"></ol></details>
   <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
-  <details id="task-controls" class="history-section hidden"><summary>任务控制</summary><div class="control-actions"><button class="refresh" data-control="pause" type="button">暂停新增工作</button><button class="refresh" data-control="resume" type="button">继续任务</button><button class="refresh" data-control="cancel" type="button">请求取消</button></div></details>
   <p id="export-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
   <p id="error" class="error hidden" role="alert"></p>
 </main>
@@ -764,7 +762,6 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
     latestProgress = hasProgress ? progress : null;
-    syncTaskControls(progress);
     $('export-all').classList.toggle('hidden', !hasProgress || superseded || disposed);
     if (!hasProgress) $('export-feedback').classList.add('hidden');
     const steps = Array.isArray(progress?.steps) ? progress.steps : [];
@@ -807,32 +804,6 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     $('steps').replaceChildren(linearSteps(steps, taskScope(progress) + ':steps', openDetails));
     syncButton();
   }
-  function syncTaskControls(progress) {
-    const section = $('task-controls');
-    const available = !!progress && progress.api_version === 3 && !superseded && !disposed;
-    section.classList.toggle('hidden', !available);
-    if (!available) return;
-    const state = progress.control_state || 'active';
-    section.querySelector('[data-control="pause"]').classList.toggle('hidden', !['active'].includes(state));
-    section.querySelector('[data-control="resume"]').classList.toggle('hidden', !['paused', 'pause_requested'].includes(state));
-    section.querySelector('[data-control="cancel"]').classList.toggle('hidden', !['active', 'pause_requested', 'paused'].includes(state));
-  }
-  async function applyTaskControl(operation) {
-    const progress = latestProgress;
-    if (!progress || progress.api_version !== 3 || busy || !sessionId) return;
-    const requestId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : 'control-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-    try {
-      const result = await request('tools/call', { name: 'task_control', arguments: {
-        session_id: sessionId, scope: { session_id: sessionId, task_instance_id: progress.task_instance_id, epoch: progress.epoch },
-        expected_revision: progress.revision, request_id: requestId, operation
-      }});
-      if (result?.isError) throw new Error(list(result.content).map(item => item?.text).filter(Boolean).join('\n') || '任务控制操作未被接受。');
-      receiveResult(result);
-      $('task-controls').open = false;
-      setError('');
-    } catch (error) { setError(error?.message || '任务控制操作失败，请刷新后重试。'); }
-  }
-  document.querySelectorAll('[data-control]').forEach(button => button.addEventListener('click', () => { void applyTaskControl(button.dataset.control); }));
   $('export-all').addEventListener('click', exportCurrentProgress);
   function receiveResult(result) {
     if (superseded || disposed) return;

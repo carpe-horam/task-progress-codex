@@ -68,7 +68,7 @@ function render(){
   const s=scenarios[state.scenario],c=count(),empty=state.scenario==='empty';
   const actionBar=empty?'':`<div class="header-actions">${button('导出','export','small')}${button('刷新','refresh','small')}${button('•••','more','small icon-button','aria-label="更多操作"')}</div>`;
   const progress=empty?'':`<div class="task-title"><h2>${esc(title())}</h2>${pill(s.label,s.tone)}</div><div class="progress-line"><strong>${Math.round(c.ended/c.total*100)}<small>%</small></strong><span>${c.ended} / ${c.total} 项执行结束</span></div><div class="segments" role="progressbar" aria-label="当前计划任务执行结束比例" aria-valuemin="0" aria-valuemax="${c.total}" aria-valuenow="${c.ended}" aria-valuetext="${c.ended} 项执行结束，不代表整体目标已验收">${nodes().map(n=>`<span class="${n.status==='resolved'?'ended':n.status==='open'?'unresolved':n.status==='cancelled'?'cancelled':''}"></span>`).join('')}</div><div class="compact-meta"><span>计划第 ${state.plans.length+1} 轮</span><span>已解决 ${c.resolved}</span><span>进行中 ${nodes().filter(n=>n.status==='running').length}</span><span>${c.open?'未解决 '+c.open:'待执行 '+nodes().filter(n=>['pending','paused'].includes(n.status)).length}</span></div>`;
-  $('card').innerHTML=`<header class="card-header"><div class="brand-row"><span class="brand"><span class="brand-dot" aria-hidden="true"></span>Task Progress</span>${actionBar}</div>${progress}</header>${empty?emptyView():`${attention()}<section class="tree-section" aria-label="当前任务树"><div class="section-heading"><h3>当前任务</h3><span>${c.total} 个子任务 · 点击行展开详情</span></div><details id="task-root" class="task-root" data-keep="root" ${state.expanded.root===false?'':'open'}><summary><span class="root-icon" aria-hidden="true">◇</span><strong>${state.scenario==='simple'?'方案比较':hasReplan()?'替代方案实施与验证':'修复与验证'}</strong><span>${c.ended} / ${c.total}</span></summary><ol class="task-tree">${nodes().map(nodeRow).join('')}</ol>${rootSummary()}</details></section>${historySections()}<footer class="card-footer"><span>${state.scenario==='unknown'?'执行确认于 14:27 · 状态待核对':state.scenario==='error'?'上次快照 14:32 · 读取失败':'执行状态更新于 14:32'}</span>${['done','open','cancelled'].includes(state.scenario)?'<span>记录已保存</span>':state.scenario==='paused'?'<span>当前无在途执行</span>':['pausing','stopping','unknown','error'].includes(state.scenario)?'':button('暂停新增工作','pause','text-button small')}</footer>`}`;
+  $('card').innerHTML=`<header class="card-header"><div class="brand-row"><span class="brand"><span class="brand-dot" aria-hidden="true"></span>Task Progress</span>${actionBar}</div>${progress}</header>${empty?emptyView():`${attention()}<section class="tree-section" aria-label="当前任务树"><div class="section-heading"><h3>当前任务</h3><span>${c.total} 个子任务 · 点击行展开详情</span></div><details id="task-root" class="task-root" data-keep="root" ${state.expanded.root===false?'':'open'}><summary><span class="root-icon" aria-hidden="true">◇</span><strong>${state.scenario==='simple'?'方案比较':hasReplan()?'替代方案实施与验证':'修复与验证'}</strong><span>${c.ended} / ${c.total}</span></summary><ol class="task-tree">${nodes().map(nodeRow).join('')}</ol>${rootSummary()}</details></section>${historySections()}<footer class="card-footer"><span>${state.scenario==='unknown'?'执行确认于 14:27 · 状态待核对':state.scenario==='error'?'上次快照 14:32 · 读取失败':'执行状态更新于 14:32'}</span>${['done','open','cancelled'].includes(state.scenario)?'<span>记录已保存</span>':state.scenario==='paused'?'<span>当前无在途执行</span>':'<span>任务控制请在对话中提出</span>'}</footer>`}`;
   const observable=['pausing','stopping','unknown','synthesis','submitted'].includes(state.scenario);
   $('observe').hidden=!observable;
   $('observe').textContent=state.scenario==='stopping'?'模拟已确认停止':state.scenario==='unknown'?'模拟执行已结束':state.scenario==='synthesis'?'模拟最终验收通过':state.scenario==='submitted'?'模拟任务继续':'模拟在途任务已结束';
@@ -78,8 +78,8 @@ function attention(){
   const lines={
     input:['需要你选择验收范围，已有结果保留。','选择范围','question','amber'],
     submitted:['选择已提交，等待执行器继续。','','','neutral'],
-    pausing:['已暂停新增工作，1 项执行仍在收尾。','请求停止','stop','amber'],
-    paused:[`已暂停；${count().resolved} 项结果保留，当前执行报告尚待验收。`,'继续推进','resume','neutral'],
+    pausing:['已暂停新增工作，1 项执行仍在收尾。','','','amber'],
+    paused:[`已暂停；${count().resolved} 项结果保留，当前执行报告尚待验收。`,'','','neutral'],
     stopping:['停止请求已提交，等待 1 项执行确认终止。','核对状态','reconcile','amber'],
     cancelled:[`${count().resolved} 项结果已保留，另 ${nodes().filter(n=>n.status==='cancelled').length} 项已取消。`,'查看保留内容','root-summary','neutral'],
     unknown:['执行状态停留在 14:27，未重复派发。','核对状态','reconcile','amber'],
@@ -180,8 +180,6 @@ function closeDialog(){if($('dialog').open)$('dialog').close();}
 $('dialog').addEventListener('close',()=>{if(dialogSource?.isConnected)dialogSource.focus();});
 function handle(action,target){
   if(['root-summary','history','plans'].includes(action)){const el=$(action+'-details');if(el){if(action==='root-summary'){$('task-root').open=true;state.expanded.root=true;}el.open=true;state.expanded[action]=true;el.querySelector('summary')?.focus();}return;}
-  if(action==='pause'){setScenario('pausing');notify('已暂停新增工作；1 项在途核验仍在运行。');}
-  if(action==='resume'){setScenario('running');notify('演示：已核对执行状态，继续推进当前任务。');}
   if(action==='question')questionDialog();
   if(action==='refresh')notify(state.scenario==='error'?'演示：读取仍然失败，已保留上次有效快照。':state.scenario==='unknown'?'页面已读取；执行状态仍需核对，未刷新执行心跳。':'演示快照未变化；没有触发新的执行。');
   if(action==='reconcile')notify('演示：仍未确认执行是否结束，没有重复派发。');
@@ -190,9 +188,7 @@ function handle(action,target){
   if(action==='delivery')openNode(nodes().at(-1).id);
   if(action==='issue-node'){const issue=nodes().find(n=>n.status==='open');if(issue)openNode(issue.id);}
   if(action==='execution')showDialog('执行详情',`<p>当前活动：${esc(scenarios[state.scenario].current||'任务已结算')}。</p><p>所有身份均为预览示例。正式版本从宿主读取实际执行状态和配置，未知值不会猜测。</p>${techDetails()}`);
-  if(action==='more')showDialog('任务操作',`<p>选择要查看或操作的内容。</p><div class="dialog-menu">${button('导出任务记录','export')}${button('执行详情与来源','execution')}${['done','cancelled','open','error','empty'].includes(state.scenario)?'':button('请求停止任务','stop','danger')}</div>`);
-  if(action==='stop'){const active=nodes().filter(n=>['running','unknown'].includes(n.status)).length;showDialog('请求停止任务？',active?`<p>将停止新增工作，并向当前 ${active} 项执行发送停止请求。已有结果和证据会保留。</p><p>收到真实终止确认前，仍显示“正在停止”。</p>`:'<p>当前没有在途执行，将取消尚未完成的工作。已有结果和证据保留。</p>',button('返回','close-dialog')+button('确认请求停止','confirm-stop','danger'));}
-  if(action==='confirm-stop'){const active=nodes().some(n=>['running','unknown'].includes(n.status));closeDialog();setScenario(active?'stopping':'cancelled');notify(active?'已提交停止请求，尚未确认执行终止。':'没有在途执行，剩余任务已取消。');}
+  if(action==='more')showDialog('更多',`<p>控制任务请在对话中提出。可从这里导出记录或查看执行来源。</p><div class="dialog-menu">${button('导出任务记录','export')}${button('执行详情与来源','execution')}</div>`);
   if(action==='replan')showDialog('调整兼容实现方案','<p>保留：复现材料、相关回归证据。</p><p>新增：替代实现检查、导出验证。上一轮导出验收不会继承为通过。</p><p>这是演示中的方案选择，不会启动真实工作。</p>',button('先不调整','close-dialog')+button('采用此方案','confirm-replan','primary'));
   if(action==='confirm-replan'){closeDialog();setScenario('replan');notify('演示：同一任务已采用第 2 轮计划，旧方案已保存到当前任务的历史计划；历史任务数量不变。');}
   if(action==='changes')handle('plans');
