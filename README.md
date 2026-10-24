@@ -11,8 +11,6 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 
 ## 效果图与动态演示
 
-下面的 GIF 展示宣传页 UX playground 中由插件 `app.html` 实际渲染的任务卡片。动画从 0% 开始，演示任务从可执行、进行中到完成的状态变化；点击 GIF 即可打开带有“推进一步”和“自动推进”等控件的交互页面。
-
 [![Task Progress 任务卡片从 0% 推进到 100% 的动态演示](docs/assets/task-progress-demo.gif)](https://machengling.github.io/task-progress-codex/#demo)
 
 ## 能做什么
