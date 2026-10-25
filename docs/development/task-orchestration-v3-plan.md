@@ -240,7 +240,7 @@
 | T05 | 同 attempt 配置冲突、元数据未知、后补来源 | 冲突明确拒绝；未知可运行；后补有审计（TP-06） |
 | T06 | 已验收子项 retry、后继已消费结果 | 首批拒绝；C2 后通过 reopen 使受影响结果失效，无 completed/running 矛盾（TP-03） |
 | T07 | init/finish/rebuild 响应丢失后重复提交 | 相同回执，无重复归档/attempt/epoch；参数变化报冲突 |
-| T08 | 旧实例/epoch/attempt 回报、两个聊天相同 cwd | 结果归属不串；ensure 恢复原任务；不同 binding 隔离 |
+| T08 | 旧实例/epoch/attempt 回报、两个聊天相同 cwd、缺失/未迁移的 session 调用 ensure | 结果归属不串；ensure 恢复原任务，空 session 可按目标创建首个任务；resume 不隐式创建；不同 binding 隔离 |
 | T09 | 两进程并发、事务中断、迁移提交中断 | 版本冲突明确；状态/动作/预留/回执无部分提交；可重启读取 |
 | T10 | 旧卡片延迟登记、乱序响应、同 view 重挂载 | 新视图不被抢占，revision 不倒退（TP-07） |
 | T11 | 隐藏面板、轮询、长时间无执行观察 | 隐藏停轮询；轮询不刷新心跳；陈旧提示不改变终态 |

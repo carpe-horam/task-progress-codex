@@ -429,7 +429,7 @@ Dagu 只是可选映射示例：若目标工作区已经使用它，驱动可调
 | `task_control` | scope、request_id、operation、expected revision、原因及必要来源 | pause/resume/cancel/retry/reopen_branch/edit_plan/update_executor/answer_input 的确定结果 |
 | `task_history` | session、type=task/epoch/attempt；epoch 必须指定 task_instance_id，attempt 还需节点范围；cursor、limit | task 为会话其他归档任务，epoch 为指定任务的旧方案；分别返回分页及只读快照 |
 
-`task_open.ensure` 找到现有任务时只恢复，不改目标、不归档。`new` 仅用于开始另一个任务，显式归档原任务、创建新实例并增加 generation；同一任务的方案调整使用重建，不调用 `new`。有未结算执行则拒绝。`resume` 不存在时返回明确错误，不偷偷创建。binding 不可用时首次生成 session_id，之后由调用方明确复用。
+`task_open.ensure` 找到现有任务时只恢复，不改目标、不归档；若没有当前 v3 任务且请求包含目标，则创建首个任务（新 session 或已有空 session 均可）。`resume` 仅恢复，session 或任务不存在时返回明确错误。旧版 session 未迁移到 v3 时不能把附带新目标的 `ensure` 当成重规划；调用方须沿用旧接口，或先显式迁移，避免把同一目标创建为新任务。`new` 仅用于开始另一个独立任务，显式归档原任务、创建新实例并增加 generation；同一任务的方案调整使用重建，不调用 `new`。有未结算执行则拒绝。binding 不可用时首次生成 session_id，之后由调用方明确复用。
 
 控制请求仅产生计划和状态变化；pause/cancel 所需的真实停止仍经 STOP 动作兑现。`edit_plan` 只接受尚未消费的计划修改；影响有效结果时必须走 reopen/rebuild。
 

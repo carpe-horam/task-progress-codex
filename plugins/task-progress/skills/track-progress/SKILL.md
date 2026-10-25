@@ -11,8 +11,9 @@ description: 对包含两个或以上可辨识步骤的任务使用 Task Progres
 
 ## 会话与任务生命周期
 
-- 首次创建任务调用 `task_open(mode: "new")`，传入目标、需求、验收条件和 UUID `request_id`。工具首次生成 `session_id` 后，将它保存在当前 Codex 会话的上下文中。
-- 恢复时调用 `task_open(mode: "ensure")` 或 `task_open(mode: "resume")`，使用已保存的 `session_id`。恢复不得新建任务或改写目标。
+- 首次创建任务调用 `task_open(mode: "new")`，传入目标、需求、验收条件和 UUID `request_id`。工具首次生成 `session_id` 后，将它保存在当前 Codex 会话的上下文中。宿主使用 `ensure` 做幂等打开时，若当前没有 v3 任务且请求包含目标，也可以正常创建首个任务。
+- 恢复时调用 `task_open(mode: "ensure")` 或 `task_open(mode: "resume")`，使用已保存的 `session_id`。存在当前任务时只恢复，不改写目标；`resume` 只允许恢复，缺少任务时返回明确错误。
+- `ensure`/`resume` 遇到 `SCOPE_STALE` 时，先核对 session 来源和历史记录。若该 ID 已由旧版 API 管理，不得把它直接交给 v3 `ensure` 并附上新目标来代替更新计划；继续使用同一版本的重规划接口，或先执行明确的数据迁移。没有旧任务且目标明确时，`ensure` 可以创建首个任务；不得调用旧版 `init_progress` 另建重复会话。
 - 同一会话开始另一个独立任务时，复用 `session_id` 并调用 `task_open(mode: "new")`。这会归档旧任务实例并创建新 `task_instance_id`；历史仍保留在该会话。
 - 同一任务调整方案时使用 `task_decide(kind: "rebuild")`，递增 `epoch` 并保留旧计划；不要创建新任务实例。
 - `clear_progress` 会删除指定 `session_id` 的当前任务、全部历史任务、计划、执行记录和视图。除非用户主动、明确要求清空当前会话的任务列表或进度，否则绝不调用。任务完成、开始新任务、恢复/切换视图、归档 Codex 会话或测试结束都不构成清理授权；会话归档本身也不能推定为用户要求清空。用户明确授权后，只能清理其指定的会话。

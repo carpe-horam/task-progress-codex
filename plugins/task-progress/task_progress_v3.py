@@ -138,7 +138,7 @@ class V3Store:
 
     def _session(self, db: sqlite3.Connection, sid: str) -> sqlite3.Row:
         row=db.execute("SELECT * FROM sessions WHERE session_id=?",(sid,)).fetchone()
-        if row is None: raise V3Error("SCOPE_STALE","没有这个 v3 会话。","用 task_open 创建或核对 session_id。")
+        if row is None: raise V3Error("SCOPE_STALE","没有这个 v3 会话。","核对 session_id；若它来自旧版进度记录，先显式迁移。首次创建任务请使用 task_open(mode=new)。")
         return row
 
     def _task(self, db: sqlite3.Connection, sid: str, task_id: str | None = None) -> tuple[sqlite3.Row,dict[str,Any]]:
@@ -261,15 +261,19 @@ class V3Store:
         return method(args)
 
     def api_task_open(self,a:dict[str,Any])->dict[str,Any]:
-        mode=a.get("mode","ensure"); sid=a.get("session_id") or str(uuid.uuid5(uuid.NAMESPACE_URL,"task-progress:"+str(a.get("request_id") or _uid())))
+        mode=a.get("mode","ensure")
+        if mode not in ("ensure","new","resume"): raise V3Error("PLAN_INVALID","mode 只能是 ensure、new 或 resume。")
+        supplied_sid=a.get("session_id")
+        if mode=="resume" and not supplied_sid:
+            raise V3Error("SCOPE_STALE","恢复任务必须提供已有 session_id。","读取当前会话保存的 session_id；首次创建任务请使用 mode=new 或 ensure 并提供目标。")
+        sid=supplied_sid or str(uuid.uuid5(uuid.NAMESPACE_URL,"task-progress:"+str(a.get("request_id") or _uid())))
         try: sid=str(uuid.UUID(sid))
         except (ValueError,TypeError): raise V3Error("SCOPE_STALE","session_id 必须是 UUID。")
-        if mode not in ("ensure","new","resume"): raise V3Error("PLAN_INVALID","mode 只能是 ensure、new 或 resume。")
         if mode in ("ensure","new") and not a.get("request_id"): raise V3Error("PLAN_INVALID","创建或归档任务必须带 request_id。","生成 UUID 并重试。")
         with self._tx() as db:
             session=db.execute("SELECT * FROM sessions WHERE session_id=?",(sid,)).fetchone()
             if session is None:
-                if mode=="resume": raise V3Error("SCOPE_STALE","没有可恢复的 v3 会话。")
+                if mode=="resume": raise V3Error("SCOPE_STALE","没有可恢复的 v3 会话。","核对 session_id；首次创建任务请使用 mode=new 或 ensure 并提供目标。")
                 now=_now();db.execute("INSERT INTO sessions(session_id,created_at,updated_at,binding_json) VALUES(?,?,?,?)",(sid,now,now,_json(a.get("binding")) if a.get("binding") else None));session=db.execute("SELECT * FROM sessions WHERE session_id=?",(sid,)).fetchone()
             replay=self._receipt(db,sid,a.get("request_id"),a) if a.get("request_id") else None
             if replay:return replay
