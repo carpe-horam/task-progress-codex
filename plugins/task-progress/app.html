@@ -721,7 +721,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       const li = document.createElement('li'); li.className = 'history-item';
       const details = document.createElement('details'); details.dataset.key = key; details.open = openDetails.get(key) || false;
       const heading = document.createElement('summary'); heading.textContent = '第 ' + (Number(snapshot.epoch ?? position) + 1) + ' 轮 · ' + (snapshot.task_title || '未命名计划');
-      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '结束 ' + date(snapshot.closed_at) + (snapshot.reason ? '\n重建原因：' + snapshot.reason : '');
+      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '结束 ' + date(snapshot.closed_at) + '\n重建原因：' + (typeof snapshot.reason === 'string' && snapshot.reason.trim() ? snapshot.reason : '未记录（旧版计划）');
       const tree = document.createElement('ol'); tree.className = 'steps task-tree'; tree.append(networkTree(nodesFrom(snapshot.nodes), snapshot.root_id, key, openDetails, false));
       details.append(heading, meta, tree); li.append(details); fragment.append(li);
     });

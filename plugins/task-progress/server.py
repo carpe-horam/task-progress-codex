@@ -1346,7 +1346,7 @@ TOOLS = [
             "properties": {
                 "session_id": _session_property(),
                 "task_instance_id": _task_instance_property(),
-                "reason": {"type": "string", "description": "重规划原因，写入计划轮次 history"},
+                "reason": {"type": "string", "minLength": 1, "description": "必填且非空：说明为什么替换当前计划及触发变化的事实/缺口；写入旧计划历史的‘重建原因’"},
                 "task_title": {"type": "string", "description": "可选的新根任务标题"},
             },
             "required": ["session_id", "reason"],
@@ -1470,7 +1470,8 @@ TOOLS.extend([
         "instructions": {"type": "string"}, "deliverables": {"type": "array"}, "profile": {"type": "string"}, "resources": {"type": "array"},
         "execution_mode": {"type": "string", "enum": ["subagent"]}, "model": {"type": "string"}, "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS)},
         "assignment_id": {"type": "string"}, "wait_for": {"type": "string"}, "outcome": {"type": "string"}, "summary": {"type": "string"},
-        "outputs": {"type": "array"}, "unresolved": {"type": "array"}, "requirement_results": {"type": "array"}, "evidence_refs": {"type": "array"}, "reason": {"type": "string"},
+        "outputs": {"type": "array"}, "unresolved": {"type": "array"}, "requirement_results": {"type": "array"}, "evidence_refs": {"type": "array"},
+        "reason": {"type": "string", "minLength": 1, "description": "kind=rebuild 时必填：说明为什么替换当前计划及触发变化的事实/缺口；写入历史计划的‘重建原因’"},
     }, ["session_id", "request_id", "kind"]),
     _v3_tool("task_report", "记录执行与对账", "记录外部派发前后的事实、worker 报告、观察状态、未知结果对账、停止确认或主会话执行结果。", {
         "scope": _scope_schema, "session_id": _session_property(), "request_id": _request_id, "expected_revision": _revision,

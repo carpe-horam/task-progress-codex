@@ -212,8 +212,12 @@ class V3Store:
         ready=[n["id"] for n in leaves if self._node_ready(state,n) and n.get("planning_state")=="executable"]
         live=db.execute("SELECT task_instance_id,generation,title,status,revision,state_json,created_at,updated_at,archived_at FROM task_instances WHERE session_id=? AND task_instance_id<>? AND archived_at IS NOT NULL ORDER BY generation DESC LIMIT 20",(row["session_id"],row["task_instance_id"])).fetchall()
         history=[]
-        for ep in db.execute("SELECT epoch,snapshot_json FROM epochs WHERE task_instance_id=? AND epoch<? ORDER BY epoch DESC LIMIT 20",(row["task_instance_id"],state["epoch"])).fetchall():
-            snap=_decode(ep["snapshot_json"],{}); history.append({"epoch":ep["epoch"],"root_id":snap.get("root_id"),"task_title":row["title"],"reason":snap.get("epoch_reason"),"nodes":list(snap.get("nodes",{}).values()),"closed_at":snap.get("closed_at")})
+        epoch_rows=db.execute("SELECT epoch,reason,snapshot_json,closed_at FROM epochs WHERE task_instance_id=? AND epoch<? ORDER BY epoch DESC LIMIT 20",(row["task_instance_id"],state["epoch"])).fetchall()
+        next_rebuild_reason=state.get("epoch_reason")
+        for ep in epoch_rows:
+            snap=_decode(ep["snapshot_json"],{}); reason=ep["reason"] or snap.get("rebuild_reason") or next_rebuild_reason
+            history.append({"epoch":ep["epoch"],"root_id":snap.get("root_id"),"task_title":row["title"],"reason":reason,"nodes":list(snap.get("nodes",{}).values()),"closed_at":ep["closed_at"] or snap.get("closed_at")})
+            next_rebuild_reason=snap.get("epoch_reason")
         archived=[]
         for task in live:
             old=_decode(task["state_json"],{}); oldnodes=list(old.get("nodes",{}).values()); oldleaves=[n for n in oldnodes if not n.get("children")]
@@ -222,9 +226,15 @@ class V3Store:
         return {"schema_version":2,"api_version":3,"session_id":row["session_id"],"task_instance_id":row["task_instance_id"],"generation":row["generation"],"revision":row["revision"],"event_seq":self._session(db,row["session_id"])["event_seq"],"epoch":state["epoch"],"task_title":row["title"],"objective":state.get("objective"),"requirements":state.get("requirements",[]),"control_state":state["control_state"],"status":row["status"],"completed":ended,"total":len(leaves),"percent":round(ended/len(leaves)*100) if leaves else 0,"resolved_leaf_count":resolved,"open_leaf_count":sum(n.get("outcome")=="open" for n in leaves),"ready_count":len(ready),"ready_tasks":ready,"blocked_count":sum(not self._node_ready(state,n) and n.get("execution_status")=="pending" for n in leaves),"executing_count":sum(n.get("execution_status")=="running" for n in leaves),"created_at":row["created_at"],"updated_at":row["updated_at"],"root_id":state["root_id"],"nodes":nodes,"history":history,"task_history":archived,"main_session":state.get("main_session"),"conclusion":state.get("conclusion"),"planning_state":state["nodes"][state["root_id"]].get("planning_state")}
 
     def _history_rows(self, db:sqlite3.Connection,tid:str,current:int)->list[dict[str,Any]]:
-        out=[]
-        for ep in db.execute("SELECT epoch,snapshot_json,closed_at FROM epochs WHERE task_instance_id=? AND epoch<? ORDER BY epoch DESC LIMIT 20",(tid,current)).fetchall():
-            snap=_decode(ep["snapshot_json"],{}); out.append({"epoch":ep["epoch"],"root_id":snap.get("root_id"),"task_title":snap.get("title"),"reason":snap.get("epoch_reason"),"nodes":list(snap.get("nodes",{}).values()),"closed_at":ep["closed_at"]})
+        out=[];next_rebuild_reason=None
+        current_row=db.execute("SELECT state_json FROM task_instances WHERE task_instance_id=?",(tid,)).fetchone()
+        if current_row:
+            next_rebuild_reason=_decode(current_row["state_json"],{}).get("epoch_reason")
+        rows=db.execute("SELECT epoch,reason,snapshot_json,closed_at FROM epochs WHERE task_instance_id=? AND epoch<? ORDER BY epoch DESC LIMIT 20",(tid,current)).fetchall()
+        for ep in rows:
+            snap=_decode(ep["snapshot_json"],{});reason=ep["reason"] or snap.get("rebuild_reason") or next_rebuild_reason
+            out.append({"epoch":ep["epoch"],"root_id":snap.get("root_id"),"task_title":snap.get("title"),"reason":reason,"nodes":list(snap.get("nodes",{}).values()),"closed_at":ep["closed_at"]})
+            next_rebuild_reason=snap.get("epoch_reason")
         return out
 
     @staticmethod
@@ -448,8 +458,9 @@ class V3Store:
                 if any(n.get("execution_status") in ("running","unknown") for n in state["nodes"].values()):raise V3Error("RESOURCE_CONFLICT","仍有在途或未知执行，暂不能重建。")
                 reason=a.get("reason")
                 if not isinstance(reason,str) or not reason.strip():raise V3Error("PLAN_INVALID","重建必须给出原因。")
-                db.execute("UPDATE epochs SET closed_at=? WHERE task_instance_id=? AND epoch=?",(_now(),row["task_instance_id"],state["epoch"]))
-                state["epoch"]+=1;state["epoch_reason"]=reason.strip();root={"id":"root-"+str(state["epoch"]),"parent_id":None,"children":[],"title":state["objective"],"objective":state["objective"],"requirement_ids":[r["id"] for r in state["requirements"]],"acceptance_criteria":[],"depends_on":[],"planning_state":"deferred","execution_status":"pending","activity":"idle","outcome":None,"summary":"","outputs":[],"unresolved":[],"checks":[],"evidence_refs":[],"assignment_ids":[],"attempt":0,"attempt_id":None,"result_revision":0,"priority":0,"resources":[]};state["root_id"]=root["id"];state["nodes"]={root["id"]:root};result_data={"epoch":state["epoch"],"root_id":state["root_id"]}
+                closed_at=_now();old_snapshot={**state,"rebuild_reason":reason.strip(),"closed_at":closed_at}
+                db.execute("UPDATE epochs SET closed_at=?,reason=?,snapshot_json=? WHERE task_instance_id=? AND epoch=?",(closed_at,reason.strip(),_json(old_snapshot),row["task_instance_id"],state["epoch"]))
+                state["epoch"]+=1;state["epoch_reason"]=None;root={"id":"root-"+str(state["epoch"]),"parent_id":None,"children":[],"title":state["objective"],"objective":state["objective"],"requirement_ids":[r["id"] for r in state["requirements"]],"acceptance_criteria":[],"depends_on":[],"planning_state":"deferred","execution_status":"pending","activity":"idle","outcome":None,"summary":"","outputs":[],"unresolved":[],"checks":[],"evidence_refs":[],"assignment_ids":[],"attempt":0,"attempt_id":None,"result_revision":0,"priority":0,"resources":[]};state["root_id"]=root["id"];state["nodes"]={root["id"]:root};result_data={"epoch":state["epoch"],"root_id":state["root_id"]}
             else:raise V3Error("PLAN_INVALID",f"不支持的决策种类：{kind}")
             if action:db.execute("UPDATE actions SET status='applied',updated_at=? WHERE action_id=?",(_now(),action_id))
             row=self._save(db,row,state,"decision."+str(kind));progress=self._progress(db,row,state)
