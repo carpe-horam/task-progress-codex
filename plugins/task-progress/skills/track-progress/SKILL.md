@@ -81,7 +81,11 @@ Task Progress **不会自动识别** Codex 当前使用的模型或思考强度�
 
 将以上对象传给 `decompose_task`。可继续分解未结束的叶任务形成层级；也可对尚未结束的同一父任务重复调用 `decompose_task`，把新一批子任务追加到现有 children。每个实际委派的子智能体都必须有自己的子任务节点，不能只在消息或根任务备注中记录。父任务进入终态后不能再追加子任务；计划结构需要重做时使用重规划。任务 ID 必须由 1–64 位字母、数字、连字符或下划线组成，并在当前 `task_instance_id` 的生命周期内唯一，同一任务实例的不同重规划轮次也不可复用；新任务实例可重用已归档任务的节点 ID。所有依赖必须有效且无环。
 
+分解 `running` 节点时，先协调旧执行者停止或移交工作，再在 `decompose_task` 中传入它的当前 `attempt_id`。插件会将该尝试以 `cancelled` 归档，保留配置、摘要、证据和时间；节点转为等待子任务的分组，原 `attempt_id` 不再有效。插件不会实际停止子智能体或进程。若分解被拒绝，原尝试保持不变。不要先把节点设为终态再调用分解，因为终态节点不能追加子任务。
+
 `depends_on` 描述前驱。默认 `dependency_policy="resolved"`，仅当前驱 `execution_status="finished"` 且 `outcome="resolved"` 才放行。显式设置 `dependency_policy="finished"` 时，前驱结束即可放行，包括 `finished/open`、`failed` 和 `cancelled`；仅在下游能够处理未解决结果时使用。主会话须将前驱的摘要和证据传给下游，不能把放行当作问题已解决。
+
+分组节点的依赖约束也适用于其全部后代，并沿用声明该依赖的节点的 `dependency_policy`；子节点自己的策略不能放宽祖先约束。ready 任务的 `dependencies` 包含继承的前驱结果与 `inherited_from`。不得让子任务依赖其祖先，或创建跨分组的完成等待环。
 
 ### 2. 获取 ready 任务并实际派发
 
@@ -136,11 +140,14 @@ Task Progress **不会自动识别** Codex 当前使用的模型或思考强度�
 
 分组任务由子任务执行，不能直接标 running。其直接子任务都结束后，主会话才可提交父任务的综合验收结果；逐层验收到根任务。叶任务结束百分比达到 100% 只表示执行已结束，仍须检查 open、failed、cancelled 和根任务验收结果。
 
+父任务综合验收必须附上本次主会话的完整 `assignment`（`execution_mode`、已核实的 `model` 和 `reasoning_effort`）。服务端为验收建立独立的 `kind="synthesis"` attempt，并保存执行配置及时间；无需先设为 running。没有当前运行尝试的父任务，不要传先前已失效的 `attempt_id`。
+
 ### 4. 重试与新一轮规划
 
 - 重试已结束叶任务：`update_task` 传 `execution_status="running", retry=true`，保存新的 `attempt_id`；旧尝试的迟到上报不能覆盖当前尝试。
+- 每次重试都重新检查自身及祖先的依赖。如果有运行中的任务仍依赖本次重试将使其失效的结果，先协调结束这些尝试。成功重试会使已结束祖先的旧验收失效，保留历史验收，并把祖先恢复为待验收；子任务重新完成后须逐层重新验收。
 - 需要调整任务网络：先核实并结束所有 running 尝试，再调用 `rebuild_task_network({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","reason":"<重规划原因>"})`。
-- 重建会将当前计划轮次保存到当前任务的 `history`，递增 `epoch` 并返回新的 `root_id`；`task_instance_id` 不变，这仍是同一个任务。用当前任务实例尚未使用过的任务 ID 重新分解；同一 `task_instance_id` 的重规划轮次不能复用节点 ID。不要继续使用旧轮次的 root/task ID。
+- 重建会将当前计划轮次保存到当前任务的 `history`，递增 `epoch` 并返回新的 `root_id`；`task_instance_id` 不变，这仍是同一个任务。必须使用实际返回的 `root_id`，不要推算其名称。用当前任务实例尚未使用过的任务 ID 重新分解；同一 `task_instance_id` 的重规划轮次不能复用节点 ID。不要继续使用旧轮次的 root/task ID。
 - 派发及协调时将 `session_id`、`task_instance_id`、`epoch`、`task_id`、`attempt_id` 与实际智能体对应保存；收到旧任务实例、旧 epoch 或旧 attempt 的结果时拒绝更新当前任务。历史结果可作为附有来源的参考证据，不能直接冒充新一轮验收结果。
 
 ## 旧版顺序步骤 API

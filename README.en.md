@@ -91,6 +91,12 @@ Default behavior:
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
 - Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.
 
+## Regression checks
+
+Run `python3 -m unittest discover -s tests -v` for backend regressions. Run `node tests/test_app.cjs` with an existing Playwright installation and Chrome for browser checks against a simulated MCP Apps host. See [test instructions](tests/README.md).
+
+Clearing a session deletes its progress, task history, and view registration. Content-free ordering counters remain so late responses cannot restore deleted tasks or supersede newer ones.
+
 ## Project structure
 
 ```text

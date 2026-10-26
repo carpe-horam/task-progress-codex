@@ -115,6 +115,10 @@ h1{font-size:18px;line-height:1.35}
   let pollTimer = null;
   let hasCurrentProgress = false;
   let latestProgress = null;
+  let latestStateRevision = null;
+  let initialResultSeen = false;
+  let viewSource = null;
+  const retiredTaskIds = new Set();
   let documentVisible = document.visibilityState === 'visible';
   let cardInViewport = true;
   let lastCheckedAt = '';
@@ -181,12 +185,13 @@ h1{font-size:18px;line-height:1.35}
     finally { viewCheckBusy = false; }
   }
   async function registerView() {
-    if (displayMode !== 'inline' || !bridgeReady || !sessionId || viewRegistrationStarted || superseded || disposed) return;
+    if (displayMode !== 'inline' || !bridgeReady || !sessionId || !viewSource || viewRegistrationStarted || superseded || disposed) return;
     // Register once for this iframe. Progress refreshes must never reclaim an older card.
     viewRegistrationStarted = true;
     try {
-      const result = await request('tools/call', { name: 'register_ui_view', arguments: { session_id: sessionId, view_id: viewId } });
+      const result = await request('tools/call', { name: 'register_ui_view', arguments: { session_id: sessionId, view_id: viewId, ...viewSource } });
       const state = result?.structuredContent;
+      if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && ['superseded', 'missing_progress'].includes(state.status)) { collapseSupersededView(state.status); return; }
       if (disposed || result?.isError || state?.session_id !== sessionId || state.view_id !== viewId || state.is_latest !== true) return;
       viewRegistered = true;
       startViewChecks();
@@ -239,6 +244,19 @@ h1{font-size:18px;line-height:1.35}
     const finish = timestamp(finishedAt) ?? Date.now();
     return String(Math.max(0, Math.round((finish - start) / 1000)));
   }
+  function dependencyConstraints(node, byId) {
+    const constraints = []; const seen = new Set();
+    for (let owner = node; owner && !seen.has(String(owner.id)); owner = owner.parent_id == null ? null : byId.get(String(owner.parent_id))) {
+      seen.add(String(owner.id));
+      list(owner.depends_on).forEach(id => constraints.push({ id: String(id), owner, dependency: byId.get(String(id)) }));
+    }
+    return constraints;
+  }
+  function constraintSatisfied({ owner, dependency }) {
+    return !!dependency && (owner.dependency_policy === 'finished'
+      ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
+      : dependency.execution_status === 'finished' && dependency.outcome === 'resolved');
+  }
   function exportNetworkStatus(node, byId, childMap, cache = new Map(), path = new Set()) {
     const id = String(node.id);
     if (cache.has(id)) return cache.get(id);
@@ -255,13 +273,7 @@ h1{font-size:18px;line-height:1.35}
         : states.every(value => ['resolved', 'open', 'finished', 'failed', 'cancelled'].includes(value)) ? 'waiting_synthesis'
         : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : 'blocked';
     } else {
-      const ready = node.ready ?? list(node.depends_on).every(dependencyId => {
-        const dependency = byId.get(String(dependencyId));
-        if (!dependency) return false;
-        return node.dependency_policy === 'finished'
-          ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
-          : dependency.execution_status === 'finished' && dependency.outcome === 'resolved';
-      });
+      const ready = node.ready ?? dependencyConstraints(node, byId).every(constraintSatisfied);
       result = ready ? 'ready' : 'blocked';
     }
     cache.set(id, result); return result;
@@ -297,8 +309,9 @@ h1{font-size:18px;line-height:1.35}
       for (const node of nodes) {
         const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
         const statusValue = exportNetworkStatus(node, byId, childMap, statusCache);
-        const depends = list(node.depends_on).map(id => String(id));
-        const blocked = list(node.blocked_by).map(id => String(id));
+        const rules = dependencyConstraints(node, byId);
+        const depends = [...new Set(rules.map(rule => rule.id))];
+        const blocked = [...new Set(rules.filter(rule => !constraintSatisfied(rule)).map(rule => rule.id))];
         tasks.push({
           epoch: epoch == null ? '' : String(epoch), roundKey: key,
           roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
@@ -306,6 +319,7 @@ h1{font-size:18px;line-height:1.35}
           title: String(node.title || '未命名任务'), type: list(node.children).length ? '分组任务' : '叶任务',
           status: statusInfo(statusValue).label, executionStatus: String(node.execution_status || ''), outcome: String(node.outcome || ''),
           dependencies: depends.join('、'), blockedBy: blocked.join('、'), dependencyPolicy: String(node.dependency_policy || ''),
+          dependencyConditions: rules.map(rule => rule.id + '：' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决') + (String(rule.owner.id) !== String(node.id) ? '（继承自 ' + rule.owner.id + '）' : '')).join('；'),
           executor: exportExecutor(assignment), model: String(assignment.model || ''), thinking: String(assignment.reasoning_effort || ''),
           profile: String(assignment.profile || node.profile || ''), attempt: node.attempt == null ? '' : String(node.attempt), attemptId: String(node.attempt_id || ''),
           startedAt: String(node.started_at || ''), finishedAt: String(node.finished_at || ''), durationSeconds: exportDuration(node.started_at, node.finished_at),
@@ -415,7 +429,7 @@ h1{font-size:18px;line-height:1.35}
     const taskHeaders = ['计划轮次','任务 ID','父任务 ID','任务名称','类型','状态','执行状态','结果','依赖任务','当前阻塞','依赖放行条件','执行者','模型','思考强度','配置档','尝试次数','Attempt ID','开始时间','完成时间','耗时（秒）','结果摘要','证据','派发任务'];
     const planHeaders = ['计划轮次','计划名称','状态','是否当前计划','根任务 ID','节点数','关闭时间','重规划原因'];
     const attemptHeaders = ['计划轮次','任务 ID','任务名称','尝试次数','Attempt ID','状态','结果','执行者','模型','思考强度','开始时间','完成时间','耗时（秒）','结果摘要','证据'];
-    const taskRows = data.tasks.map(task => [task.roundLabel,task.taskId,task.parentId,task.title,task.type,task.status,task.executionStatus,task.outcome,task.dependencies,task.blockedBy,task.dependencyPolicy === 'finished' ? '前置执行结束' : task.dependencyPolicy ? '前置已解决' : '',task.executor,task.model,task.thinking,task.profile,task.attempt,task.attemptId,task.startedAt,task.finishedAt,task.durationSeconds,task.summary,task.evidence,task.dispatchText]);
+    const taskRows = data.tasks.map(task => [task.roundLabel,task.taskId,task.parentId,task.title,task.type,task.status,task.executionStatus,task.outcome,task.dependencies,task.blockedBy,task.dependencyConditions || (task.dependencyPolicy === 'finished' ? '前置执行结束' : task.dependencyPolicy ? '前置已解决' : ''),task.executor,task.model,task.thinking,task.profile,task.attempt,task.attemptId,task.startedAt,task.finishedAt,task.durationSeconds,task.summary,task.evidence,task.dispatchText]);
     const planRows = data.plans.map(plan => [plan.roundLabel,plan.title,plan.status,plan.current ? '是' : '否',plan.rootId,plan.taskCount,plan.closedAt,plan.reason]);
     const attemptRows = data.attempts.map(attempt => [attempt.roundLabel,attempt.taskId,attempt.taskTitle,attempt.number,attempt.attemptId,attempt.status,attempt.outcome,attempt.executor,attempt.model,attempt.thinking,attempt.startedAt,attempt.finishedAt,attempt.durationSeconds,attempt.summary,attempt.evidence]);
     const identityHeaders = ['任务实例 ID','轮次标识','当前任务','任务归档时间'];
@@ -589,12 +603,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
           : states.every(value => ['resolved', 'open', 'finished', 'failed', 'cancelled'].includes(value)) ? 'waiting_synthesis'
           : states.some(value => ['ready', 'decomposing'].includes(value)) ? 'decomposing' : 'blocked';
       } else {
-        const ready = node.ready ?? list(node.depends_on).every(dependencyId => {
-          const dependency = byId.get(String(dependencyId));
-          return dependency && (node.dependency_policy === 'finished'
-            ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
-            : dependency.execution_status === 'finished' && dependency.outcome === 'resolved');
-        });
+        const ready = node.ready ?? dependencyConstraints(node, byId).every(constraintSatisfied);
         status = ready ? 'ready' : 'blocked';
       }
       derivedStatuses.set(id, status); return status;
@@ -634,6 +643,8 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
       if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束（包括未解决、失败或取消）' : '前置任务已解决'));
+      const inherited = dependencyConstraints(node, byId).filter(rule => String(rule.owner.id) !== id);
+      if (inherited.length) moreContent.append(field('继承的依赖', inherited.map(rule => reference(rule.id) + ' · 来自 ' + reference(rule.owner.id) + ' · ' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决')).join('\n')));
       if (node.summary) {
         const summary = printable(node.summary);
         body.append(compactField('结果摘要', summary, prefix + ':' + id + ':result-summary', openDetails, 'note', 120));
@@ -796,17 +807,44 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     syncButton();
   }
   $('export-all').addEventListener('click', exportCurrentProgress);
-  function receiveResult(result) {
+  function receiveResult(result, fromRefresh = false) {
     if (superseded || disposed) return;
     const structured = result?.structuredContent;
     if (!structured || typeof structured !== 'object') return;
     const incomingSession = structured.session_id || structured.progress?.session_id;
     // Each card stays bound to its original conversation, even if the host forwards another result.
     if (sessionId && incomingSession && incomingSession !== sessionId) return;
-    if (typeof incomingSession === 'string' && incomingSession) { sessionId = incomingSession; void registerView(); }
+    if (typeof incomingSession === 'string' && incomingSession) sessionId = incomingSession;
     if (Object.prototype.hasOwnProperty.call(structured, 'progress')) {
+      const incoming = structured.progress;
+      const revision = structured.state_revision ?? incoming?.state_revision;
+      const ordered = Number.isSafeInteger(revision) && revision >= 0;
+      if (ordered) {
+        if (latestStateRevision !== null && revision < latestStateRevision) return;
+      } else {
+        // Compatibility for cached old tool results: never replace a versioned
+        // snapshot, and respect known task/epoch/revision order where available.
+        if (latestStateRevision !== null) return;
+        if (incoming && retiredTaskIds.has(taskIdentity(incoming))) return;
+        if (incoming && latestProgress) {
+          if (taskIdentity(incoming) === taskIdentity(latestProgress)) {
+            if (Number(incoming.epoch || 0) < Number(latestProgress.epoch || 0)) return;
+            if (Number(incoming.epoch || 0) === Number(latestProgress.epoch || 0) && Number(incoming.revision || 0) < Number(latestProgress.revision || 0)) return;
+          } else if (list(latestProgress.task_history).some(task => taskIdentity(task) === taskIdentity(incoming))) return;
+        }
+      }
+      if (latestProgress && (!incoming || taskIdentity(latestProgress) !== taskIdentity(incoming))) retiredTaskIds.add(taskIdentity(latestProgress));
+      if (ordered) latestStateRevision = revision;
+      // Only the original host result identifies this card. A polling result
+      // must not turn a remounted historical card into the newest view.
+      if (!initialResultSeen && !fromRefresh) {
+        initialResultSeen = true;
+        if (ordered && Number.isSafeInteger(structured.view_sequence) && incoming?.task_instance_id) {
+          viewSource = { view_sequence: structured.view_sequence, state_revision: revision, task_instance_id: incoming.task_instance_id };
+        }
+      }
       lastCheckedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      setError(''); render(structured.progress);
+      setError(''); render(incoming); void registerView();
     }
   }
   window.addEventListener('message', event => {
@@ -844,7 +882,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     try {
       const result = await request('tools/call', { name: 'get_progress', arguments: { session_id: sessionId } });
       if (result?.isError) throw new Error('未能读取当前会话进度，请稍后刷新。');
-      receiveResult(result);
+      receiveResult(result, true);
     } catch (error) { if (!silent) setError(error.message || '刷新失败，请稍后重试。'); }
     finally { busy = false; syncButton(); }
   }
@@ -864,7 +902,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     }, { threshold: 0 }).observe(document.querySelector('.card'));
   }
   render(null);
-  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
     .then(result => { displayMode = result?.hostContext?.displayMode ?? null; hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {

@@ -87,6 +87,33 @@ def _ui_view_file(session_id: Any) -> Path:
     return SESSION_DIR / f"{_normalize_session_id(session_id)}.view.json"
 
 
+def _order_file(session_id: str) -> Path:
+    return SESSION_DIR / f"{session_id}.order.json"
+
+
+def _read_order(session_id: str) -> dict[str, int]:
+    path = _order_file(session_id)
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"state_revision": 0, "view_sequence": 0}
+
+
+def _atomic_json(path: Path, data: dict[str, Any]) -> None:
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temp_path.replace(path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _advance_order(session_id: str, field: str) -> int:
+    # Caller holds the session lock. Counters survive clear/reinitialization so
+    # late responses cannot resurrect a cleared task or hide a newer task.
+    order = _read_order(session_id)
+    order[field] += 1
+    _atomic_json(_order_file(session_id), order)
+    return order[field]
+
+
 def _normalize_view_id(value: Any) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 256:
         raise ProgressError("view_id 必须是 1–256 字符的非空字符串。")
@@ -131,11 +158,8 @@ def _write(session_id: str, data: dict[str, Any]) -> None:
     path = _session_file(session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     data["updated_at"] = _now()
-    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    temp_path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    temp_path.replace(path)
+    data["state_revision"] = _advance_order(session_id, "state_revision")
+    _atomic_json(path, data)
 
 
 def _stats(data: dict[str, Any]) -> tuple[int, int, int, str]:
@@ -185,6 +209,7 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     total, completed, percent, status = _stats(data)
     return {
         "schema_version": 1,
+        "state_revision": data.get("state_revision", 0),
         "session_id": data["session_id"],
         "task_instance_id": _task_instance_id(data),
         "task_history": data.get("task_history", []),
@@ -254,9 +279,15 @@ def _new_network(
     *,
     epoch: int = 0,
     main_session: dict[str, str] | None = None,
+    reserved_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     now = _now()
     root_id = "root" if epoch == 0 else f"root-e{epoch}"
+    base_id = root_id
+    suffix = 0
+    while root_id in (reserved_ids or set()):
+        suffix += 1
+        root_id = f"{base_id}-{suffix}"
     return {
         "schema_version": 2,
         "session_id": session_id,
@@ -334,7 +365,7 @@ def _historical_ids(data: dict[str, Any]) -> set[str]:
     return found
 
 
-def _validate_network(data: dict[str, Any]) -> None:
+def _validate_network(data: dict[str, Any], *, check_execution_cycles: bool = True) -> None:
     nodes = data.get("nodes")
     root_id = data.get("root_id")
     if not isinstance(nodes, dict) or not nodes or not isinstance(root_id, str) or root_id not in nodes:
@@ -346,17 +377,22 @@ def _validate_network(data: dict[str, Any]) -> None:
     if nodes[root_id].get("parent_id") is not None:
         raise ProgressError("根任务不能有父节点。")
     children = {node_id: [] for node_id in nodes}
-    edges = {node_id: set() for node_id in nodes}
-    indegree = {node_id: 0 for node_id in nodes}
+    # Starting a group releases its children; completing it waits for them.
+    # One vertex per task cannot represent both constraints without either
+    # accepting ancestor deadlocks or rejecting valid sibling dependencies.
+    edges = {(node_id, phase): set() for node_id in nodes for phase in ("start", "finish")}
+    indegree = {event: 0 for event in edges}
     for node_id, node in nodes.items():
         if node.get("id") != node_id:
             raise ProgressError("任务节点 ID 与网络索引不一致。")
+        edges[(node_id, "start")].add((node_id, "finish"))
         parent_id = node.get("parent_id")
         if node_id != root_id:
             if not isinstance(parent_id, str) or parent_id not in nodes:
                 raise ProgressError(f"任务 {node_id} 的父节点不存在。")
             children[parent_id].append(node_id)
-            edges[parent_id].add(node_id)
+            edges[(parent_id, "start")].add((node_id, "start"))
+            edges[(node_id, "finish")].add((parent_id, "finish"))
         dependencies = node.get("depends_on", [])
         if (
             not isinstance(dependencies, list)
@@ -367,7 +403,8 @@ def _validate_network(data: dict[str, Any]) -> None:
         for dependency_id in dependencies:
             if dependency_id not in nodes:
                 raise ProgressError(f"任务 {node_id} 依赖的 {dependency_id} 不存在。")
-            edges[dependency_id].add(node_id)
+            if check_execution_cycles:
+                edges[(dependency_id, "finish")].add((node_id, "start"))
         if node.get("dependency_policy", "resolved") not in DEPENDENCY_POLICIES:
             raise ProgressError(f"任务 {node_id} 的 dependency_policy 无效。")
         if node.get("execution_status") not in EXECUTION_STATUSES:
@@ -389,7 +426,7 @@ def _validate_network(data: dict[str, Any]) -> None:
             indegree[target] -= 1
             if indegree[target] == 0:
                 ready.append(target)
-    if visited != len(nodes):
+    if visited != len(edges):
         raise ProgressError("父子层级与 depends_on 合并后出现循环依赖。")
     for node_id, node in nodes.items():
         node["children"] = children[node_id]
@@ -458,11 +495,26 @@ def _dependency_satisfied(data: dict[str, Any], node: dict[str, Any], dependency
     return dependency.get("execution_status") == "finished" and dependency.get("outcome") == "resolved"
 
 
+def _dependency_constraints(data: dict[str, Any], node: dict[str, Any]):
+    """Yield dependencies with the policy of the node that declared them."""
+    owner = node
+    while owner is not None:
+        for dependency_id in owner.get("depends_on", []):
+            yield owner, dependency_id
+        parent_id = owner.get("parent_id")
+        owner = data["nodes"].get(parent_id) if parent_id is not None else None
+
+
+def _dependencies_satisfied(data: dict[str, Any], node: dict[str, Any]) -> bool:
+    return all(_dependency_satisfied(data, owner, dep_id)
+               for owner, dep_id in _dependency_constraints(data, node))
+
+
 def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
     return (
         not node.get("children")
         and node.get("execution_status") == "pending"
-        and all(_dependency_satisfied(data, node, dep_id) for dep_id in node.get("depends_on", []))
+        and _dependencies_satisfied(data, node)
     )
 
 
@@ -480,14 +532,16 @@ def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
             return "executing"
         if all(value in ("resolved", "open", "failed", "cancelled") for value in child_statuses):
             return "waiting_synthesis"
-        if any(value == "ready" for value in child_statuses):
+        if any(value in ("ready", "decomposing") for value in child_statuses):
             return "decomposing"
         return "blocked"
     return "ready" if _node_is_ready(data, node) else "blocked"
 
 
 def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
-    _validate_network(data)
+    # Old versions may have persisted a dependency deadlock. Keep it readable
+    # and available for re-planning; only new graph mutations must pass the gate.
+    _validate_network(data, check_execution_cycles=False)
     nodes = data["nodes"]
     leaves = [node for node in nodes.values() if not node.get("children")]
     ready_nodes = [node for node in leaves if _node_is_ready(data, node)]
@@ -508,6 +562,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         overall_status = "open"
     elif root.get("execution_status") == "failed":
         overall_status = "failed"
+    elif root.get("execution_status") == "cancelled":
+        overall_status = "cancelled"
     elif running_leaves or ready_nodes:
         overall_status = "in_progress"
     elif total and completed == total:
@@ -516,9 +572,11 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         overall_status = "pending"
     enriched_nodes = []
     for node_id, node in nodes.items():
-        unmet = [dep_id for dep_id in node.get("depends_on", []) if not _dependency_satisfied(data, node, dep_id)]
+        constraints = list(_dependency_constraints(data, node))
+        unmet = list(dict.fromkeys(dep_id for owner, dep_id in constraints
+                                  if not _dependency_satisfied(data, owner, dep_id)))
         dependencies = []
-        for dep_id in node.get("depends_on", []):
+        for owner, dep_id in constraints:
             dependency = nodes[dep_id]
             dependencies.append({
                 "id": dep_id,
@@ -527,6 +585,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
                 "outcome": dependency.get("outcome"),
                 "summary": dependency.get("summary", ""),
                 "evidence": dependency.get("evidence", []),
+                "dependency_policy": owner.get("dependency_policy", "resolved"),
+                "inherited_from": owner["id"] if owner["id"] != node_id else None,
             })
         enriched_nodes.append({
             **node,
@@ -537,6 +597,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         })
     return {
         "schema_version": 2,
+        "state_revision": data.get("state_revision", 0),
         "session_id": data["session_id"],
         "task_instance_id": _task_instance_id(data),
         "task_history": data.get("task_history", []),
@@ -590,6 +651,7 @@ def decompose_task(
     task_id: str,
     tasks: list[dict[str, Any]],
     task_instance_id: str | None = None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
@@ -597,11 +659,78 @@ def decompose_task(
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
+        parent = data["nodes"].get(task_id)
+        if parent is not None:
+            if parent["execution_status"] == "running" and attempt_id != parent.get("attempt_id"):
+                raise ProgressError("分解运行中的任务必须提供当前 attempt_id；请先协调停止旧执行者。")
+            if attempt_id is not None and attempt_id != parent.get("attempt_id"):
+                raise ProgressError("attempt_id 不匹配，不能用旧尝试分解当前任务。")
         _add_tasks(data, task_id, tasks)
+        if parent["execution_status"] == "running":
+            # The caller has coordinated the executor; keep its original attempt
+            # before turning the node into a group awaiting child results.
+            parent["execution_status"] = "cancelled"
+            parent["finished_at"] = _now()
+            parent["summary"] = (parent.get("summary", "") + "\n执行尝试因任务分解结束，剩余工作由子任务继续。").strip()
+            _record_attempt_result(parent)
+            _reset_execution(parent)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid)
+
+
+def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
+    _require_execution_metadata(assignment)
+    node["attempt"] = int(node.get("attempt", 0)) + 1
+    node["attempt_id"] = str(uuid.uuid4())
+    node["assignment"] = dict(assignment)
+    node["started_at"] = _now()
+    node["finished_at"] = None
+    node["outcome"] = None
+    node["summary"] = ""
+    node["evidence"] = []
+    node.setdefault("attempts", []).append({
+        "attempt": node["attempt"], "attempt_id": node["attempt_id"], "kind": kind,
+        "execution_status": "running", "outcome": None, "summary": "", "evidence": [],
+        "started_at": node["started_at"], "assignment": dict(node["assignment"]),
+    })
+
+
+def _record_attempt_result(node: dict[str, Any]) -> None:
+    if node.get("attempts") and node.get("attempt_id"):
+        node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
+            "execution_status", "outcome", "summary", "evidence", "finished_at"
+        )})
+
+
+def _reset_execution(node: dict[str, Any]) -> None:
+    node.update(execution_status="pending", outcome=None, summary="", evidence=[],
+                assignment={}, attempt_id=None, started_at=None, finished_at=None)
+
+
+def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> None:
+    ancestors = []
+    parent_id = node.get("parent_id")
+    while parent_id is not None:
+        parent = data["nodes"][parent_id]
+        if _node_is_terminal(parent):
+            ancestors.append(parent)
+        parent_id = parent.get("parent_id")
+    invalidated = {node["id"], *(parent["id"] for parent in ancestors)}
+    for consumer in data["nodes"].values():
+        if consumer["execution_status"] == "running" and consumer["id"] != node["id"]:
+            if any(dep_id in invalidated for _, dep_id in _dependency_constraints(data, consumer)):
+                raise ProgressError(f"任务 {consumer['id']} 仍在使用该结果；请先结束相关执行尝试再重试。")
+    for parent in ancestors:
+        # Also retain results from pre-attempt legacy group acceptances.
+        parent.setdefault("invalidated_results", []).append({
+            **{key: deepcopy(parent.get(key)) for key in (
+                "attempt_id", "execution_status", "outcome", "assignment", "summary", "evidence", "started_at", "finished_at"
+            )},
+            "invalidated_by": node["id"], "invalidated_at": _now(),
+        })
+        _reset_execution(parent)
 
 
 def update_task(
@@ -646,6 +775,16 @@ def update_task(
         if node is None:
             raise ProgressError(f"当前 epoch 中不存在任务 {node_id}；旧 epoch 的结果不会覆盖新计划。")
         previous_status = node["execution_status"]
+        if attempt_id is not None and attempt_id != node.get("attempt_id"):
+            raise ProgressError("attempt_id 不匹配；迟到或旧尝试结果已拒绝。")
+        if previous_status == "running":
+            if attempt_id != node.get("attempt_id"):
+                raise ProgressError("更新运行中任务必须提供当前 attempt_id。")
+            if normalized_assignment is not None:
+                changed = [key for key, value in normalized_assignment.items()
+                           if node.get("assignment", {}).get(key) != value]
+                if changed:
+                    raise ProgressError("当前 attempt 的执行快照不可修改；不一致字段：" + ", ".join(changed) + "。")
         if node.get("children") and execution_status in ("running", "failed", "cancelled"):
             raise ProgressError("分组任务由子任务执行；请完成子任务后再提交父任务综合结果。")
         if previous_status in TERMINAL_EXECUTION_STATUSES and execution_status != "running":
@@ -653,34 +792,13 @@ def update_task(
         if execution_status == "running":
             if previous_status in TERMINAL_EXECUTION_STATUSES and not retry:
                 raise ProgressError("已结束任务重试时必须设置 retry=true，且会创建新的 attempt_id。")
-            if previous_status == "pending" and not _node_is_ready(data, node):
+            if previous_status != "running" and not _dependencies_satisfied(data, node):
                 raise ProgressError("该任务尚未 ready；请先完成依赖，或显式设置 dependency_policy=finished。")
             if previous_status != "running":
                 _require_execution_metadata(normalized_assignment)
-                node["attempt"] = int(node.get("attempt", 0)) + 1
-                node["attempt_id"] = str(uuid.uuid4())
-                # An assignment is an immutable snapshot for this attempt. A retry
-                # replaces the node's current assignment instead of merging stale fields.
-                node["assignment"] = dict(normalized_assignment or {})
-                node["started_at"] = _now()
-                node["finished_at"] = None
-                node["outcome"] = None
-                node["summary"] = ""
-                node["evidence"] = []
-                node.setdefault("attempts", []).append({
-                    "attempt": node["attempt"],
-                    "attempt_id": node["attempt_id"],
-                    "execution_status": "running",
-                    "outcome": None,
-                    "summary": "",
-                    "evidence": [],
-                    "started_at": node["started_at"],
-                    "assignment": dict(node["assignment"]),
-                })
-            elif attempt_id != node.get("attempt_id"):
-                raise ProgressError("更新运行中任务必须提供当前 attempt_id。")
-        elif previous_status == "running" and attempt_id != node.get("attempt_id"):
-            raise ProgressError("attempt_id 不匹配；迟到或旧尝试结果已拒绝。")
+                if previous_status in TERMINAL_EXECUTION_STATUSES:
+                    _reopen_ancestors_for_retry(data, node)
+                _begin_attempt(node, normalized_assignment)
         if (
             previous_status == "pending"
             and execution_status in ("finished", "failed")
@@ -691,6 +809,10 @@ def update_task(
         if execution_status == "finished" and node.get("children"):
             if not all(_node_is_terminal(data["nodes"][child_id]) for child_id in node["children"]):
                 raise ProgressError("父任务必须等所有直接子任务结束后再综合验收。")
+            if not _dependencies_satisfied(data, node):
+                raise ProgressError("父任务的前置依赖尚未满足，不能提交综合验收。")
+            if previous_status != "running":
+                _begin_attempt(node, normalized_assignment, kind="synthesis")
         node["execution_status"] = execution_status
         node["outcome"] = outcome
         if summary:
@@ -699,16 +821,7 @@ def update_task(
             node["evidence"] = evidence
         if execution_status in TERMINAL_EXECUTION_STATUSES:
             node["finished_at"] = _now()
-        if node.get("attempts") and node.get("attempt_id"):
-            attempt = node["attempts"][-1]
-            attempt.update({
-                "execution_status": execution_status,
-                "outcome": outcome,
-                "summary": node.get("summary", ""),
-                "evidence": node.get("evidence", []),
-                "finished_at": node.get("finished_at"),
-                "assignment": attempt.get("assignment", {}),
-            })
+        _record_attempt_result(node)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     progress = _progress_payload(data)
@@ -761,7 +874,8 @@ def rebuild_task_network(
         })
         next_epoch = int(data["epoch"]) + 1
         new_title = task_title.strip() if isinstance(task_title, str) and task_title.strip() else data["task_title"]
-        replacement = _new_network(sid, new_title, epoch=next_epoch)
+        replacement = _new_network(sid, new_title, epoch=next_epoch,
+                                   reserved_ids=set(data["nodes"]) | _historical_ids(data))
         data.update({key: replacement[key] for key in ("epoch", "root_id", "nodes", "task_title")})
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
@@ -820,13 +934,20 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
 
 
 def _tool_result(
-    text: str, progress: dict[str, Any] | None, session_id: str
+    text: str, progress: dict[str, Any] | None, session_id: str,
+    *, state_revision: int | None = None,
 ) -> dict[str, Any]:
+    with _session_lock(session_id):
+        view_sequence = _advance_order(session_id, "view_sequence")
+    if state_revision is None:
+        state_revision = progress.get("state_revision", 0) if progress is not None else 0
     return {
         "content": [{"type": "text", "text": text}],
         "structuredContent": {
             "progress": progress,
             "session_id": session_id,
+            "state_revision": state_revision,
+            "view_sequence": view_sequence,
         },
     }
 
@@ -951,9 +1072,11 @@ def update_step(
 
 def get_progress(session_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
-    data = _read(sid)
-    progress = _progress_payload(data) if data is not None else None
-    return _tool_result(_format_detail(progress), progress, sid)
+    with _session_lock(sid):
+        data = _read(sid)
+        progress = _progress_payload(data) if data is not None else None
+        revision = data.get("state_revision", 0) if data is not None else _read_order(sid)["state_revision"]
+    return _tool_result(_format_detail(progress), progress, sid, state_revision=revision)
 
 
 def render_progress(session_id: str) -> dict[str, Any]:
@@ -980,22 +1103,34 @@ def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any
     }
 
 
-def register_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
+def register_ui_view(
+    session_id: str, view_id: str, view_sequence: int | None = None,
+    state_revision: int | None = None, task_instance_id: str | None = None,
+) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
     with _session_lock(sid):
-        if not _session_file(sid).exists():
+        data = _read(sid)
+        if data is None:
             return _ui_view_result(sid, vid, "missing_progress")
+        # Legacy cards have no issuance order. They may keep displaying progress,
+        # but must never replace a card whose source result can be ordered.
+        if view_sequence is None or state_revision is None or task_instance_id is None:
+            return _ui_view_result(sid, vid, "unregistered")
+        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+               for value in (view_sequence, state_revision)):
+            raise ProgressError("视图顺序必须是服务端工具结果返回的非负整数。")
+        order = _read_order(sid)
+        if view_sequence > order["view_sequence"] or state_revision > data.get("state_revision", 0):
+            raise ProgressError("视图顺序超出服务端已发出的范围。")
+        if task_instance_id != _task_instance_id(data):
+            return _ui_view_result(sid, vid, "superseded")
         path = _ui_view_file(sid)
-        temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            temp_path.write_text(
-                json.dumps({"view_id": vid}, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
-            temp_path.replace(path)
-        finally:
-            temp_path.unlink(missing_ok=True)
+        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if (state_revision, view_sequence) < (current.get("state_revision", -1), current.get("view_sequence", -1)):
+            return _ui_view_result(sid, vid, "superseded")
+        _atomic_json(path, {"view_id": vid, "view_sequence": view_sequence,
+                            "state_revision": state_revision, "task_instance_id": task_instance_id})
     return _ui_view_result(sid, vid, "registered")
 
 
@@ -1009,7 +1144,9 @@ def check_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
         if not path.exists():
             return _ui_view_result(sid, vid, "unregistered")
         metadata = json.loads(path.read_text(encoding="utf-8"))
-        status = "latest" if metadata.get("view_id") == vid else "superseded"
+        current = _read(sid)
+        status = "latest" if (metadata.get("view_id") == vid and
+                              metadata.get("task_instance_id") in (None, _task_instance_id(current))) else "superseded"
     return _ui_view_result(sid, vid, status)
 
 
@@ -1020,7 +1157,8 @@ def clear_progress(session_id: str) -> dict[str, Any]:
         if path.exists():
             path.unlink()
         _ui_view_file(sid).unlink(missing_ok=True)
-    return _tool_result("当前会话的进度数据已清除。", None, sid)
+        revision = _advance_order(sid, "state_revision")
+    return _tool_result("当前会话的进度数据已清除。", None, sid, state_revision=revision)
 
 
 def save_export_files(files: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1175,12 +1313,15 @@ TOOLS = [
     {
         "name": "register_ui_view",
         "title": "登记当前进度视图",
-        "description": "仅供 App 登记指定会话最新的视图实例；不修改任务进度，也不创建卡片。",
+        "description": "仅供 App 用首次工具结果的顺序登记视图；旧结果不能抢占新卡片。不修改任务进度。",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": _session_property(),
                 "view_id": {"type": "string", "minLength": 1, "maxLength": 256},
+                "view_sequence": {"type": "integer", "minimum": 0, "description": "首次工具结果的 view_sequence，刷新后不可替换"},
+                "state_revision": {"type": "integer", "minimum": 0, "description": "首次工具结果的 state_revision"},
+                "task_instance_id": _task_instance_property(),
             },
             "required": ["session_id", "view_id"],
         },
@@ -1256,13 +1397,14 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "将一个叶任务分解为子任务，可同时描述依赖、依赖放行策略、复杂度档位与子智能体派发信息。父子层级与依赖合并后必须无环。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先的依赖约束并检查执行死锁。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": _session_property(),
                 "task_instance_id": _task_instance_property(),
                 "task_id": {"type": "string", "description": "待分解的父任务 ID"},
+                "attempt_id": {"type": "string", "description": "分解运行中任务时必须提供当前尝试 ID，先协调停止旧执行者"},
                 "tasks": {"type": "array", "items": _task_schema(), "description": "该父任务的子任务列表"},
             },
             "required": ["session_id", "task_id", "tasks"],
@@ -1272,7 +1414,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "更新任务执行状态、resolved/open 结果、摘要、证据或派发元数据。首次启动 running 必须提供完整 assignment（execution_mode、model、reasoning_effort）；运行中的结果必须匹配当前 attempt_id；完成的父任务用于综合验收全部直接子任务。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "更新任务状态、结果与证据。每次启动 running 或提交父任务综合验收都必须提供完整 assignment（execution_mode、model、reasoning_effort）；运行中更新须匹配 attempt_id。重试会重新检查依赖并使已结束祖先的验收失效，随后须逐层重新验收。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1298,7 +1440,7 @@ TOOLS = [
     {
         "name": "get_ready_tasks",
         "title": "读取就绪任务",
-        "description": "读取当前 epoch 中所有依赖已满足、可开始执行的叶任务及其前驱结果证据。",
+        "description": "读取当前 epoch 中自身及祖先依赖均已满足的 ready 叶任务；dependencies 包含直接与继承的前驱结果、放行策略和 inherited_from。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -1406,7 +1548,8 @@ TOOLS = [
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "register_ui_view": lambda args: register_ui_view(
-        args.get("session_id"), args.get("view_id")
+        args.get("session_id"), args.get("view_id"), args.get("view_sequence"),
+        args.get("state_revision"), args.get("task_instance_id"),
     ),
     "check_ui_view": lambda args: check_ui_view(
         args.get("session_id"), args.get("view_id")
@@ -1420,7 +1563,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     ),
     "decompose_task": lambda args: decompose_task(
         args.get("session_id"), args.get("task_id"), args.get("tasks", []),
-        args.get("task_instance_id"),
+        args.get("task_instance_id"), args.get("attempt_id"),
     ),
     "update_task": lambda args: update_task(
         args.get("session_id"),
@@ -1468,10 +1611,19 @@ def _resource_html() -> str:
     return APP_HTML_PATH.read_text(encoding="utf-8")
 
 
-def handle(message: dict[str, Any]) -> str | None:
-    method = message.get("method", "")
+def handle(message: Any) -> str | None:
+    if not isinstance(message, dict):
+        return _err(None, -32600, "JSON-RPC 请求必须是对象。")
     message_id = message.get("id")
+    if (message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str)
+            or isinstance(message_id, bool) or not isinstance(message_id, (str, int, type(None)))):
+        return _err(None, -32600, "无效的 JSON-RPC 请求。")
+    if "id" not in message:
+        return None
+    method = message.get("method", "")
     params = message.get("params", {})
+    if not isinstance(params, dict):
+        return _err(message_id, -32602, "params 必须是对象。")
 
     if method == "initialize":
         requested_version = params.get("protocolVersion")
@@ -1492,7 +1644,7 @@ def handle(message: dict[str, Any]) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.0"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.1"},
             },
         )
 
@@ -1543,6 +1695,8 @@ def handle(message: dict[str, Any]) -> str | None:
     if method == "tools/call":
         name = params.get("name", "")
         args = params.get("arguments", {})
+        if not isinstance(name, str) or not isinstance(args, dict):
+            return _err(message_id, -32602, "工具名称必须是字符串，arguments 必须是对象。")
         handler = TOOL_HANDLERS.get(name)
         if handler is None:
             return _err(message_id, -32601, f"未知工具：{name}")
@@ -1572,8 +1726,13 @@ def main() -> None:
         try:
             message = json.loads(line)
         except json.JSONDecodeError:
-            continue
-        response = handle(message)
+            response = _err(None, -32700, "无法解析 JSON-RPC 请求。")
+        else:
+            try:
+                response = handle(message)
+            except Exception as exc:  # Keep serving after an isolated request failure.
+                message_id = message.get("id") if isinstance(message, dict) else None
+                response = _err(message_id, -32603, f"请求执行出错：{exc}")
         if response is not None:
             sys.stdout.write(response + "\n")
             sys.stdout.flush()

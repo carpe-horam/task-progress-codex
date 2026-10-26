@@ -90,6 +90,11 @@ codex plugin marketplace add ./task-progress-codex
 - 运行 MCP 服务需要 Python 3。当前 `.mcp.json` 启动配置面向 macOS/Linux；仓库包含 Windows 启动器，但 Windows MCP 配置尚未验证。
 - 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
 - Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。
+- 清除任务会删除当前进度、任务历史和视图登记；只保留不含任务内容的顺序计数器，防止迟到响应恢复已清除内容或替换新任务。
+
+## 开发验证
+
+后端回归使用 Python 标准库：`python3 -m unittest discover -s tests -v`。浏览器回归运行真实前端、隔离服务端与模拟 MCP Apps 宿主，需已有 Playwright 和 Chrome：`node tests/test_app.cjs`。详见 [测试说明](tests/README.md)。
 
 ## 项目结构
 
