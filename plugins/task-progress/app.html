@@ -77,6 +77,39 @@ h1{font-size:18px;line-height:1.35}
 .export-feedback{padding:6px 16px}
 @media(max-width:480px){body{padding:4px}.header{padding:10px 12px 8px}.titleline{margin-top:7px}h1{font-size:16px}.steps-section{padding:8px 12px 1px}.step{padding:6px 0}.task-tree .children{margin-top:4px;margin-left:4px;padding-left:8px}.history-section{padding:7px 12px}.empty{padding:18px 12px 20px}}
 </style>
+<style>
+.auto-refresh-status.failed,.auto-refresh-status.failed .auto-refresh-time{color:#e8b879}
+.auto-refresh-status.failed .auto-refresh-dot{background:#e8b879}
+.attempt-record{padding:8px 0;border-top:1px solid #303b4c}
+.attempt-record>summary{font-size:11px;line-height:1.6;color:#b7c1d0}
+.attempt-record .detail-group-content{padding:0 3px}
+.attempt-history>.detail-group-content{max-height:420px;overflow:auto;scrollbar-gutter:stable}
+@media(max-width:360px){.topline{flex-wrap:wrap;gap:6px}.topline-actions{width:100%;flex-wrap:wrap;justify-content:flex-end}.auto-refresh-status{margin-right:auto;white-space:normal;min-width:0}.sectionline{flex-wrap:wrap}.sectionline>span{overflow-wrap:anywhere}}
+:root[data-theme="light"]{color-scheme:light;color:#182538}
+:root[data-theme="light"] .card{background:#fff;border-color:#d7dfeb;box-shadow:0 3px 14px #2037540d}
+:root[data-theme="light"] :is(.header,.history-section,.step,.history-item,.attempt-record){border-color:#dce3ed}
+:root[data-theme="light"] .refresh{background:#f2f5fa;color:#314563;border-color:#c5cfdf}
+:root[data-theme="light"] .refresh:hover:enabled{background:#e5ebf5}
+:root[data-theme="light"] :is(.eyebrow,.meta,.sectionline,.network-meta,.network-help,.detail-label,.step-id,.step-elapsed,.step-execution-meta,.auto-refresh-status,.auto-refresh-time,.history-meta,.child-count,.superseded-notice){color:#596b84}
+:root[data-theme="light"] :is(.sectionline h2,.network-meta strong,.meta time,.history-section>summary,.history-item>details>summary,.task-history-name,.empty h2,.detail-group>summary,.attempt-record>summary){color:#263b57}
+:root[data-theme="light"] .step > :is(details,div) > .step-main > .step-title{color:#263b57}
+:root[data-theme="light"] .step > :is(details,div) > .step-main > .step-title > .step-execution-meta{color:#526883}
+:root[data-theme="light"] .step > :is(details,div) > .step-main > .step-right{color:#526883}
+:root[data-theme="light"] .step.completed > :is(details,div) > .step-main > .step-right{color:#2e6a4f}
+:root[data-theme="light"] .step.blocked > :is(details,div) > .step-main > .step-right{color:#80531a}
+:root[data-theme="light"] :is(.step-right,.fraction,.percent small,.empty){color:#586b84}
+:root[data-theme="light"] :is(.note,.detail-group,.dispatch){background:#f5f7fb;border-color:#d4ddeb;color:#354c6c}
+:root[data-theme="light"] :is(.detail-field,.assignment){color:#354c6c}
+:root[data-theme="light"] .dispatch>summary{color:#263b57}
+:root[data-theme="light"] .dispatch .detail-value{color:#354c6c}
+:root[data-theme="light"] :is(.detail-list a,.detail-toggle){color:#2857ad}
+:root[data-theme="light"] .task-tree .children{border-color:#cbd5e4}
+:root[data-theme="light"] .track{background:#e1e7f1}
+:root[data-theme="light"] .error{background:#fff0ed;color:#9d3423;border-color:#e9b9af}
+:root[data-theme="light"] .export-feedback{color:#3c5f90;border-color:#dce3ed}
+:root[data-theme="light"] .export-feedback.error{background:#fff0ed;color:#9d3423}
+:root[data-theme="light"] .auto-refresh-status.failed,:root[data-theme="light"] .auto-refresh-status.failed .auto-refresh-time{color:#8d5416}
+</style>
 </head>
 <body>
 <main class="card" aria-label="任务进度">
@@ -101,10 +134,13 @@ h1{font-size:18px;line-height:1.35}
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  const setText = (id, value) => { const element = $(id); const text = String(value); if (element.textContent !== text) element.textContent = text; };
   let sessionId = null;
   const viewId = 'view-' + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
   let displayMode = null;
   let viewRegistrationStarted = false;
+  let viewRetryTimer = null;
+  let viewRetryDelay = 1000;
   let viewRegistered = false;
   let viewTimer = null;
   let viewCheckBusy = false;
@@ -112,6 +148,7 @@ h1{font-size:18px;line-height:1.35}
   let disposed = false;
   let bridgeReady = false;
   let busy = false;
+  let silentRefresh = false;
   let pollTimer = null;
   let hasCurrentProgress = false;
   let latestProgress = null;
@@ -122,6 +159,15 @@ h1{font-size:18px;line-height:1.35}
   let documentVisible = document.visibilityState === 'visible';
   let cardInViewport = true;
   let lastCheckedAt = '';
+  let refreshFailed = false;
+  let hostTheme = null;
+  const themePreference = window.matchMedia('(prefers-color-scheme: light)');
+  function applyTheme(context = {}) {
+    if (['light', 'dark'].includes(context.theme)) hostTheme = context.theme;
+    document.documentElement.dataset.theme = hostTheme || (themePreference.matches ? 'light' : 'dark');
+  }
+  themePreference.addEventListener('change', () => { if (!hostTheme) applyTheme(); });
+  applyTheme();
   let hostCapabilities = {};
   let rpcId = 0;
   const pending = new Map();
@@ -138,8 +184,9 @@ h1{font-size:18px;line-height:1.35}
     status.classList.toggle('hidden', !hasCurrentProgress || superseded);
     const polling = canPoll();
     status.classList.toggle('paused', !polling);
-    $('auto-refresh-label').textContent = polling ? '每 5 秒自动刷新' : '自动刷新暂停';
-    $('auto-refresh-time').textContent = lastCheckedAt ? '最近 ' + lastCheckedAt : '';
+    status.classList.toggle('failed', refreshFailed);
+    setText('auto-refresh-label', refreshFailed ? (polling ? '同步失败，正在重试' : '同步失败，刷新已暂停') : polling ? '每 5 秒自动刷新' : '自动刷新暂停');
+    setText('auto-refresh-time', lastCheckedAt ? '最近 ' + lastCheckedAt : '');
   }
   function stopPolling() {
     if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
@@ -159,6 +206,9 @@ h1{font-size:18px;line-height:1.35}
   function stopViewChecks() {
     if (viewTimer !== null) { clearInterval(viewTimer); viewTimer = null; }
   }
+  function stopViewRetry() {
+    if (viewRetryTimer !== null) { clearTimeout(viewRetryTimer); viewRetryTimer = null; }
+  }
   function startViewChecks() {
     if (displayMode !== 'inline' || !viewRegistered || viewTimer !== null || superseded || disposed) return;
     viewTimer = window.setInterval(() => { void checkLatestView(); }, 5000);
@@ -166,9 +216,9 @@ h1{font-size:18px;line-height:1.35}
   function collapseSupersededView(reason) {
     if (superseded || disposed) return;
     superseded = true;
-    stopPolling(); stopViewChecks();
+    stopPolling(); stopViewChecks(); stopViewRetry();
     document.querySelector('.card').classList.add('superseded');
-    $('superseded-notice').textContent = reason === 'missing_progress' ? '此会话的任务进度已清除，卡片已折叠。' : '此进度卡片已折叠，请查看本会话最新的任务进度。';
+    setText('superseded-notice', reason === 'missing_progress' ? '此会话的任务进度已清除，卡片已折叠。' : '此进度卡片已折叠，请查看本会话最新的任务进度。');
     $('superseded-notice').classList.remove('hidden');
     syncButton();
     if (bridgeReady) notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
@@ -185,7 +235,7 @@ h1{font-size:18px;line-height:1.35}
     finally { viewCheckBusy = false; }
   }
   async function registerView() {
-    if (displayMode !== 'inline' || !bridgeReady || !sessionId || !viewSource || viewRegistrationStarted || superseded || disposed) return;
+    if (displayMode !== 'inline' || !bridgeReady || !sessionId || !viewSource || viewRegistrationStarted || viewRegistered || viewRetryTimer !== null || superseded || disposed) return;
     // Register once for this iframe. Progress refreshes must never reclaim an older card.
     viewRegistrationStarted = true;
     try {
@@ -194,11 +244,25 @@ h1{font-size:18px;line-height:1.35}
       if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && ['superseded', 'missing_progress'].includes(state.status)) { collapseSupersededView(state.status); return; }
       if (disposed || result?.isError || state?.session_id !== sessionId || state.view_id !== viewId || state.is_latest !== true) return;
       viewRegistered = true;
+      viewRetryDelay = 1000;
       startViewChecks();
     } catch (_) { /* Older servers can continue showing and refreshing progress. */ }
+    finally {
+      viewRegistrationStarted = false;
+      if (!viewRegistered && !superseded && !disposed && displayMode === 'inline') {
+        viewRetryTimer = setTimeout(() => { viewRetryTimer = null; void registerView(); }, viewRetryDelay);
+        viewRetryDelay = Math.min(viewRetryDelay * 2, 30000);
+      }
+    }
   }
-  const setError = text => { $('error').textContent = text; $('error').classList.toggle('hidden', !text); };
-  const syncButton = () => { $('refresh').disabled = !bridgeReady || !sessionId || busy || superseded || disposed; $('refresh-label').textContent = busy ? '刷新中…' : '刷新'; syncAutoRefreshStatus(); };
+  const setError = text => { setText('error', text); $('error').classList.toggle('hidden', !text); };
+  const syncButton = () => {
+    // Background polling must not blur a keyboard-focused refresh button.
+    $('refresh').disabled = !bridgeReady || !sessionId || (busy && !silentRefresh) || superseded || disposed;
+    $('refresh').setAttribute('aria-busy', String(busy));
+    setText('refresh-label', busy && !silentRefresh ? '刷新中…' : '刷新');
+    syncAutoRefreshStatus();
+  };
   const date = value => {
     if (!value) return '—';
     const d = new Date(value);
@@ -331,10 +395,26 @@ h1{font-size:18px;line-height:1.35}
           attempts.push({
             epoch: epoch == null ? '' : String(epoch), roundKey: key, roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
             taskId: String(node.id), taskTitle: String(node.title || '未命名任务'), number: attempt.attempt == null ? '' : String(attempt.attempt),
-            attemptId: String(attempt.attempt_id || ''), status: statusInfo(attempt.execution_status || 'pending').label,
+            attemptId: String(attempt.attempt_id || ''), kind: attempt.kind || 'execution',
+            kindLabel: attempt.kind === 'synthesis' && !['failed', 'cancelled'].includes(attempt.execution_status) ? '综合验收' : attempt.kind === 'group_termination' || attempt.kind === 'synthesis' ? '分组收尾' : '执行尝试',
+            status: statusInfo(attempt.execution_status || 'pending').label,
             outcome: String(attempt.outcome || ''), executor: exportExecutor(attemptAssignment), model: String(attemptAssignment.model || ''),
             thinking: String(attemptAssignment.reasoning_effort || ''), startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
-            durationSeconds: exportDuration(attempt.started_at, attempt.finished_at), summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n')
+            durationSeconds: exportDuration(attempt.started_at, attempt.finished_at), summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n'),
+            invalidatedBy: String(attempt.invalidated_by || ''), invalidatedAt: String(attempt.invalidated_at || ''), validity: attempt.invalidated_by ? '已失效' : '有效'
+          });
+        });
+        list(node.invalidated_results).filter(result => !result.attempt_id).forEach(result => {
+          const attemptAssignment = result.assignment && typeof result.assignment === 'object' ? result.assignment : {};
+          attempts.push({
+            epoch: epoch == null ? '' : String(epoch), roundKey: key, roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
+            taskId: String(node.id), taskTitle: String(node.title || '未命名任务'), number: '', attemptId: '',
+            kind: 'legacy_synthesis', kindLabel: '历史综合验收', status: statusInfo(result.execution_status || 'pending').label,
+            outcome: String(result.outcome || ''), executor: exportExecutor(attemptAssignment), model: String(attemptAssignment.model || ''),
+            thinking: String(attemptAssignment.reasoning_effort || ''), startedAt: String(result.started_at || ''), finishedAt: String(result.finished_at || ''),
+            durationSeconds: exportDuration(result.started_at, result.finished_at), summary: String(result.summary || ''),
+            evidence: list(result.evidence).map(printable).join('\n'), invalidatedBy: String(result.invalidated_by || ''),
+            invalidatedAt: String(result.invalidated_at || ''), validity: result.invalidated_by ? '已失效' : '有效'
           });
         });
       }
@@ -383,7 +463,7 @@ h1{font-size:18px;line-height:1.35}
       const item = collectSingleTaskExportData(task);
       const key = isCurrent ? taskScope(task) : archivedTaskScope(task, position);
       const label = (isCurrent ? '当前任务' : '历史任务') + ' · ' + String(task.task_title || '未命名任务');
-      const enrich = row => ({ ...row, taskInstanceId: taskIdentity(task), taskTitle: String(task.task_title || '未命名任务'),
+      const enrich = row => ({ ...row, taskInstanceId: taskIdentity(task), instanceTitle: String(task.task_title || '未命名任务'),
         taskScope: key, archivedAt: task.archived_at || '', taskCurrent: isCurrent,
         roundKey: key + '/round:' + row.roundKey, roundLabel: label + ' / ' + row.roundLabel });
       item.plans.forEach(plan => report.plans.push({ ...enrich(plan), current: isCurrent && plan.current,
@@ -428,10 +508,10 @@ h1{font-size:18px;line-height:1.35}
   function buildXlsx(data) {
     const taskHeaders = ['计划轮次','任务 ID','父任务 ID','任务名称','类型','状态','执行状态','结果','依赖任务','当前阻塞','依赖放行条件','执行者','模型','思考强度','配置档','尝试次数','Attempt ID','开始时间','完成时间','耗时（秒）','结果摘要','证据','派发任务'];
     const planHeaders = ['计划轮次','计划名称','状态','是否当前计划','根任务 ID','节点数','关闭时间','重规划原因'];
-    const attemptHeaders = ['计划轮次','任务 ID','任务名称','尝试次数','Attempt ID','状态','结果','执行者','模型','思考强度','开始时间','完成时间','耗时（秒）','结果摘要','证据'];
+    const attemptHeaders = ['计划轮次','任务 ID','任务名称','记录类型','尝试次数','Attempt ID','状态','结果','有效性','失效来源','失效时间','执行者','模型','思考强度','开始时间','完成时间','耗时（秒）','结果摘要','证据'];
     const taskRows = data.tasks.map(task => [task.roundLabel,task.taskId,task.parentId,task.title,task.type,task.status,task.executionStatus,task.outcome,task.dependencies,task.blockedBy,task.dependencyConditions || (task.dependencyPolicy === 'finished' ? '前置执行结束' : task.dependencyPolicy ? '前置已解决' : ''),task.executor,task.model,task.thinking,task.profile,task.attempt,task.attemptId,task.startedAt,task.finishedAt,task.durationSeconds,task.summary,task.evidence,task.dispatchText]);
     const planRows = data.plans.map(plan => [plan.roundLabel,plan.title,plan.status,plan.current ? '是' : '否',plan.rootId,plan.taskCount,plan.closedAt,plan.reason]);
-    const attemptRows = data.attempts.map(attempt => [attempt.roundLabel,attempt.taskId,attempt.taskTitle,attempt.number,attempt.attemptId,attempt.status,attempt.outcome,attempt.executor,attempt.model,attempt.thinking,attempt.startedAt,attempt.finishedAt,attempt.durationSeconds,attempt.summary,attempt.evidence]);
+    const attemptRows = data.attempts.map(attempt => [attempt.roundLabel,attempt.taskId,attempt.taskTitle,attempt.kindLabel,attempt.number,attempt.attemptId,attempt.status,attempt.outcome,attempt.validity,attempt.invalidatedBy,attempt.invalidatedAt,attempt.executor,attempt.model,attempt.thinking,attempt.startedAt,attempt.finishedAt,attempt.durationSeconds,attempt.summary,attempt.evidence]);
     const identityHeaders = ['任务实例 ID','轮次标识','当前任务','任务归档时间'];
     [taskHeaders, planHeaders, attemptHeaders].forEach(headers => headers.push(...identityHeaders));
     [[taskRows, data.tasks], [planRows, data.plans], [attemptRows, data.attempts]].forEach(([rows, items]) => {
@@ -458,8 +538,8 @@ h1{font-size:18px;line-height:1.35}
     const safeData = JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
     return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Progress · 任务执行报告</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#172033;font:14px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:1180px;margin:32px auto;padding:0 20px}.hero,.panel,.metric{background:#fff;border:1px solid #e1e7f0;border-radius:14px;box-shadow:0 8px 24px #2538580a}.hero{padding:26px 30px;background:linear-gradient(130deg,#fff,#f5f8ff)}.eyebrow{color:#61718d;font-size:11px;letter-spacing:.14em;font-weight:700}.hero h1{margin:7px 0 3px;font-size:26px;line-height:1.3}.sub{color:#75839a;font-size:12px;overflow-wrap:anywhere}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.metric{padding:15px 17px}.metric span{display:block;color:#75839a;font-size:11px}.metric b{display:block;margin-top:3px;font-size:22px;font-variant-numeric:tabular-nums}.progress{height:8px;background:#e6ebf3;border-radius:9px;overflow:hidden;margin-top:17px}.progress i{display:block;height:100%;background:#718ff0;border-radius:inherit}.panel{padding:19px 21px;margin-top:14px}.panel h2{margin:0 0 13px;font-size:15px}.rounds{display:flex;flex-wrap:wrap;gap:8px}.round{border:1px solid #dce3ef;border-radius:8px;background:#fff;padding:8px 11px;color:#40506b;text-align:left;cursor:pointer}.round.active{border-color:#6d8de8;background:#edf2ff;color:#294b9c}.round b{display:block}.round small{color:#7a879c}.round-detail{margin-top:12px;padding:12px 14px;background:#f7f9fc;border-radius:9px;color:#58677e;font-size:12px;white-space:pre-wrap}.dist{display:grid;gap:8px}.dist-row{display:grid;grid-template-columns:92px minmax(0,1fr) 58px;align-items:center;gap:10px;font-size:12px}.bar{height:8px;background:#edf0f5;border-radius:8px;overflow:hidden}.bar i{display:block;height:100%;background:#9aa7bd}.bar i.done{background:#4da87a}.bar i.running{background:#6688e8}.bar i.ready{background:#e0a94c}.toolbar{display:flex;gap:9px;margin-bottom:12px}.toolbar input,.toolbar select{min-height:36px;border:1px solid #dbe2ed;border-radius:7px;background:#fff;padding:7px 10px;color:#28364e}.toolbar input{flex:1;min-width:140px}.table-wrap{overflow:auto;border:1px solid #e5eaf1;border-radius:8px}table{width:100%;border-collapse:collapse;min-width:950px;font-size:12px}th,td{padding:9px 10px;border-bottom:1px solid #e9edf3;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#f7f9fc;color:#62718a;font-size:10px;white-space:nowrap}tbody tr:last-child td{border-bottom:0}td small{display:block;color:#7c899e;margin-top:2px}.pill{display:inline-block;padding:2px 7px;border-radius:99px;background:#eef1f5;color:#647087;white-space:nowrap}.pill.done{background:#e7f5ed;color:#347858}.pill.running{background:#eaf0ff;color:#395cae}.pill.ready{background:#fff3dd;color:#966719}.empty{padding:20px;text-align:center;color:#7c899e}.foot{padding:14px 2px;color:#8792a4;font-size:10px}@media(max-width:680px){.wrap{margin:14px auto;padding:0 10px}.hero{padding:20px}.hero h1{font-size:21px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:15px}.toolbar{flex-direction:column}.dist-row{grid-template-columns:75px minmax(0,1fr) 50px}}
-</style></head><body><main class="wrap"><header class="hero"><div class="eyebrow">TASK PROGRESS · 执行数据快照</div><h1 id="title"></h1><div class="sub" id="meta"></div><div class="progress"><i id="progress-bar"></i></div></header><section class="metrics"><article class="metric"><span>当前进度</span><b id="percent"></b></article><article class="metric"><span>已结束 / 总任务</span><b id="completion"></b></article><article class="metric"><span>计划轮次</span><b id="round-count"></b></article><article class="metric"><span>任务记录</span><b id="task-count"></b></article></section><section class="panel"><h2>当前任务与历史任务的计划轮次</h2><div class="rounds" id="rounds"></div><div class="round-detail" id="round-detail"></div></section><section class="panel"><h2>所选计划状态分布</h2><div class="dist" id="distribution"></div></section><section class="panel"><h2>任务明细</h2><div class="toolbar"><input id="search" type="search" placeholder="搜索任务、摘要、模型或执行者"><select id="status"><option value="">全部状态</option><option>已完成</option><option>进行中</option><option>可执行</option><option>依赖阻塞</option><option>待开始</option><option>子任务可执行</option><option>待汇总验收</option><option>执行结束</option><option>仍未解决</option><option>执行失败</option><option>已取消</option></select></div><div class="table-wrap"><table><thead><tr><th>任务</th><th>类型</th><th>状态</th><th>依赖</th><th>执行者 / 模型 / 思考</th><th>尝试</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要 / 证据</th></tr></thead><tbody id="tasks"></tbody></table></div><div class="empty" id="empty" hidden>没有匹配的任务</div></section><section class="panel"><h2>执行尝试记录 <span id="attempt-count"></span></h2><div class="table-wrap"><table><thead><tr><th>任务</th><th>尝试</th><th>状态 / 结果</th><th>执行者 / 模型 / 思考</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要</th></tr></thead><tbody id="attempts"></tbody></table></div><div class="empty" id="attempt-empty" hidden>当前计划没有重试记录</div></section><footer class="foot">本文件是导出时生成的离线快照。包含当前任务、归档任务及各自的计划轮次；任务实例 ID 与轮次标识用于区分记录。</footer></main><script>const DATA=${safeData};
-const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");const dt=value=>value?new Date(value).toLocaleString("zh-CN"):"—";document.getElementById("title").textContent=DATA.taskTitle;document.getElementById("meta").textContent=DATA.mode+" · "+DATA.status+" · 会话 "+(DATA.sessionId||"—")+" · 导出 "+dt(DATA.generatedAt);document.getElementById("percent").textContent=DATA.percent+"%";document.getElementById("completion").textContent=DATA.completed+" / "+DATA.total;document.getElementById("round-count").textContent=DATA.plans.length;document.getElementById("task-count").textContent=DATA.tasks.length;document.getElementById("progress-bar").style.width=Math.max(0,Math.min(100,DATA.percent))+"%";let selected=DATA.currentRoundKey;const planFor=key=>DATA.plans.find(plan=>plan.roundKey===key);function renderRounds(){const host=document.getElementById("rounds");host.innerHTML=DATA.plans.map(plan=>'<button class="round '+(plan.roundKey===selected?'active':'')+'" data-key="'+esc(plan.roundKey)+'"><b>'+esc(plan.roundLabel)+(plan.current?' · 当前计划':'')+'</b><small>'+esc(plan.title)+' · '+esc(plan.status)+'</small></button>').join("");host.querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{selected=button.dataset.key;renderRounds();renderTasks();renderAttempts();renderDistribution()}));const plan=planFor(selected);document.getElementById("round-detail").textContent=plan?plan.title+"\\n任务实例："+plan.taskInstanceId+(plan.archivedAt?"\\n任务归档："+dt(plan.archivedAt):"")+"\\n"+(plan.current?"当前计划":"关闭时间："+dt(plan.closedAt))+ (plan.reason?"\\n重规划原因："+plan.reason:"")+"\\n节点："+plan.taskCount:"没有计划记录";}function selectedTasks(){return DATA.tasks.filter(task=>task.roundKey===selected)}function renderDistribution(){const tasks=selectedTasks(),statuses=["已完成","进行中","可执行","依赖阻塞","待开始","子任务可执行","待汇总验收","执行结束","仍未解决","执行失败","已取消"],host=document.getElementById("distribution");host.innerHTML=statuses.map(label=>{const count=tasks.filter(task=>task.status===label).length,ratio=tasks.length?Math.round(count/tasks.length*100):0,cls=label==="已完成"?"done":label==="进行中"?"running":label==="可执行"?"ready":"";return '<div class="dist-row"><b>'+label+'</b><div class="bar"><i class="'+cls+'" style="width:'+ratio+'%"></i></div><span>'+count+' · '+ratio+'%</span></div>'}).join("")}function renderTasks(){const query=document.getElementById("search").value.trim().toLowerCase(),state=document.getElementById("status").value;const rows=selectedTasks().filter(task=>(!state||task.status===state)&&(!query||Object.values(task).join(" ").toLowerCase().includes(query)));document.getElementById("tasks").innerHTML=rows.map(task=>'<tr><td><b>'+esc(task.title)+'</b><small>'+esc(task.taskId)+(task.parentId?' · 父任务 '+esc(task.parentId):'')+'</small></td><td>'+esc(task.type)+'</td><td><span class="pill '+(task.status==='已完成'?'done':task.status==='进行中'?'running':task.status==='可执行'?'ready':'')+'">'+esc(task.status)+'</span></td><td>'+esc(task.dependencies||'—')+(task.blockedBy?'<small>阻塞：'+esc(task.blockedBy)+'</small>':'')+'</td><td>'+esc([task.executor,task.model,task.thinking?'思考 '+task.thinking:''].filter(Boolean).join(' · ')||'—')+'</td><td>'+esc(task.attempt||'—')+(task.attemptId?'<small>'+esc(task.attemptId)+'</small>':'')+'</td><td>'+esc(dt(task.startedAt))+'</td><td>'+esc(dt(task.finishedAt))+'</td><td>'+esc(task.durationSeconds?task.durationSeconds+' 秒':'—')+'</td><td>'+esc(task.summary||'—')+(task.evidence?'<small>'+esc(task.evidence)+'</small>':'')+'</td></tr>').join("");document.getElementById("empty").hidden=rows.length>0}function renderAttempts(){const query=document.getElementById("search").value.trim().toLowerCase(),rows=DATA.attempts.filter(attempt=>attempt.roundKey===selected&&(!query||Object.values(attempt).join(" ").toLowerCase().includes(query)));document.getElementById("attempt-count").textContent="· "+rows.length+" 次";document.getElementById("attempts").innerHTML=rows.map(attempt=>"<tr><td><b>"+esc(attempt.taskTitle)+"</b><small>"+esc(attempt.taskId)+"</small></td><td>第 "+esc(attempt.number||"—")+" 次<small>"+esc(attempt.attemptId)+"</small></td><td>"+esc(attempt.status)+(attempt.outcome?" · "+esc(attempt.outcome):"")+"</td><td>"+esc([attempt.executor,attempt.model,attempt.thinking?"思考 "+attempt.thinking:""].filter(Boolean).join(" · ")||"—")+"</td><td>"+esc(dt(attempt.startedAt))+"</td><td>"+esc(dt(attempt.finishedAt))+"</td><td>"+esc(attempt.durationSeconds?attempt.durationSeconds+" 秒":"—")+"</td><td>"+esc(attempt.summary||"—")+"</td></tr>").join("");document.getElementById("attempt-empty").hidden=rows.length>0}document.getElementById("search").addEventListener("input",()=>{renderTasks();renderAttempts()});document.getElementById("status").addEventListener("change",renderTasks);renderRounds();renderTasks();renderAttempts();renderDistribution();</scr`+`ipt></body></html>`;
+</style></head><body><main class="wrap"><header class="hero"><div class="eyebrow">TASK PROGRESS · 执行数据快照</div><h1 id="title"></h1><div class="sub" id="meta"></div><div class="progress"><i id="progress-bar"></i></div></header><section class="metrics"><article class="metric"><span>当前进度</span><b id="percent"></b></article><article class="metric"><span>已结束 / 总任务</span><b id="completion"></b></article><article class="metric"><span>计划轮次</span><b id="round-count"></b></article><article class="metric"><span>任务记录</span><b id="task-count"></b></article></section><section class="panel"><h2>当前任务与历史任务的计划轮次</h2><div class="rounds" id="rounds"></div><div class="round-detail" id="round-detail"></div></section><section class="panel"><h2>所选计划状态分布</h2><div class="dist" id="distribution"></div></section><section class="panel"><h2>任务明细</h2><div class="toolbar"><input id="search" type="search" placeholder="搜索任务、摘要、模型或执行者"><select id="status"><option value="">全部状态</option><option>已完成</option><option>进行中</option><option>可执行</option><option>依赖阻塞</option><option>待开始</option><option>子任务可执行</option><option>待汇总验收</option><option>执行结束</option><option>仍未解决</option><option>执行失败</option><option>已取消</option></select></div><div class="table-wrap"><table><thead><tr><th>任务</th><th>类型</th><th>状态</th><th>依赖</th><th>执行者 / 模型 / 思考</th><th>尝试</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要 / 证据</th></tr></thead><tbody id="tasks"></tbody></table></div><div class="empty" id="empty" hidden>没有匹配的任务</div></section><section class="panel"><h2>执行尝试记录 <span id="attempt-count"></span></h2><div class="table-wrap"><table><thead><tr><th>任务</th><th>尝试</th><th>记录类型</th><th>状态 / 结果</th><th>有效性</th><th>失效来源</th><th>执行者 / 模型 / 思考</th><th>开始</th><th>结束</th><th>耗时</th><th>结果摘要</th></tr></thead><tbody id="attempts"></tbody></table></div><div class="empty" id="attempt-empty" hidden>当前计划没有重试记录</div></section><footer class="foot">本文件是导出时生成的离线快照。包含当前任务、归档任务及各自的计划轮次；任务实例 ID 与轮次标识用于区分记录。</footer></main><script>const DATA=${safeData};
+const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");const dt=value=>value?new Date(value).toLocaleString("zh-CN"):"—";document.getElementById("title").textContent=DATA.taskTitle;document.getElementById("meta").textContent=DATA.mode+" · "+DATA.status+" · 会话 "+(DATA.sessionId||"—")+" · 导出 "+dt(DATA.generatedAt);document.getElementById("percent").textContent=DATA.percent+"%";document.getElementById("completion").textContent=DATA.completed+" / "+DATA.total;document.getElementById("round-count").textContent=DATA.plans.length;document.getElementById("task-count").textContent=DATA.tasks.length;document.getElementById("progress-bar").style.width=Math.max(0,Math.min(100,DATA.percent))+"%";let selected=DATA.currentRoundKey;const planFor=key=>DATA.plans.find(plan=>plan.roundKey===key);function renderRounds(){const host=document.getElementById("rounds");host.innerHTML=DATA.plans.map(plan=>'<button class="round '+(plan.roundKey===selected?'active':'')+'" data-key="'+esc(plan.roundKey)+'"><b>'+esc(plan.roundLabel)+(plan.current?' · 当前计划':'')+'</b><small>'+esc(plan.title)+' · '+esc(plan.status)+'</small></button>').join("");host.querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{selected=button.dataset.key;renderRounds();renderTasks();renderAttempts();renderDistribution()}));const plan=planFor(selected);document.getElementById("round-detail").textContent=plan?plan.title+"\\n任务实例："+plan.taskInstanceId+(plan.archivedAt?"\\n任务归档："+dt(plan.archivedAt):"")+"\\n"+(plan.current?"当前计划":"关闭时间："+dt(plan.closedAt))+ (plan.reason?"\\n重规划原因："+plan.reason:"")+"\\n节点："+plan.taskCount:"没有计划记录";}function selectedTasks(){return DATA.tasks.filter(task=>task.roundKey===selected)}function renderDistribution(){const tasks=selectedTasks(),statuses=["已完成","进行中","可执行","依赖阻塞","待开始","子任务可执行","待汇总验收","执行结束","仍未解决","执行失败","已取消"],host=document.getElementById("distribution");host.innerHTML=statuses.map(label=>{const count=tasks.filter(task=>task.status===label).length,ratio=tasks.length?Math.round(count/tasks.length*100):0,cls=label==="已完成"?"done":label==="进行中"?"running":label==="可执行"?"ready":"";return '<div class="dist-row"><b>'+label+'</b><div class="bar"><i class="'+cls+'" style="width:'+ratio+'%"></i></div><span>'+count+' · '+ratio+'%</span></div>'}).join("")}function renderTasks(){const query=document.getElementById("search").value.trim().toLowerCase(),state=document.getElementById("status").value;const rows=selectedTasks().filter(task=>(!state||task.status===state)&&(!query||Object.values(task).join(" ").toLowerCase().includes(query)));document.getElementById("tasks").innerHTML=rows.map(task=>'<tr><td><b>'+esc(task.title)+'</b><small>'+esc(task.taskId)+(task.parentId?' · 父任务 '+esc(task.parentId):'')+'</small></td><td>'+esc(task.type)+'</td><td><span class="pill '+(task.status==='已完成'?'done':task.status==='进行中'?'running':task.status==='可执行'?'ready':'')+'">'+esc(task.status)+'</span></td><td>'+esc(task.dependencies||'—')+(task.blockedBy?'<small>阻塞：'+esc(task.blockedBy)+'</small>':'')+'</td><td>'+esc([task.executor,task.model,task.thinking?'思考 '+task.thinking:''].filter(Boolean).join(' · ')||'—')+'</td><td>'+esc(task.attempt||'—')+(task.attemptId?'<small>'+esc(task.attemptId)+'</small>':'')+'</td><td>'+esc(dt(task.startedAt))+'</td><td>'+esc(dt(task.finishedAt))+'</td><td>'+esc(task.durationSeconds?task.durationSeconds+' 秒':'—')+'</td><td>'+esc(task.summary||'—')+(task.evidence?'<small>'+esc(task.evidence)+'</small>':'')+'</td></tr>').join("");document.getElementById("empty").hidden=rows.length>0}function renderAttempts(){const query=document.getElementById("search").value.trim().toLowerCase(),rows=DATA.attempts.filter(attempt=>attempt.roundKey===selected&&(!query||Object.values(attempt).join(" ").toLowerCase().includes(query)));document.getElementById("attempt-count").textContent="· "+rows.length+" 次";document.getElementById("attempts").innerHTML=rows.map(attempt=>"<tr><td><b>"+esc(attempt.taskTitle)+"</b><small>"+esc(attempt.taskId)+"</small></td><td>第 "+esc(attempt.number||"—")+" 次<small>"+esc(attempt.attemptId)+"</small></td><td>"+esc(attempt.kindLabel)+"</td><td>"+esc(attempt.status)+(attempt.outcome?" · "+esc(attempt.outcome):"")+"</td><td>"+esc(attempt.validity)+"</td><td>"+esc(attempt.invalidatedBy||"—")+(attempt.invalidatedAt?" · "+esc(dt(attempt.invalidatedAt)):"")+"</td><td>"+esc([attempt.executor,attempt.model,attempt.thinking?"思考 "+attempt.thinking:""].filter(Boolean).join(" · ")||"—")+"</td><td>"+esc(dt(attempt.startedAt))+"</td><td>"+esc(dt(attempt.finishedAt))+"</td><td>"+esc(attempt.durationSeconds?attempt.durationSeconds+" 秒":"—")+"</td><td>"+esc(attempt.summary||"—")+"</td></tr>").join("");document.getElementById("attempt-empty").hidden=rows.length>0}document.getElementById("search").addEventListener("input",()=>{renderTasks();renderAttempts()});document.getElementById("status").addEventListener("change",renderTasks);renderRounds();renderTasks();renderAttempts();renderDistribution();</scr`+`ipt></body></html>`;
   }
   function base64FromBytes(bytes) {
     let binary = '';
@@ -473,7 +553,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     feedback.classList.remove('error'); feedback.classList.remove('hidden'); feedback.textContent = '正在生成并交付导出文件…'; button.disabled = true;
     try {
       const data = collectExportData(latestProgress);
-      const titlePart = data.taskTitle.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').slice(0, 48) || '任务进度';
+      const titlePart = Array.from(data.taskTitle.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')).slice(0, 48).join('') || '任务进度';
       const sessionPart = data.sessionId ? '-' + data.sessionId.slice(0, 8) : '';
       const exportStamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
       const fileStem = 'Task-Progress-' + titlePart + sessionPart + '-' + exportStamp;
@@ -532,6 +612,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
   }
   function field(label, value, className = '') {
     const block = document.createElement('div'); block.className = 'detail-field ' + className;
+    block.dataset.renderKey = label + ':' + className;
     const heading = document.createElement('span'); heading.className = 'detail-label'; heading.textContent = label;
     const content = document.createElement('div'); content.className = 'detail-value'; content.textContent = printable(value);
     block.append(heading, content); return block;
@@ -571,6 +652,58 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     return Array.from(text).length > previewLimit || text.split('\n').length > 2
       ? collapsibleField(label, text, key, openDetails, className, previewLimit)
       : field(label, text, className);
+  }
+  function attemptHistory(node, prefix, openDetails) {
+    const attempts = list(node.attempts).map((attempt, index) => ({ ...attempt, recordKey: attempt.attempt_id || 'attempt-' + index }));
+    // Legacy group acceptances did not have an attempt; retain their evidence too.
+    list(node.invalidated_results).filter(result => !result.attempt_id).forEach((result, index) => attempts.push({ ...result, recordKey: 'legacy-' + index }));
+    if (!attempts.length) return null;
+    const key = prefix + ':attempts';
+    const history = document.createElement('details'); history.className = 'detail-group attempt-history'; history.dataset.key = key; history.open = openDetails.get(key) || false;
+    const heading = document.createElement('summary'); heading.textContent = '执行记录 · ' + attempts.length + ' 次';
+    const content = document.createElement('div'); content.className = 'detail-group-content';
+    for (const [index, attempt] of attempts.entries()) {
+      const record = document.createElement('details'); record.className = 'attempt-record'; record.dataset.key = key + ':' + attempt.recordKey; record.open = openDetails.get(record.dataset.key) || false;
+      const title = document.createElement('summary');
+      const status = statusInfo(attempt.outcome || attempt.execution_status).label;
+      const kindLabel = attempt.kind === 'synthesis' && !['failed', 'cancelled'].includes(attempt.execution_status) ? '综合验收 · ' : attempt.kind === 'group_termination' || attempt.kind === 'synthesis' ? '分组收尾 · ' : '';
+      title.textContent = '第 ' + (attempt.attempt || index + 1) + ' 次 · ' + kindLabel + status + (attempt.invalidated_by ? ' · 已失效' : '');
+      const body = document.createElement('div'); body.className = 'detail-group-content';
+      body.append(field('执行配置', executionSummary(attempt.assignment, attempt.execution_status) || '未记录'), field('开始 / 结束', date(attempt.started_at) + ' / ' + date(attempt.finished_at)));
+      if (attempt.invalidated_by) body.append(field('失效原因', '任务 ' + attempt.invalidated_by + ' 已重试，此次结果保留作历史。'));
+      if (attempt.summary) body.append(compactField('结果摘要', attempt.summary, record.dataset.key + ':summary', openDetails));
+      if (list(attempt.evidence).length) body.append(evidenceField(attempt.evidence, record.dataset.key + ':evidence', openDetails));
+      if (attempt.assignment?.dispatch_text) body.append(compactField('派发任务', attempt.assignment.dispatch_text, record.dataset.key + ':dispatch', openDetails));
+      if (attempt.attempt_id) body.append(compactField('执行编号', attempt.attempt_id, record.dataset.key + ':id', openDetails));
+      record.append(title, body); content.append(record);
+    }
+    history.append(heading, content); return history;
+  }
+
+  // Retain live nodes instead of replacing the tree on each poll. In particular,
+  // unchanged text nodes keep browser selections, summaries keep keyboard focus,
+  // and existing detail containers keep their scroll position.
+  function reconcileChildren(target, incoming) {
+    const key = node => node.nodeType === Node.ELEMENT_NODE
+      ? node.dataset.key || node.dataset.renderKey || (node.tagName === 'LI' ? node.firstElementChild?.dataset.key : '') || '' : '';
+    const compatible = (a, b) => a.nodeType === b.nodeType && (a.nodeType !== Node.ELEMENT_NODE || a.tagName === b.tagName) && key(a) === key(b);
+    const originals = Array.from(target.childNodes), used = new Set();
+    let cursor = target.firstChild;
+    for (const next of Array.from(incoming.childNodes)) {
+      const match = originals.find(old => !used.has(old) && compatible(old, next));
+      if (!match) { target.insertBefore(next, cursor); continue; }
+      used.add(match);
+      if (match !== cursor) target.insertBefore(match, cursor);
+      if (match.nodeType === Node.TEXT_NODE) {
+        if (match.nodeValue !== next.nodeValue) match.nodeValue = next.nodeValue;
+      } else if (match.nodeType === Node.ELEMENT_NODE) {
+        for (const attribute of Array.from(match.attributes)) if (!next.hasAttribute(attribute.name)) match.removeAttribute(attribute.name);
+        for (const attribute of next.attributes) if (match.getAttribute(attribute.name) !== attribute.value) match.setAttribute(attribute.name, attribute.value);
+        reconcileChildren(match, next);
+      }
+      cursor = match.nextSibling;
+    }
+    for (const old of originals) if (!used.has(old)) old.remove();
   }
   function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false) {
     const fragment = document.createDocumentFragment();
@@ -636,6 +769,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       appendElapsed(right, node);
       row.append(icon, title, right); details.append(row);
       const body = document.createElement('div'); body.className = 'task-details';
+      if (node.invalidated_by) body.append(field('需要重新执行或验收', '前置结果因任务 ' + node.invalidated_by + ' 重试而失效，旧记录保留在执行记录中。'));
       const more = document.createElement('details'); more.className = 'detail-group more-details';
       more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
       const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
@@ -666,6 +800,8 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
         const text = document.createElement('div'); text.className = 'detail-value'; text.textContent = printable(assignment.dispatch_text); dispatch.append(heading, text); moreContent.append(dispatch);
       }
       if (moreContent.childElementCount) { more.append(moreHeading, moreContent); body.append(more); }
+      const attempts = attemptHistory(node, prefix + ':' + id, openDetails);
+      if (attempts) body.append(attempts);
       if (body.childElementCount) details.append(body);
       if (childIds.length) {
         const nested = document.createElement('ol'); nested.className = 'children'; childIds.forEach(child => appendNode(child, nested)); details.append(nested);
@@ -703,17 +839,18 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
   }
   function renderNetwork(progress, nodes, openDetails) {
     $('steps').className = 'steps task-tree';
-    $('steps').replaceChildren(networkTree(nodes, progress.root_id, taskScope(progress) + ':epoch:' + progress.epoch, openDetails, true));
-    $('network-meta').replaceChildren();
+    reconcileChildren($('steps'), networkTree(nodes, progress.root_id, taskScope(progress) + ':epoch:' + progress.epoch, openDetails, true));
+    const meta = document.createDocumentFragment();
     const metadata = [
       ['计划', '第 ' + (Number(progress.epoch || 0) + 1) + ' 轮'],
       ['可执行', (progress.ready_count ?? list(progress.ready_tasks).length) + ' · 进行中 ' + (progress.executing_count ?? nodes.filter(node => node.execution_status === 'running').length) + ' · 阻塞 ' + (progress.blocked_count ?? nodes.filter(node => list(node.blocked_by).length).length)]
     ];
     const mainSession = progress.main_session && typeof progress.main_session === 'object' ? progress.main_session : {};
     metadata.push(['主会话', [mainSession.model || '模型未记录', mainSession.reasoning_effort ? '思考 ' + mainSession.reasoning_effort : '思考强度未记录'].join(' · ')]);
-    for (const [label, value] of metadata) { const span = document.createElement('span'); span.textContent = label + ' '; const strong = document.createElement('strong'); strong.textContent = String(value); span.append(strong); $('network-meta').append(span); }
-    const history = list(progress.history); $('history-section').classList.toggle('hidden', !history.length); $('history-title').textContent = '当前任务的历史计划 · ' + history.length + ' 轮';
-    $('history-list').replaceChildren(planHistory(progress, taskScope(progress), openDetails));
+    for (const [label, value] of metadata) { const span = document.createElement('span'); span.dataset.renderKey = label; span.textContent = label + ' '; const strong = document.createElement('strong'); strong.textContent = String(value); span.append(strong); meta.append(span); }
+    reconcileChildren($('network-meta'), meta);
+    const history = list(progress.history); $('history-section').classList.toggle('hidden', !history.length); setText('history-title', '当前任务的历史计划 · ' + history.length + ' 轮');
+    reconcileChildren($('history-list'), planHistory(progress, taskScope(progress), openDetails));
   }
   function planHistory(progress, prefix, openDetails) {
     const fragment = document.createDocumentFragment();
@@ -732,7 +869,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
   function renderTaskHistory(progress, openDetails) {
     const history = list(progress?.task_history).filter(item => item && typeof item === 'object');
     $('task-history-section').classList.toggle('hidden', !history.length);
-    $('task-history-title').textContent = '历史任务 · ' + history.length + ' 项';
+    setText('task-history-title', '历史任务 · ' + history.length + ' 项');
     const fragment = document.createDocumentFragment();
     history.map((task, position) => ({task, position})).reverse().forEach(({task, position}) => {
       const prefix = archivedTaskScope(task, position);
@@ -758,7 +895,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       }
       li.append(details); fragment.append(li);
     });
-    $('task-history-list').replaceChildren(fragment);
+    reconcileChildren($('task-history-list'), fragment);
   }
 
   function render(progress) {
@@ -778,7 +915,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     $('empty').classList.toggle('hidden', hasProgress);
     $('network-meta').classList.toggle('hidden', !hasProgress || !network);
     $('network-help').classList.toggle('hidden', !hasProgress || !network);
-    $('steps-title').textContent = network ? '当前任务 · 任务网络' : '当前任务 · 执行步骤';
+    setText('steps-title', network ? '当前任务 · 任务网络' : '当前任务 · 执行步骤');
     if (!network || !hasProgress) { $('history-section').classList.add('hidden'); $('history-list').replaceChildren(); }
     if (!hasProgress) { $('steps').replaceChildren(); syncButton(); return; }
     const state = statusInfo(progress.status);
@@ -786,24 +923,24 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     const completed = Number.isFinite(progress.completed) ? Math.max(0, Math.min(total, progress.completed)) : network ? nodes.filter(node => !list(node.children).length && ['finished', 'failed', 'cancelled'].includes(node.execution_status)).length : steps.filter(s => s && statusInfo(s.status).key === 'completed').length;
     const rawPercent = Number.isFinite(progress.percent) ? progress.percent : total ? completed / total * 100 : 0;
     const percent = Math.max(0, Math.min(100, rawPercent));
-    $('task-title').textContent = String(progress.task_title || '未命名任务');
+    setText('task-title', String(progress.task_title || '未命名任务'));
     $('task-status').className = 'badge ' + state.key;
-    $('task-status-label').textContent = state.label;
-    $('percent').textContent = String(Math.round(percent));
-    $('fraction').textContent = completed + ' / ' + total + (network ? ' 项执行结束' : ' 步已完成');
+    setText('task-status-label', state.label);
+    setText('percent', String(Math.round(percent)));
+    setText('fraction', completed + ' / ' + total + (network ? ' 项执行结束' : ' 步已完成'));
     $('progressbar').setAttribute('aria-valuenow', String(percent));
     $('progressbar').setAttribute('aria-label', network ? '叶子任务执行结束比例' : '任务完成比例');
     $('fill').className = 'fill ' + state.key;
     $('fill').style.width = percent + '%';
     for (const [id, value] of [['created', progress.created_at], ['updated', progress.updated_at]]) {
-      $(id).textContent = date(value);
+      setText(id, date(value));
       $(id).title = typeof value === 'string' ? value : '';
       if (typeof value === 'string') $(id).dateTime = value; else $(id).removeAttribute('datetime');
     }
-    $('step-count').textContent = network ? nodes.length + ' 个节点 · ' + total + ' 个叶子任务' : total + ' 个步骤';
+    setText('step-count', network ? nodes.length + ' 个节点 · ' + total + ' 个叶子任务' : total + ' 个步骤');
     if (network) { renderNetwork(progress, nodes, openDetails); syncButton(); return; }
     $('steps').className = 'steps';
-    $('steps').replaceChildren(linearSteps(steps, taskScope(progress) + ':steps', openDetails));
+    reconcileChildren($('steps'), linearSteps(steps, taskScope(progress) + ':steps', openDetails));
     syncButton();
   }
   $('export-all').addEventListener('click', exportCurrentProgress);
@@ -844,6 +981,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
         }
       }
       lastCheckedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      refreshFailed = false;
       setError(''); render(incoming); void registerView();
     }
   }
@@ -860,31 +998,35 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
       if (typeof value === 'string' && value) { sessionId = value; syncButton(); void registerView(); }
     }
     if (message.method === 'ui/notifications/host-context-changed') {
+      applyTheme(message.params || {});
       const nextMode = message.params?.displayMode;
       if (['inline', 'fullscreen', 'pip'].includes(nextMode) && nextMode !== displayMode) {
         displayMode = nextMode;
         if (displayMode === 'inline') {
           if (viewRegistered) { startViewChecks(); void checkLatestView(); }
           else void registerView();
-        } else stopViewChecks();
+        } else { stopViewChecks(); stopViewRetry(); }
       }
     }
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      disposed = true; stopPolling(); stopViewChecks();
+      disposed = true; stopPolling(); stopViewChecks(); stopViewRetry();
       window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, '*');
     }
   });
   async function refreshProgress(silent = false) {
     if (!sessionId || !bridgeReady || busy || superseded || disposed) return;
-    busy = true; syncButton();
+    busy = true; silentRefresh = silent; syncButton();
     if (!silent) setError('');
     try {
       const result = await request('tools/call', { name: 'get_progress', arguments: { session_id: sessionId } });
       if (result?.isError) throw new Error('未能读取当前会话进度，请稍后刷新。');
       receiveResult(result, true);
-    } catch (error) { if (!silent) setError(error.message || '刷新失败，请稍后重试。'); }
-    finally { busy = false; syncButton(); }
+    } catch (error) {
+      refreshFailed = true;
+      if (!silent) setError(error.message || '刷新失败，请稍后重试。');
+    }
+    finally { busy = false; silentRefresh = false; syncButton(); }
   }
   $('refresh').addEventListener('click', () => { void refreshProgress(false); });
   document.addEventListener('visibilitychange', () => {
@@ -902,8 +1044,8 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     }, { threshold: 0 }).observe(document.querySelector('.card'));
   }
   render(null);
-  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
-    .then(result => { displayMode = result?.hostContext?.displayMode ?? null; hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.3' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+    .then(result => { displayMode = result?.hostContext?.displayMode ?? null; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {
     let previousHeight = 0;

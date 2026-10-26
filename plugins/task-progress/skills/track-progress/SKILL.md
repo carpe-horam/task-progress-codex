@@ -140,12 +140,14 @@ Task Progress **不会自动识别** Codex 当前使用的模型或思考强度�
 
 分组任务由子任务执行，不能直接标 running。其直接子任务都结束后，主会话才可提交父任务的综合验收结果；逐层验收到根任务。叶任务结束百分比达到 100% 只表示执行已结束，仍须检查 open、failed、cancelled 和根任务验收结果。
 
-父任务综合验收必须附上本次主会话的完整 `assignment`（`execution_mode`、已核实的 `model` 和 `reasoning_effort`）。服务端为验收建立独立的 `kind="synthesis"` attempt，并保存执行配置及时间；无需先设为 running。没有当前运行尝试的父任务，不要传先前已失效的 `attempt_id`。
+父任务综合验收必须附上本次主会话的完整 `assignment`（`execution_mode`、已核实的 `model` 和 `reasoning_effort`）。服务端为验收建立独立的 `kind="synthesis"` attempt，并保存执行配置及时间；无需先设为 running。取消或失败收尾会记录为 `kind="group_termination"`，不代表综合验收通过。叶任务必须先启动并创建执行尝试，再报告 `finished/resolved`。没有当前运行尝试的父任务，不要传先前已失效的 `attempt_id`。
+
+前置任务失败、取消或结束但未解决时，先结束/取消实际无法继续的子任务。分组的直接子任务全部结束后，可提交 `finished/open`，同时提供完整 assignment 和说明原因的 summary；前置依赖也必须已经结束。若主动终止分组，可在直接子任务全部结束后提交 `cancelled` 或 `failed`，同样必须提供完整 assignment 与非空 summary。`finished/resolved` 仍要求前置依赖满足。分组状态更新不会停止外部执行者，须先实际协调停止。
 
 ### 4. 重试与新一轮规划
 
 - 重试已结束叶任务：`update_task` 传 `execution_status="running", retry=true`，保存新的 `attempt_id`；旧尝试的迟到上报不能覆盖当前尝试。
-- 每次重试都重新检查自身及祖先的依赖。如果有运行中的任务仍依赖本次重试将使其失效的结果，先协调结束这些尝试。成功重试会使已结束祖先的旧验收失效，保留历史验收，并把祖先恢复为待验收；子任务重新完成后须逐层重新验收。
+- 每次重试都重新检查自身及祖先的依赖。如果有运行中的直接或传递下游仍依赖本次重试将使其失效的结果，先协调结束这些尝试，不能让旧下游与新上游并行。成功重试会使已结束的消费者（含依赖分组的后代）及其祖先验收失效，保留历史结果和 attempts，并恢复为 pending、标记 invalidated_by。再次读取 ready 列表，按依赖顺序重新执行或验收；旧 attempt_id 不再能更新这些节点。这里的状态失效不表示已实际派发重跑。
 - 需要调整任务网络：先核实并结束所有 running 尝试，再调用 `rebuild_task_network({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","reason":"<重规划原因>"})`。
 - 重建会将当前计划轮次保存到当前任务的 `history`，递增 `epoch` 并返回新的 `root_id`；`task_instance_id` 不变，这仍是同一个任务。必须使用实际返回的 `root_id`，不要推算其名称。用当前任务实例尚未使用过的任务 ID 重新分解；同一 `task_instance_id` 的重规划轮次不能复用节点 ID。不要继续使用旧轮次的 root/task ID。
 - 派发及协调时将 `session_id`、`task_instance_id`、`epoch`、`task_id`、`attempt_id` 与实际智能体对应保存；收到旧任务实例、旧 epoch 或旧 attempt 的结果时拒绝更新当前任务。历史结果可作为附有来源的参考证据，不能直接冒充新一轮验收结果。
@@ -166,6 +168,8 @@ Task Progress **不会自动识别** Codex 当前使用的模型或思考强度�
 
 `step_index` 从 0 开始。旧版顺序模式先完成当前步骤再启动下一步，最多一个步骤 in_progress。新任务默认使用 HTN；不要对网络状态调用 `update_step`，也不要对旧版清单调用网络更新工具。
 
+顺序模式必须先将步骤设为 `in_progress` 才能 `completed`。重开已完成的前序步骤时，若后续仍有已开始或已完成步骤，先实际协调执行者，再从后往前把后续步骤恢复为 pending。服务端会拒绝跳过执行或直接重开前序步骤而保留后续旧结果。
+
 ## 展示、恢复与清理
 
 `get_progress`、`render_progress` 及更新工具提供文本摘要；支持 MCP Apps 的客户端显示任务卡片。不要手工拼接假进度，或把任务卡片描述成日志面板。
@@ -174,7 +178,7 @@ Task Progress **不会自动识别** Codex 当前使用的模型或思考强度�
 - 每个 Codex 会话使用自己生成并保存的 ID，不能复制、猜测或读取其他会话的 ID。其他会话的任务不得阻止本会话初始化。
 - 恢复先调用 `get_progress`，读取当前任务及其 `task_instance_id`；只有明确开始新任务才调用初始化工具。若已知 ID 的本会话数据不存在，说明实际情况，确需开始新任务时仍使用该会话 ID 初始化；首次没有已知 ID 时让初始化工具生成并保存。
 - `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。
-- 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。
+- 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度；清空后首次及后续新任务的写操作都必须传当前 `task_instance_id`，以拒绝清空前不带实例 ID 的迟到请求。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。
 - 完成后读取并确认最终状态，在最终回复说明结果及未解决项。任务完成无需清理；只有明确要删除本会话全部进度时才调用 `clear_progress({"session_id":"<本会话 ID>"})`。如需保留历史并继续新任务，直接用同一 `session_id` 初始化。
 - `clear_progress` 仅清除传入 `session_id` 的本会话数据，包括当前任务与 `task_history`；不要迁移或删除旧版全局状态，也不要清理其他会话。
 

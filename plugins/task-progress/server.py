@@ -91,7 +91,7 @@ def _order_file(session_id: str) -> Path:
     return SESSION_DIR / f"{session_id}.order.json"
 
 
-def _read_order(session_id: str) -> dict[str, int]:
+def _read_order(session_id: str) -> dict[str, Any]:
     path = _order_file(session_id)
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"state_revision": 0, "view_sequence": 0}
 
@@ -183,7 +183,9 @@ def _task_instance_id(data: dict[str, Any]) -> str:
 
 
 def _validate_task_instance(data: dict[str, Any], task_instance_id: str | None) -> None:
-    if task_instance_id is None and not data.get("task_history"):
+    order = _read_order(data["session_id"])
+    if (task_instance_id is None and not data.get("task_history")
+            and not order.get("require_task_instance_id", False)):
         return
     if task_instance_id != _task_instance_id(data):
         raise ProgressError(
@@ -682,6 +684,7 @@ def decompose_task(
 
 def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
     _require_execution_metadata(assignment)
+    node.pop("invalidated_by", None)
     node["attempt"] = int(node.get("attempt", 0)) + 1
     node["attempt_id"] = str(uuid.uuid4())
     node["assignment"] = dict(assignment)
@@ -710,27 +713,43 @@ def _reset_execution(node: dict[str, Any]) -> None:
 
 
 def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> None:
-    ancestors = []
-    parent_id = node.get("parent_id")
-    while parent_id is not None:
-        parent = data["nodes"][parent_id]
-        if _node_is_terminal(parent):
-            ancestors.append(parent)
-        parent_id = parent.get("parent_id")
-    invalidated = {node["id"], *(parent["id"] for parent in ancestors)}
-    for consumer in data["nodes"].values():
-        if consumer["execution_status"] == "running" and consumer["id"] != node["id"]:
+    # Compute the full closure before changing anything: an old consumer result
+    # can otherwise release its own consumers while its input is being retried.
+    nodes = data["nodes"]
+    invalidated = {node["id"]}
+    while True:
+        previous = set(invalidated)
+        for invalid_id in previous:
+            parent_id = nodes[invalid_id].get("parent_id")
+            while parent_id is not None:
+                parent = nodes[parent_id]
+                if _node_is_terminal(parent):
+                    invalidated.add(parent_id)
+                parent_id = parent.get("parent_id")
+        for consumer in nodes.values():
             if any(dep_id in invalidated for _, dep_id in _dependency_constraints(data, consumer)):
-                raise ProgressError(f"任务 {consumer['id']} 仍在使用该结果；请先结束相关执行尝试再重试。")
-    for parent in ancestors:
-        # Also retain results from pre-attempt legacy group acceptances.
-        parent.setdefault("invalidated_results", []).append({
-            **{key: deepcopy(parent.get(key)) for key in (
+                invalidated.add(consumer["id"])
+        if invalidated == previous:
+            break
+    for invalid_id in invalidated - {node["id"]}:
+        if nodes[invalid_id]["execution_status"] == "running":
+            raise ProgressError(f"任务 {invalid_id} 仍在使用该结果；请先结束相关执行尝试再重试。")
+    for invalid_id in invalidated - {node["id"]}:
+        target = nodes[invalid_id]
+        if not _node_is_terminal(target):
+            continue
+        # Retain original attempts and legacy acceptances for inspection/export.
+        invalidated_at = _now()
+        target.setdefault("invalidated_results", []).append({
+            **{key: deepcopy(target.get(key)) for key in (
                 "attempt_id", "execution_status", "outcome", "assignment", "summary", "evidence", "started_at", "finished_at"
             )},
-            "invalidated_by": node["id"], "invalidated_at": _now(),
+            "invalidated_by": node["id"], "invalidated_at": invalidated_at,
         })
-        _reset_execution(parent)
+        if target.get("attempts") and target.get("attempt_id"):
+            target["attempts"][-1].update(invalidated_by=node["id"], invalidated_at=invalidated_at)
+        _reset_execution(target)
+        target["invalidated_by"] = node["id"]
 
 
 def update_task(
@@ -785,7 +804,7 @@ def update_task(
                            if node.get("assignment", {}).get(key) != value]
                 if changed:
                     raise ProgressError("当前 attempt 的执行快照不可修改；不一致字段：" + ", ".join(changed) + "。")
-        if node.get("children") and execution_status in ("running", "failed", "cancelled"):
+        if node.get("children") and execution_status == "running":
             raise ProgressError("分组任务由子任务执行；请完成子任务后再提交父任务综合结果。")
         if previous_status in TERMINAL_EXECUTION_STATUSES and execution_status != "running":
             raise ProgressError("已结束任务不能覆盖结果；如需重试，请使用 running 并设置 retry=true。")
@@ -806,13 +825,24 @@ def update_task(
             and not _node_is_ready(data, node)
         ):
             raise ProgressError("依赖尚未满足的任务不能直接结束；先完成前驱或改用 dependency_policy=finished。")
-        if execution_status == "finished" and node.get("children"):
+        if (previous_status == "pending" and execution_status == "finished"
+                and outcome == "resolved" and not node.get("children")):
+            raise ProgressError("叶任务必须先进入 running 并创建执行尝试，才能标记为 finished/resolved。")
+        if execution_status in TERMINAL_EXECUTION_STATUSES and node.get("children"):
             if not all(_node_is_terminal(data["nodes"][child_id]) for child_id in node["children"]):
                 raise ProgressError("父任务必须等所有直接子任务结束后再综合验收。")
-            if not _dependencies_satisfied(data, node):
-                raise ProgressError("父任务的前置依赖尚未满足，不能提交综合验收。")
+            if execution_status == "finished" and not _dependencies_satisfied(data, node):
+                if outcome != "open" or not all(
+                    _node_is_terminal(data["nodes"][dep_id]) for _, dep_id in _dependency_constraints(data, node)
+                ):
+                    raise ProgressError("父任务的前置依赖尚未满足，不能提交综合验收。")
+                if not summary.strip():
+                    raise ProgressError("前置未解决时须记录 summary，说明分组无法完成的原因。")
+            if execution_status in ("failed", "cancelled") and not summary.strip():
+                raise ProgressError("取消或失败收尾须记录 summary，说明原因。")
             if previous_status != "running":
-                _begin_attempt(node, normalized_assignment, kind="synthesis")
+                kind = "synthesis" if execution_status == "finished" else "group_termination"
+                _begin_attempt(node, normalized_assignment, kind=kind)
         node["execution_status"] = execution_status
         node["outcome"] = outcome
         if summary:
@@ -1019,6 +1049,21 @@ def update_step(
         normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
         step = data["steps"][step_index]
         previous_status = step["status"]
+        if status in ("in_progress", "completed") and any(
+            previous["status"] != "completed" for previous in data["steps"][:step_index]
+        ):
+            raise ProgressError("顺序步骤必须先完成前面的步骤。")
+        if status == "in_progress" and any(
+            index != step_index and other["status"] == "in_progress"
+            for index, other in enumerate(data["steps"])
+        ):
+            raise ProgressError("顺序模式最多只能有一个 in_progress 步骤。")
+        if status == "completed" and previous_status == "pending":
+            raise ProgressError("顺序步骤必须先设置为 in_progress，再标记为 completed。")
+        if status != "completed" and previous_status == "completed" and any(
+            following["status"] != "pending" for following in data["steps"][step_index + 1:]
+        ):
+            raise ProgressError("重开前序步骤前，请先从后往前将后续步骤恢复为 pending。")
         step.setdefault("started_at", None)
         step.setdefault("finished_at", None)
         if status == "pending":
@@ -1144,15 +1189,20 @@ def check_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
         if not path.exists():
             return _ui_view_result(sid, vid, "unregistered")
         metadata = json.loads(path.read_text(encoding="utf-8"))
-        current = _read(sid)
-        status = "latest" if (metadata.get("view_id") == vid and
-                              metadata.get("task_instance_id") in (None, _task_instance_id(current))) else "superseded"
+        # Keep the currently registered card usable across a task switch until
+        # a replacement actually registers; an instance change alone is not a view.
+        status = "latest" if metadata.get("view_id") == vid else "superseded"
     return _ui_view_result(sid, vid, status)
 
 
 def clear_progress(session_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
+        # Persist the binding requirement first: even if deletion fails halfway,
+        # a later stale write without an instance ID can never bind to new data.
+        order = _read_order(sid)
+        order["require_task_instance_id"] = True
+        _atomic_json(_order_file(sid), order)
         path = _session_file(sid)
         if path.exists():
             path.unlink()
@@ -1259,7 +1309,7 @@ def _session_property() -> dict[str, Any]:
 def _task_instance_property() -> dict[str, Any]:
     return {
         "type": "string",
-        "description": "当前 progress 返回的 task_instance_id。同一 session_id 已创建过新任务、有 task_history 时必填；不匹配的旧任务更新会被拒绝。首个任务兼容省略。",
+        "description": "当前 progress 返回的 task_instance_id。同一 session_id 有 task_history 或曾 clear_progress 后必填；不匹配或缺失的旧任务更新会被拒绝。未清理过的首个任务兼容省略。",
     }
 
 
@@ -1414,7 +1464,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "更新任务状态、结果与证据。每次启动 running 或提交父任务综合验收都必须提供完整 assignment（execution_mode、model、reasoning_effort）；运行中更新须匹配 attempt_id。重试会重新检查依赖并使已结束祖先的验收失效，随后须逐层重新验收。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "更新任务状态、结果与证据。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动 running 或分组收尾须完整 assignment，运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1467,7 +1517,7 @@ TOOLS = [
     {
         "name": "update_step",
         "title": "更新任务步骤",
-        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；首次启动 in_progress 必须提供完整 assignment（execution_mode、model、reasoning_effort）。会话存在 task_history 时必须传当前 task_instance_id。返回文本及可视化面板数据。",
+        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供完整 assignment（execution_mode、model、reasoning_effort）。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回文本及可视化面板数据。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1535,7 +1585,7 @@ TOOLS = [
     {
         "name": "clear_progress",
         "title": "清除本会话进度",
-        "description": "清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。",
+        "description": "清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。为阻止清空前的迟到写入，后续新任务写操作必须传 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -1644,7 +1694,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.1"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.3"},
             },
         )
 

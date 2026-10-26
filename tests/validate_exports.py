@@ -20,7 +20,8 @@ with zipfile.ZipFile(Path(sys.argv[1])) as archive:
     assert [len(rows) for rows in sheets] == [7, 4, 7]
     assert len({row[-4] for row in sheets[0][1:]}) == 2
     assert len({row[-3] for row in sheets[0][1:]}) == 3
-    assert [r[3] for r in sheets[2][1:] if r[1] == "c"] == ["1", "2"]
+    attempt_columns = {name: index for index, name in enumerate(sheets[2][0])}
+    assert [r[attempt_columns["尝试次数"]] for r in sheets[2][1:] if r[attempt_columns["任务 ID"]] == "c"] == ["1", "2"]
     assert any("处理 <script>文本 & 中文 😀" in r for r in sheets[0])
-    assert all(r[8] == "audit-fixture" for r in sheets[2][1:])
+    assert all(r[attempt_columns["模型"]] == "audit-fixture" for r in sheets[2][1:])
 print(json.dumps({"zip_crc": "pass", "xml": "pass", "sheet_rows": [len(r) for r in sheets], "task_instances": 2, "rounds": 3, "unicode": "pass", "synthesis_attempts": "pass"}))

@@ -157,6 +157,75 @@ class ProgressTests(unittest.TestCase):
         self.start("a"); self.finish("a"); self.start("b")
         self.assertRejectedUnchanged(lambda: self.start("a", retry=True))
 
+    def test_retry_invalidates_transitive_consumers_and_retains_attempts(self):
+        self.add({"id": "a", "title": "Build"}, {"id": "b", "title": "Validate", "depends_on": ["a"]},
+                 {"id": "c", "title": "Deliver", "depends_on": ["b"]})
+        for task in ["a", "b", "c"]:
+            self.start(task); self.finish(task, summary="Original " + task)
+        self.finish("root")
+        old_b = self.node("b")["attempt_id"]
+        self.start("a", retry=True)
+        self.assertEqual(self.progress()["ready_tasks"], [])
+        for task in ["b", "c", "root"]:
+            self.assertEqual(self.node(task)["execution_status"], "pending")
+            self.assertEqual(self.node(task)["invalidated_by"], "a")
+            self.assertEqual(self.node(task)["attempts"][0]["invalidated_by"], "a")
+        self.assertRejectedUnchanged(lambda: self.start("c"))
+        self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "b", "finished", outcome="resolved", attempt_id=old_b))
+        self.finish("a")
+        self.assertEqual(self.progress()["ready_tasks"], ["b"])
+        self.start("b"); self.finish("b")
+        self.assertNotIn("invalidated_by", self.node("b"))
+        self.assertEqual(self.node("b")["attempt"], 2)
+        self.assertEqual(self.progress()["ready_tasks"], ["c"])
+        self.start("c"); self.finish("c"); self.finish("root")
+        self.assertEqual(self.progress()["status"], "completed")
+
+    def test_retry_rejects_transitively_running_consumer_atomically(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B", "depends_on": ["a"]},
+                 {"id": "c", "title": "C", "depends_on": ["b"]})
+        for task in ["a", "b"]:
+            self.start(task); self.finish(task)
+        self.start("c")
+        self.assertRejectedUnchanged(lambda: self.start("a", retry=True))
+
+    def test_retry_invalidates_dependent_subtree_and_its_acceptance(self):
+        self.add({"id": "a", "title": "A"}, {"id": "g", "title": "Group", "depends_on": ["a"]},
+                 {"id": "next", "title": "Next", "depends_on": ["g"]})
+        self.add({"id": "child", "title": "Child"}, parent="g")
+        for task in ["a", "child"]:
+            self.start(task); self.finish(task)
+        self.finish("g")
+        self.start("a", retry=True)
+        self.assertEqual(self.node("g")["execution_status"], "pending")
+        self.assertEqual(self.node("child")["execution_status"], "pending")
+        self.assertRejectedUnchanged(lambda: self.start("next"))
+        self.finish("a"); self.start("child"); self.finish("child"); self.finish("g")
+        self.assertEqual(self.progress()["ready_tasks"], ["next"])
+
+    def test_failed_dependency_group_can_close_open_with_reason(self):
+        self.add({"id": "a", "title": "A"}, {"id": "g", "title": "G", "depends_on": ["a"]})
+        self.add({"id": "child", "title": "Child"}, parent="g")
+        aid = self.start("a")
+        server.update_task(self.sid, "a", "failed", attempt_id=aid)
+        server.update_task(self.sid, "child", "cancelled")
+        self.assertRejectedUnchanged(lambda: self.finish("g"))
+        self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open"))
+        self.finish("g", outcome="open", summary="Required input failed")
+        self.finish("root", outcome="open", summary="Cannot complete")
+        self.assertEqual(self.progress()["status"], "open")
+        self.assertEqual(self.node("g")["attempts"][0]["kind"], "synthesis")
+
+    def test_group_cancellation_requires_closed_children_metadata_and_reason(self):
+        self.add({"id": "child", "title": "Child"})
+        self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "cancelled", summary="Stop", assignment=ASSIGNMENT))
+        server.update_task(self.sid, "child", "cancelled")
+        self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "cancelled", assignment=ASSIGNMENT))
+        self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "cancelled", summary="Stop"))
+        server.update_task(self.sid, "root", "cancelled", summary="Stop", assignment=ASSIGNMENT)
+        self.assertEqual(self.progress()["status"], "cancelled")
+        self.assertEqual(self.node("root")["attempts"][0]["execution_status"], "cancelled")
+
     def test_retry_cannot_invalidate_ancestor_used_by_running_consumer(self):
         self.add({"id": "g", "title": "G"}, {"id": "b", "title": "B", "depends_on": ["g"]})
         self.add({"id": "a", "title": "A"}, parent="g")
@@ -235,6 +304,15 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(server.register_ui_view(self.sid, "legacy")["structuredContent"]["status"], "unregistered")
         self.assertEqual(server.check_ui_view(self.sid, "new")["structuredContent"]["status"], "latest")
 
+    def test_task_switch_waits_for_actual_replacement_view(self):
+        old = server.get_progress(self.sid)
+        self.register(old, "existing")
+        new = server.init_task_network("Next", self.sid)
+        self.assertEqual(server.check_ui_view(self.sid, "existing")["structuredContent"]["status"], "latest")
+        self.assertEqual(self.register(old, "old-remount"), "superseded")
+        self.register(new, "replacement")
+        self.assertEqual(server.check_ui_view(self.sid, "existing")["structuredContent"]["status"], "superseded")
+
     def test_state_order_survives_task_switch_and_clear(self):
         initial = server.get_progress(self.sid)["structuredContent"]["state_revision"]
         second = server.init_progress(["Legacy fixture"], session_id=self.sid)["structuredContent"]["state_revision"]
@@ -246,7 +324,8 @@ class ProgressTests(unittest.TestCase):
         self.assertIsNone(empty["progress"])
         self.assertEqual(empty["state_revision"], cleared)
         self.assertLess(cleared, recreated)
-        self.assertEqual(set(server._read_order(self.sid)), {"state_revision", "view_sequence"})
+        self.assertEqual(set(server._read_order(self.sid)), {"state_revision", "view_sequence", "require_task_instance_id"})
+        self.assertTrue(server._read_order(self.sid)["require_task_instance_id"])
 
     def test_linear_updates_also_advance_snapshot_order(self):
         r = server.init_progress(["One"], session_id=self.sid)
@@ -254,6 +333,24 @@ class ProgressTests(unittest.TestCase):
         result = server.update_step(self.sid, 0, "in_progress", assignment=ASSIGNMENT, task_instance_id=p["task_instance_id"])
         self.assertGreater(result["structuredContent"]["state_revision"], p["state_revision"])
         server.update_step(self.sid, 0, "completed", task_instance_id=p["task_instance_id"])
+
+    def test_linear_order_single_running_and_reopen_guards(self):
+        result = server.init_progress(["First", "Second"], legacy_linear=True)
+        sid = result["structuredContent"]["session_id"]
+        for status in ["in_progress", "completed"]:
+            with self.assertRaises(server.ProgressError):
+                server.update_step(sid, 1, status, assignment=ASSIGNMENT)
+        server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT)
+        with self.assertRaises(server.ProgressError):
+            server.update_step(sid, 1, "in_progress", assignment=ASSIGNMENT)
+        server.update_step(sid, 0, "completed")
+        server.update_step(sid, 1, "in_progress", assignment=ASSIGNMENT)
+        for status in ["pending", "in_progress"]:
+            with self.assertRaises(server.ProgressError):
+                server.update_step(sid, 0, status, assignment=ASSIGNMENT)
+        server.update_step(sid, 1, "pending")
+        server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT)
+        self.assertEqual([step["status"] for step in server.get_progress(sid)["structuredContent"]["progress"]["steps"]], ["in_progress", "pending"])
 
     def test_legacy_deadlocked_plan_can_still_be_read_and_replanned(self):
         self.add({"id": "g", "title": "G"})
