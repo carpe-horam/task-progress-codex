@@ -1,6 +1,6 @@
 {
   "name": "task-progress",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "默认自动跟踪 Codex 主会话与 agent 的多步骤任务；按会话隔离保存 HTN 任务网络、依赖、并行任务与验收证据。",
   "author": {
     "name": "machengling",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Task Progress",
     "shortDescription": "自动跟踪多步骤任务的计划与进度",
-    "longDescription": "Codex 主会话或 agent 遇到两个及以上步骤时默认自动启用，无需用户点名或项目 AGENTS.md/agent.md 额外要求。按会话隔离保存 HTN 任务网络，跟踪依赖、并行任务、派发记录、执行结果与验收证据；通过规划轮次和尝试标识隔离旧结果，兼容旧版顺序步骤 API。插件展示和记录进度，实际子智能体派发由主会话的协作工具完成。MCP Apps 客户端显示交互式任务卡片，纯文本客户端收到可读摘要。",
+    "longDescription": "Codex 主会话或 agent 遇到两个及以上步骤时默认自动启用，无需用户点名或项目 AGENTS.md/agent.md 额外要求。按会话隔离保存 HTN 任务网络，跟踪依赖、并行任务、派发记录、执行结果与验收证据；运行节点超过 10 分钟时，在下一次进度读取或更新中提示复核拆分。通过规划轮次和尝试标识隔离旧结果，兼容旧版顺序步骤 API。插件展示和记录进度，实际子智能体派发由主会话的协作工具完成。MCP Apps 客户端显示交互式任务卡片，纯文本客户端收到可读摘要。",
     "developerName": "machengling",
     "category": "Productivity",
     "capabilities": [

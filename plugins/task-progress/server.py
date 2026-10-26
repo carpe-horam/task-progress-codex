@@ -44,6 +44,7 @@ PROFILES = ("cheap", "standard", "heavy")
 EXECUTION_MODES = ("main_session", "subagent")
 REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 MAX_EXPORT_FILE_BYTES = 20 * 1024 * 1024
+LONG_RUNNING_REVIEW_SECONDS = 10 * 60
 TERMINAL_EXECUTION_STATUSES = {"finished", "failed", "cancelled"}
 HANDSHAKE_PROTOCOL_VERSIONS = {
     "2024-11-05",
@@ -66,6 +67,25 @@ class ProgressError(ValueError):
 
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _elapsed_seconds(started_at: Any, *, now: datetime | None = None) -> int | None:
+    if not isinstance(started_at, str) or not started_at:
+        return None
+    try:
+        started = datetime.fromisoformat(started_at)
+        if started.tzinfo is None:
+            started = started.astimezone()
+        current = now or datetime.now().astimezone()
+        return max(0, int((current - started).total_seconds()))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _needs_split_review(summary: Any) -> bool:
+    return not (isinstance(summary, str) and re.search(
+        r"拆分复核[：:]\s*(?:已拆分|无需拆分|不拆分|已评估)", summary
+    ))
 
 
 def _normalize_session_id(value: Any, *, generate: bool = False) -> str:
@@ -209,6 +229,32 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     if data.get("schema_version") == 2 and isinstance(data.get("nodes"), dict):
         return _network_progress_payload(data)
     total, completed, percent, status = _stats(data)
+    steps = [
+        {
+            "index": index,
+            "description": step["description"],
+            "status": step["status"],
+            "started_at": step.get("started_at"),
+            "finished_at": step.get("finished_at"),
+            **({"assignment": step["assignment"]} if step.get("assignment") else {}),
+            **({"note": step["note"]} if step.get("note") else {}),
+        }
+        for index, step in enumerate(data["steps"])
+    ]
+    split_review_due = []
+    for step in steps:
+        if step["status"] != "in_progress" or not _needs_split_review(step.get("note")):
+            continue
+        elapsed = _elapsed_seconds(step.get("started_at"))
+        if elapsed is not None and elapsed > LONG_RUNNING_REVIEW_SECONDS:
+            split_review_due.append({
+                "id": str(step["index"]),
+                "title": step["description"],
+                "started_at": step.get("started_at"),
+                "elapsed_seconds": elapsed,
+                "elapsed_minutes": elapsed // 60,
+                "execution_mode": step.get("assignment", {}).get("execution_mode"),
+            })
     return {
         "schema_version": 1,
         "state_revision": data.get("state_revision", 0),
@@ -223,18 +269,8 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "percent": percent,
         "created_at": data["created_at"],
         "updated_at": data["updated_at"],
-        "steps": [
-            {
-                "index": index,
-                "description": step["description"],
-                "status": step["status"],
-                "started_at": step.get("started_at"),
-                "finished_at": step.get("finished_at"),
-                **({"assignment": step["assignment"]} if step.get("assignment") else {}),
-                **({"note": step["note"]} if step.get("note") else {}),
-            }
-            for index, step in enumerate(data["steps"])
-        ],
+        "steps": steps,
+        "split_review_due": split_review_due,
     }
 
 
@@ -594,6 +630,20 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     open_leaves = [node for node in leaves if node.get("outcome") == "open"]
     failed_leaves = [node for node in leaves if node.get("execution_status") == "failed"]
     running_leaves = [node for node in leaves if node.get("execution_status") == "running"]
+    split_review_due = []
+    for node in running_leaves:
+        if not _needs_split_review(node.get("summary")):
+            continue
+        elapsed = _elapsed_seconds(node.get("started_at"))
+        if elapsed is not None and elapsed > LONG_RUNNING_REVIEW_SECONDS:
+            split_review_due.append({
+                "id": node["id"],
+                "title": node["title"],
+                "started_at": node.get("started_at"),
+                "elapsed_seconds": elapsed,
+                "elapsed_minutes": elapsed // 60,
+                "execution_mode": node.get("assignment", {}).get("execution_mode"),
+            })
     blocked_leaves = [node for node in leaves if node.get("execution_status") == "pending" and not _node_is_ready(data, node)]
     total = len(leaves)
     completed = len(terminal_leaves)
@@ -657,6 +707,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "failed_leaf_count": len(failed_leaves),
         "ready_count": len(ready_nodes),
         "executing_count": len(running_leaves),
+        "split_review_due": split_review_due,
         "blocked_count": len(blocked_leaves),
         "epoch": data.get("epoch", 0),
         "revision": data.get("revision", 0),
@@ -965,6 +1016,13 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
             f"📊 叶任务结束：{progress['completed']}/{progress['total']}（{progress['percent']}%），已解决 {progress['resolved_leaf_count']}，未解决 {progress['open_leaf_count']}，待执行 {progress['ready_count']}",
             f"状态：{progress['status']}",
         ]
+        for task in progress.get("split_review_due", []):
+            lines.append(
+                f"⚠️ 拆分复核到期：[{task['id']}] {task['title']} 已运行 {task['elapsed_minutes']} 分钟。"
+                "请现在检查是否有可独立执行或验收的阶段并拆分、安排；若拆分会干扰仍在运行的命令/Dagu/CI/子智能体，"
+                "保留该执行并说明原因，另拆安全的独立阶段；确无自然边界时，在任务摘要记录"
+                "“拆分复核：无需拆分—原因”。"
+            )
         main_session = progress.get("main_session")
         if isinstance(main_session, dict):
             provenance = main_session.get("metadata_provenance", {})
@@ -1009,6 +1067,11 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
         f"📊 进度：{progress['completed']}/{progress['total']} 步完成（{progress['percent']}%）",
         f"状态：{progress['status']}",
     ]
+    for task in progress.get("split_review_due", []):
+        lines.append(
+            f"⚠️ 拆分复核到期：步骤 [{task['id']}] {task['title']} 已运行 {task['elapsed_minutes']} 分钟。"
+            "请现在检查并拆分可独立阶段；若不拆，在步骤备注记录“拆分复核：无需拆分—原因”。"
+        )
     for step in progress["steps"]:
         icon = STATUS_ICONS.get(step["status"], "⬜")
         note = f" — {step['note']}" if step.get("note") else ""
@@ -1524,7 +1587,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "持续维护任务状态、结果与证据；在开始/派发、阶段结果、长命令或门禁阶段变化、阻塞、重规划和收尾时更新，不要只在开始时建计划或只在普通消息中汇报。运行中命令/子智能体保持 running 并记录可恢复的阶段摘要，禁止把排队或等待标成完成。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动时须提供 execution_mode（本次执行者，不等同父任务负责人）。主会话负责总计划、协调、集成和父级验收；子智能体只执行派发范围。主会话的 model/reasoning_effort 可省略；子智能体须提供本次派发配置。插件会标记元数据为调用方填报、未经 Codex 宿主核验。运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
+        "description": "持续维护任务状态、结果与证据；在开始/派发、阶段结果、长命令或门禁阶段变化、阻塞、重规划和收尾时更新，不要只在开始时建计划或只在普通消息中汇报。运行中命令/子智能体保持 running 并记录可恢复的阶段摘要，禁止把排队或等待标成完成。超过 10 分钟的运行中节点会在返回结果中附 split_review_due；必须先评估拆分可独立阶段，或在摘要记录具体的不拆原因，再继续常规工作/等待。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动时须提供 execution_mode（本次执行者，不等同父任务负责人）。主会话负责总计划、协调、集成和父级验收；子智能体只执行派发范围。主会话的 model/reasoning_effort 可省略；子智能体须提供本次派发配置。插件会标记元数据为调用方填报、未经 Codex 宿主核验。运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1595,7 +1658,7 @@ TOOLS = [
     {
         "name": "get_progress",
         "title": "读取任务进度",
-        "description": "读取指定会话的当前任务详情、task_instance_id 和 task_history 历史任务快照；HTN history 仅表示当前任务的计划轮次。MCP Apps 客户端会显示交互式进度面板。",
+        "description": "读取指定会话的当前任务详情、task_instance_id 和 task_history 历史任务快照；HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。MCP Apps 客户端会显示交互式进度面板。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -1754,7 +1817,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.5"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.6"},
             },
         )
 
