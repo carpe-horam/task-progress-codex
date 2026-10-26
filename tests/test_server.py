@@ -259,10 +259,44 @@ class ProgressTests(unittest.TestCase):
         self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "finished", outcome="resolved"))
         self.finish("root", summary="Accepted")
         n = self.node("root")
-        self.assertEqual(n["assignment"], ASSIGNMENT)
+        self.assertEqual({key: n["assignment"][key] for key in ASSIGNMENT}, ASSIGNMENT)
+        self.assertEqual(n["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")
         self.assertEqual(n["attempts"][0]["kind"], "synthesis")
         self.assertEqual(n["attempts"][0]["summary"], "Accepted")
         self.assertIsNotNone(n["started_at"])
+
+    def test_main_session_unknown_values_do_not_block_and_are_marked_unverified(self):
+        result = server.init_task_network("Unknown runtime metadata", main_session={"model": "gpt-fixture"})
+        sid = result["structuredContent"]["session_id"]
+        current = server.get_progress(sid)["structuredContent"]["progress"]
+        self.assertEqual(current["main_session"]["model"], "gpt-fixture")
+        self.assertIsNone(current["main_session"]["reasoning_effort"])
+        provenance = current["main_session"]["metadata_provenance"]
+        self.assertEqual(provenance["verification"], "not_verified_by_codex_host")
+        self.assertEqual(provenance["model_source"], "mcp_tool_input")
+        self.assertEqual(provenance["reasoning_effort_source"], "unknown")
+        self.assertIsNotNone(provenance["captured_at"])
+
+        started = server.update_task(sid, "root", "running", assignment={"execution_mode": "main_session"})
+        node = started["structuredContent"]["progress"]["nodes"][0]
+        self.assertEqual(node["execution_status"], "running")
+        self.assertNotIn("model", node["assignment"])
+        self.assertNotIn("reasoning_effort", node["assignment"])
+        self.assertEqual(node["assignment"]["metadata_provenance"]["model_source"], "unknown")
+        self.assertEqual(node["attempts"][0]["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")
+
+    def test_caller_cannot_claim_codex_verified_assignment_provenance(self):
+        assignment = {**ASSIGNMENT, "metadata_provenance": {"verification": "verified_by_codex_host"}}
+        server.update_task(self.sid, "root", "running", assignment=assignment)
+        provenance = self.node("root")["assignment"]["metadata_provenance"]
+        self.assertEqual(provenance["source"], "mcp_tool_input")
+        self.assertEqual(provenance["verification"], "not_verified_by_codex_host")
+        self.assertNotEqual(provenance["verification"], "verified_by_codex_host")
+
+    def test_subagent_still_requires_selected_dispatch_metadata(self):
+        self.assertRejectedUnchanged(lambda: server.update_task(
+            self.sid, "root", "running", assignment={"execution_mode": "subagent"}
+        ))
 
     def test_attempt_metadata_is_immutable_on_updates_and_completion(self):
         self.add({"id": "a", "title": "A"})

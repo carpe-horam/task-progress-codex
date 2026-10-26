@@ -260,19 +260,38 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
     }
 
 
-def _normalize_main_session(value: Any) -> dict[str, str] | None:
-    """Validate metadata supplied by the trusted main session at initialization."""
+def _normalize_main_session(value: Any) -> dict[str, Any] | None:
+    """Record caller-reported session settings without implying host verification."""
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise ProgressError("main_session 必须是包含主会话模型信息的对象。")
+        raise ProgressError("main_session 必须是对象。")
     model = value.get("model")
     effort = value.get("reasoning_effort")
-    if not isinstance(model, str) or not model.strip():
-        raise ProgressError("main_session.model 必须是非空字符串。")
-    if effort not in REASONING_EFFORTS:
+    if model is not None and not isinstance(model, str):
+        raise ProgressError("main_session.model 必须是字符串或省略。")
+    if effort == "":
+        effort = None
+    if effort is not None and effort not in REASONING_EFFORTS:
         raise ProgressError(f"main_session.reasoning_effort 必须是 {REASONING_EFFORTS} 之一。")
-    return {"model": model.strip(), "reasoning_effort": effort}
+    model = model.strip() if isinstance(model, str) and model.strip() else None
+    effort = effort or None
+    context = {}
+    for key in ("codex_thread_id", "codex_turn_id"):
+        identifier = value.get(key)
+        if identifier is not None:
+            if not isinstance(identifier, str):
+                raise ProgressError(f"main_session.{key} 必须是字符串。")
+            if identifier.strip():
+                context[key] = identifier.strip()
+    return {
+        "model": model,
+        "reasoning_effort": effort,
+        "metadata_provenance": _metadata_provenance(
+            {"model": model, "reasoning_effort": effort, **context}, scope="task_initialization"
+        ),
+        **context,
+    }
 
 
 def _new_network(
@@ -313,13 +332,24 @@ def _validate_node_id(value: Any) -> str:
     return value
 
 
+def _metadata_provenance(value: dict[str, Any], *, scope: str) -> dict[str, Any]:
+    return {
+        "source": "mcp_tool_input" if value.get("model") or value.get("reasoning_effort") else "unknown",
+        "verification": "not_verified_by_codex_host",
+        "model_source": "mcp_tool_input" if value.get("model") else "unknown",
+        "reasoning_effort_source": "mcp_tool_input" if value.get("reasoning_effort") else "unknown",
+        "captured_at": _now(),
+        "scope": scope,
+    }
+
+
 def _normalize_assignment(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, dict):
         raise ProgressError("assignment 必须是对象。")
     assignment: dict[str, Any] = {}
-    string_fields = ("tool_identifier", "tool_name", "dispatch_text", "agent_name", "model", "batch")
+    string_fields = ("tool_identifier", "tool_name", "dispatch_text", "agent_name", "model", "batch", "codex_thread_id", "codex_turn_id")
     for key in string_fields:
         field_value = value.get(key)
         if field_value is not None:
@@ -351,11 +381,23 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
 
 
 def _require_execution_metadata(assignment: dict[str, Any] | None) -> None:
-    if assignment is None:
-        raise ProgressError("启动任务必须提供 assignment，记录 execution_mode、model 和 reasoning_effort。")
-    missing = [key for key in ("execution_mode", "model", "reasoning_effort") if not assignment.get(key)]
+    if assignment is None or not assignment.get("execution_mode"):
+        raise ProgressError("启动任务必须提供 assignment.execution_mode。")
+    if assignment.get("execution_mode") == "main_session":
+        # A missing host-readable setting is better represented as unknown than
+        # guessed from config or model self-report; it must not block the work.
+        return
+    missing = [key for key in ("model", "reasoning_effort") if not assignment.get(key)]
     if missing:
-        raise ProgressError(f"启动任务时 assignment 必须包含实际执行配置：{', '.join(missing)}。")
+        raise ProgressError(f"启动子智能体任务时 assignment 必须包含派发配置：{', '.join(missing)}。")
+
+
+def _stamp_assignment(assignment: dict[str, Any], *, scope: str) -> dict[str, Any]:
+    stamped = dict(assignment)
+    # Do not accept caller-supplied provenance: current MCP arguments cannot
+    # authenticate Codex host metadata.
+    stamped["metadata_provenance"] = _metadata_provenance(stamped, scope=scope)
+    return stamped
 
 
 def _historical_ids(data: dict[str, Any]) -> set[str]:
@@ -684,6 +726,7 @@ def decompose_task(
 
 def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
     _require_execution_metadata(assignment)
+    assignment = _stamp_assignment(assignment or {}, scope="attempt_start")
     node.pop("invalidated_by", None)
     node["attempt"] = int(node.get("attempt", 0)) + 1
     node["attempt_id"] = str(uuid.uuid4())
@@ -922,6 +965,14 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
             f"📊 叶任务结束：{progress['completed']}/{progress['total']}（{progress['percent']}%），已解决 {progress['resolved_leaf_count']}，未解决 {progress['open_leaf_count']}，待执行 {progress['ready_count']}",
             f"状态：{progress['status']}",
         ]
+        main_session = progress.get("main_session")
+        if isinstance(main_session, dict):
+            provenance = main_session.get("metadata_provenance", {})
+            verification = "调用方填报，未经 Codex 宿主核验" if provenance.get("verification") == "not_verified_by_codex_host" else "来源未标注"
+            lines.append(
+                f"主会话设置：model={main_session.get('model') or '未记录'}；"
+                f"reasoning={main_session.get('reasoning_effort') or '未记录'}；{verification}"
+            )
         by_id = {node["id"]: node for node in progress["nodes"]}
 
         def visit(node_id: str, depth: int = 0) -> None:
@@ -941,7 +992,9 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
                     executor = "子智能体"
                 else:
                     executor = "执行者未记录"
-                lines.append(f"{prefix}  执行：{executor}；model={assignment.get('model') or '未记录'}；reasoning={assignment.get('reasoning_effort') or '未记录'}")
+                provenance = assignment.get("metadata_provenance", {})
+                verification = "调用方填报，未经 Codex 宿主核验" if provenance.get("verification") == "not_verified_by_codex_host" else "来源未标注"
+                lines.append(f"{prefix}  执行：{executor}；model={assignment.get('model') or '未记录'}；reasoning={assignment.get('reasoning_effort') or '未记录'}；{verification}")
             if node.get("summary"):
                 lines.append(f"{prefix}  结果：{node['summary']}")
             for evidence in node.get("evidence", []):
@@ -1076,7 +1129,7 @@ def update_step(
                 step["started_at"] = _now()
                 # A new run (including reopening a completed step) gets a fresh
                 # snapshot so fields from an earlier dispatch cannot linger.
-                step["assignment"] = dict(normalized_assignment or {})
+                step["assignment"] = _stamp_assignment(normalized_assignment or {}, scope="step_start")
             elif normalized_assignment is not None:
                 snapshot = step.get("assignment", {})
                 changed = [
@@ -1320,16 +1373,18 @@ def _tool_meta() -> dict[str, Any]:
 def _assignment_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "description": "执行者与运行参数；启动任务/步骤时必须提供 execution_mode、model 和 reasoning_effort。Task Progress 只记录信息，不实际创建或调用子智能体。",
+        "description": "execution_mode 表示本次 attempt 的实际执行者，不表示父任务负责人：主会话负责总计划、协调、集成和父级验收；子智能体只执行明确派发的子任务并向主会话报告。主会话只需 execution_mode；model/reasoning_effort 拿不到可信来源时可省略。子智能体须提供本次派发配置。所有 MCP 入参标记为调用方填报、未经 Codex 宿主核验。Task Progress 不会自动读取 Codex 当前 thread/turn。",
         "properties": {
-            "execution_mode": {"type": "string", "enum": list(EXECUTION_MODES), "description": "实际执行任务的是主会话还是子智能体"},
+            "execution_mode": {"type": "string", "enum": list(EXECUTION_MODES), "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"},
             "tool_identifier": {"type": "string", "description": "派发工具标识"},
             "tool_name": {"type": "string", "description": "工具中文名称"},
             "dispatch_text": {"type": "string", "description": "完整、自包含的派发任务文本"},
             "agent_name": {"type": "string", "description": "子智能体标识或名称"},
             "fork_turns": {"type": "string", "enum": ["none"]},
-            "model": {"type": "string", "description": "选定模型"},
-            "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS)},
+            "model": {"type": "string", "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"},
+            "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS), "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"},
+            "codex_thread_id": {"type": "string", "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"},
+            "codex_turn_id": {"type": "string", "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"},
             "profile": {"type": "string", "enum": list(PROFILES)},
             "batch": {"type": "string", "description": "派发批次"},
         },
@@ -1353,9 +1408,13 @@ def _task_schema() -> dict[str, Any]:
                 "description": "resolved 要求前驱已解决；finished 允许前驱以 open/failed/cancelled 结束后放行，并携带证据。",
             },
             "profile": {"type": "string", "enum": list(PROFILES)},
-            "assignment": _assignment_schema(),
+            "assignment": {
+                **_assignment_schema(),
+                "description": "必填。计划阶段标记此节点的执行者：execution_mode=main_session 或 subagent。分组节点设 main_session 表示主会话负责协调和综合验收；叶节点按分工指定。它不转移主会话的根任务统筹与集成职责。",
+                "required": ["execution_mode"],
+            },
         },
-        "required": ["id", "title"],
+        "required": ["id", "title", "assignment"],
     }
 
 
@@ -1428,12 +1487,13 @@ TOOLS = [
                 "task_title": {"type": "string", "description": "根任务标题"},
                 "main_session": {
                     "type": "object",
-                    "description": "仅填写当前主会话已明确提供的准确模型和思考强度；不可猜测或从模型目录、子智能体、历史记录回填。未知时整体省略，卡片会显示‘未记录’。",
+                    "description": "主会话设置快照。model/reasoning_effort 可单独省略；未知时不要猜测，任务仍可初始化。当前插件只收到调用方入参，卡片会标明来源未由 Codex 宿主核验。",
                     "properties": {
-                        "model": {"type": "string", "description": "主会话模型标识"},
-                        "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS), "description": "主会话思考强度"},
+                        "model": {"type": "string", "description": "仅填当前会话明确暴露的模型标识；未知时省略"},
+                        "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS), "description": "仅填当前会话明确暴露的思维强度；未知时省略"},
+                        "codex_thread_id": {"type": "string", "description": "可选，仅在 Codex 宿主明确提供时填写；当前插件不会验证"},
+                        "codex_turn_id": {"type": "string", "description": "可选，仅在 Codex 宿主明确提供时填写；当前插件不会验证"},
                     },
-                    "required": ["model", "reasoning_effort"],
                 },
                 "session_id": {
                     **_session_property(),
@@ -1447,7 +1507,7 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "分解或追加子任务，继承祖先的依赖约束并检查执行死锁。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。拆分时评估可并行的独立工作，默认委派给子智能体；每个子任务都必须提供 assignment.execution_mode（分组节点设 main_session，叶节点按分工设 main_session/subagent）。主会话负责总计划、派发、协调、集成和父级验收；子智能体只执行派发范围并向主会话报告，不验收父节点。Task Progress 不会自动派发。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1464,7 +1524,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "更新任务状态、结果与证据。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动 running 或分组收尾须完整 assignment，运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
+        "description": "持续维护任务状态、结果与证据；在开始/派发、阶段结果、长命令或门禁阶段变化、阻塞、重规划和收尾时更新，不要只在开始时建计划或只在普通消息中汇报。运行中命令/子智能体保持 running 并记录可恢复的阶段摘要，禁止把排队或等待标成完成。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动时须提供 execution_mode（本次执行者，不等同父任务负责人）。主会话负责总计划、协调、集成和父级验收；子智能体只执行派发范围。主会话的 model/reasoning_effort 可省略；子智能体须提供本次派发配置。插件会标记元数据为调用方填报、未经 Codex 宿主核验。运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1517,7 +1577,7 @@ TOOLS = [
     {
         "name": "update_step",
         "title": "更新任务步骤",
-        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供完整 assignment（execution_mode、model、reasoning_effort）。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回文本及可视化面板数据。",
+        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供 execution_mode。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。所有入参会标记为调用方填报、未经 Codex 宿主核验。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回文本及可视化面板数据。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1694,7 +1754,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.3"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.5"},
             },
         )
 

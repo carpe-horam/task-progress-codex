@@ -92,6 +92,7 @@ async function main() {
   if (!await card.locator('details[data-key$=":root"]').evaluate(e=>e.open)) await card.locator('details[data-key$=":root"] > summary').click();
   assert.equal(await card.locator('.step-title').count(),3);
   assert.equal(await card.locator('#error').textContent(),'');
+  assert.match(await card.locator('#network-meta').innerText(),/未经 Codex 宿主核验/);
   await card.locator('#refresh').click();
   await card.locator('#refresh:not([disabled])').waitFor();
   assert(await card.locator('details[data-key$=":root"]').getAttribute('open') !== null);
@@ -100,6 +101,7 @@ async function main() {
   const running=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:fixtureAssignment});
   const aid=running.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   await notify('current',running);
+  assert.match(await card.locator('li.step:has([data-key$=":a"]) .step-execution-meta').innerText(),/未由 Codex 核实/);
   await page.evaluate(()=>{window.audit.holdRead=true;});
   await card.locator('#refresh').click();
   await page.waitForFunction(()=>window.audit.held.length===1);

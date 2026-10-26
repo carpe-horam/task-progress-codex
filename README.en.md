@@ -22,7 +22,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, a
 | **Automatic planning for multi-step work** | When the Codex main session or an agent has two or more identifiable steps, the plugin uses an HTN task network by default. No extra project-level rules are required. |
 | **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
 | **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
-| **Execution and model records** | See whether work was done by the main session or a subagent, along with the model and reasoning effort used. |
+| **Execution and model records** | See the executor and any available model/effort values, with caller-reported and Codex verification status; unknown values are not guessed. |
 | **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
 | **Automatic refresh** | The task panel refreshes every five seconds and also supports manual refresh. |
 | **Export execution records** | Export an Excel workbook and a visual HTML report together to `~/Downloads/Task Progress Exports`. |
@@ -82,7 +82,7 @@ Default behavior:
 - Multi-step tasks use an HTN task network. The linear-step mode is reserved for workflows explicitly requested as linear or for resuming an existing legacy task.
 - Reuse the same `session_id` within a conversation. Starting a new task moves the previous task into history.
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
-- Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.”
+- Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.” Caller-supplied values include a capture time and are labeled as unverified by the Codex host.
 
 ## Data and requirements
 
