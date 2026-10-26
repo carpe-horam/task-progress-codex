@@ -1,0 +1,24 @@
+[
+  {
+    "file": "2026-10-26-fixture-export.xlsx",
+    "zip_crc": "pass",
+    "xml": "pass",
+    "sheet_rows_including_headers": [
+      4,
+      2,
+      2
+    ],
+    "unicode_text": "pass"
+  },
+  {
+    "file": "2026-10-26-fixture-history-export.xlsx",
+    "zip_crc": "pass",
+    "xml": "pass",
+    "sheet_rows_including_headers": [
+      7,
+      4,
+      5
+    ],
+    "unicode_text": "pass"
+  }
+]

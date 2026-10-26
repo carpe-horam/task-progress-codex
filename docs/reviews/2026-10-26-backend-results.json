@@ -1,0 +1,181 @@
+{
+  "source": "dafb74a",
+  "cases": [
+    {
+      "case": "basic_lifecycle_and_attempt_guard",
+      "category": "pass",
+      "observed": "A -> B -> root; premature B and wrong attempt rejected"
+    },
+    {
+      "case": "finished_policy_evidence",
+      "category": "pass",
+      "observed": [
+        {
+          "id": "a",
+          "title": "A",
+          "execution_status": "failed",
+          "outcome": null,
+          "summary": "Failure details",
+          "evidence": [
+            "fixture://failure"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "sibling_cycle_atomicity",
+      "category": "pass",
+      "observed": "父子层级与 depends_on 合并后出现循环依赖。"
+    },
+    {
+      "case": "ancestor_dependency_bypass",
+      "category": "defect",
+      "observed": {
+        "ready_before_start": [
+          "a",
+          "g1"
+        ],
+        "a": "pending",
+        "g1": "running"
+      }
+    },
+    {
+      "case": "ancestor_dependency_deadlock",
+      "category": "defect",
+      "observed": {
+        "accepted": true,
+        "ready": [],
+        "start_child_error": "该任务尚未 ready；请先完成依赖，或显式设置 dependency_policy=finished。",
+        "finish_parent_error": "父任务必须等所有直接子任务结束后再综合验收。"
+      }
+    },
+    {
+      "case": "retry_under_completed_root",
+      "category": "defect",
+      "observed": {
+        "status": "completed",
+        "percent": 0,
+        "executing_count": 1,
+        "root": "finished",
+        "retry_root_error": "分组任务由子任务执行；请完成子任务后再提交父任务综合结果。"
+      }
+    },
+    {
+      "case": "retry_bypasses_dependency",
+      "category": "defect",
+      "observed": {
+        "a": "running",
+        "b": "running"
+      }
+    },
+    {
+      "case": "replan_generated_id_collision",
+      "category": "defect",
+      "observed": {
+        "root_id": "root-e1",
+        "epoch": 1,
+        "status": "completed",
+        "summary": "Late old leaf result"
+      }
+    },
+    {
+      "case": "running_leaf_split",
+      "category": "defect",
+      "observed": {
+        "running_parent": "running",
+        "executing_count": 0,
+        "cancel_error": "分组任务由子任务执行；请完成子任务后再提交父任务综合结果。",
+        "rebuild_error": "仍有任务处于 running，核实或结束这些尝试后再重建网络。"
+      }
+    },
+    {
+      "case": "parent_synthesis_assignment_dropped",
+      "category": "defect",
+      "observed": {
+        "assignment": {},
+        "attempt": 0,
+        "attempts": [],
+        "started_at": null,
+        "finished_at": "2026-10-26T09:08:46+08:00"
+      }
+    },
+    {
+      "case": "cancelled_root_overall_status",
+      "category": "defect",
+      "observed": {
+        "status": "waiting_synthesis",
+        "root_status": "cancelled",
+        "percent": 100
+      }
+    },
+    {
+      "case": "nested_ready_group_looks_blocked",
+      "category": "defect",
+      "observed": {
+        "root_status": "blocked",
+        "ready_tasks": [
+          "g1"
+        ],
+        "g_status": "decomposing"
+      }
+    },
+    {
+      "case": "changed_assignment_silently_ignored",
+      "category": "contract_gap",
+      "observed": {
+        "accepted": true,
+        "stored_model": "audit-fixture"
+      }
+    },
+    {
+      "case": "stale_task_and_attempt_isolation",
+      "category": "pass",
+      "observed": "old attempt, old task ID and omitted ID after archive rejected"
+    },
+    {
+      "case": "ordinary_replan_id_guard",
+      "category": "pass",
+      "observed": "ordinary historical task IDs cannot be reused or updated"
+    },
+    {
+      "case": "concurrent_process_writes",
+      "category": "pass",
+      "observed": "12 parallel independent additions retained; valid JSON"
+    },
+    {
+      "case": "view_registration_order",
+      "category": "defect",
+      "observed": {
+        "session_id": "1c8a93dd-3fe7-4a67-bb44-bb2d40a00a8d",
+        "view_id": "newer-card",
+        "status": "superseded",
+        "registered": true,
+        "is_latest": false
+      }
+    },
+    {
+      "case": "clear_session_isolation",
+      "category": "pass",
+      "observed": "clearing one fixture preserves another and invalidates its view"
+    },
+    {
+      "case": "export_save_collision_and_path_guard",
+      "category": "pass",
+      "observed": "paired files, collision suffix, 0600 permissions, path rejection"
+    },
+    {
+      "case": "launcher_and_stdio_smoke",
+      "category": "pass",
+      "observed": "initialize, 13 tools, original HTML resource"
+    },
+    {
+      "case": "malformed_rpc_crashes_server",
+      "category": "robustness",
+      "observed": {
+        "exit": 1,
+        "response": "",
+        "error": "AttributeError: 'list' object has no attribute 'get'"
+      }
+    }
+  ]
+}
