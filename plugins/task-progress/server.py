@@ -1817,7 +1817,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.6"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.7"},
             },
         )
 

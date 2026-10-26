@@ -1068,7 +1068,7 @@ const esc=value=>String(value==null?"":value).replace(/&/g,"&amp;").replace(/</g
     }, { threshold: 0 }).observe(document.querySelector('.card'));
   }
   render(null);
-  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.6' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.7' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
     .then(result => { displayMode = result?.hostContext?.displayMode ?? null; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {
