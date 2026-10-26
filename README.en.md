@@ -22,7 +22,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, a
 | **Automatic planning for multi-step work** | When the Codex main session or an agent has two or more identifiable steps, the plugin uses an HTN task network by default. No extra project-level rules are required. |
 | **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
 | **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
-| **Execution and model records** | See whether work was done by the main session or a subagent, along with the model and reasoning effort used. |
+| **Execution and model records** | See the executor and any available model/effort values, with caller-reported and Codex verification status; unknown values are not guessed. |
 | **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
 | **Automatic refresh** | The task panel refreshes every five seconds and also supports manual refresh. |
 | **Export execution records** | Export an Excel workbook and a visual HTML report together to `~/Downloads/Task Progress Exports`. |
@@ -56,9 +56,10 @@ Add this marketplace from a terminal:
 
 ```sh
 codex plugin marketplace add carpe-horam/task-progress-codex
+codex plugin add task-progress@task-progress-codex
 ```
 
-Then open **Plugins Directory** in the Codex desktop app, find **Task Progress**, and install it. Reload or restart Codex if the marketplace listing has not updated.
+You can also open **Plugins Directory** in the Codex desktop app, find **Task Progress**, and install it. Restart Codex after the first installation so the plugin server and UI load.
 
 ### Install from a local clone
 
@@ -68,6 +69,23 @@ codex plugin marketplace add ./task-progress-codex
 ```
 
 Then install **Task Progress** from **Plugins Directory**.
+
+### Update the plugin
+
+For a GitHub Marketplace installation, refresh the marketplace snapshot:
+
+```sh
+codex plugin marketplace upgrade task-progress-codex
+```
+
+For a local clone, pull the latest version from the repository:
+
+```sh
+cd task-progress-codex
+git pull --ff-only origin main
+```
+
+Restart the Codex desktop app after updating so the local installation loads the new files. Refreshing a marketplace snapshot updates the available plugin source; if the desktop app still shows an older version, update or reinstall **Task Progress** in **Plugins Directory**, then restart Codex.
 
 ## Getting started
 
@@ -82,7 +100,7 @@ Default behavior:
 - Multi-step tasks use an HTN task network. The linear-step mode is reserved for workflows explicitly requested as linear or for resuming an existing legacy task.
 - Reuse the same `session_id` within a conversation. Starting a new task moves the previous task into history.
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
-- Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.”
+- Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.” Caller-supplied values include a capture time and are labeled as unverified by the Codex host.
 
 ## Data and requirements
 
@@ -90,6 +108,16 @@ Default behavior:
 - Python 3 is required to run the MCP server. The current `.mcp.json` launcher configuration targets macOS and Linux. A Windows launcher is included, but the Windows MCP configuration has not been verified.
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
 - Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.
+
+## Regression checks
+
+Retries invalidate downstream results and related acceptances while preserving attempt history for inspection in the card. Automatic refresh preserves focus, selection and reading position, reports synchronization failures, and follows the host's light/dark theme.
+
+Leaf tasks and linear steps must start before they can be marked complete. After clearing a session, new task writes require `task_instance_id` so delayed requests cannot alter the replacement task. Exports label invalidated attempts and distinguish group acceptance from cancellation/failure closure.
+
+Run `python3 -m unittest discover -s tests -v` for backend regressions. Run `node tests/test_app.cjs` with an existing Playwright installation and Chrome for browser checks against a simulated MCP Apps host. See [test instructions](tests/README.md).
+
+Clearing a session deletes its progress, task history, and view registration. Content-free ordering counters remain so late responses cannot restore deleted tasks or supersede newer ones.
 
 ## Project structure
 

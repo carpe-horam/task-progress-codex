@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Task Progress</title>
+  <defs>
+    <linearGradient id="node" x1="180" y1="80" x2="328" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8297FF"/>
+      <stop offset="1" stop-color="#526BFA"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="#9EAEFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="18">
+    <path d="M256 191v64M132 255h248M132 255v61M256 255v61M380 255v61"/>
+  </g>
+
+  <rect x="184" y="76" width="144" height="116" rx="38" fill="url(#node)"/>
+  <path d="M219 116h74M219 145h48" fill="none" stroke="#F5F7FF" stroke-linecap="round" stroke-width="15"/>
+
+  <rect x="88" y="315" width="88" height="88" rx="27" fill="#38C9A5"/>
+  <path d="m111 359 14 14 29-31" fill="none" stroke="#102B3A" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"/>
+
+  <rect x="212" y="315" width="88" height="88" rx="27" fill="#647BFF"/>
+  <circle cx="256" cy="359" r="8" fill="#F5F7FF"/>
+
+  <rect x="336" y="315" width="88" height="88" rx="27" fill="#647BFF"/>
+  <circle cx="380" cy="359" r="8" fill="#F5F7FF"/>
+</svg>

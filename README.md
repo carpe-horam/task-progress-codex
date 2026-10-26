@@ -22,7 +22,7 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 | **自动规划多步骤任务** | Codex 主会话或 agent 遇到两个及以上步骤时，默认使用 HTN 任务网络跟踪；不需要在每个项目里重复配置规则。 |
 | **表达依赖与并行** | 标记任务前置条件。依赖已满足的任务可执行，同一批互不依赖的任务可以并行推进。 |
 | **按会话隔离与保存历史** | 每个 Codex 会话有独立进度；同一会话开始新任务后，旧任务归档到历史。重规划轮次和重试记录也会保留。 |
-| **记录执行者与模型** | 展示主会话或子智能体、实际模型和思考强度，帮助回顾任务由谁、以什么配置完成。 |
+| **记录执行者与模型** | 展示主会话或子智能体，以及可获取的模型和思考强度；标注调用方填报与 Codex 核验状态，未知时不猜测。 |
 | **查看结果与耗时** | 汇总任务状态、进度、持续时间、结果摘要与验收证据；详情默认收起，按需展开。 |
 | **自动刷新** | 任务面板每 5 秒刷新一次，也可手动刷新。 |
 | **导出执行记录** | 一键同时导出 Excel 工作簿和可视化 HTML，保存到本机 `Downloads/Task Progress Exports`。 |
@@ -46,7 +46,7 @@ flowchart LR
 
 插件负责保存任务网络、派发信息、状态、结果和证据；Codex 主会话负责实际执行、创建子智能体、协调并验收结果。记录了子智能体任务不等于插件自动创建了子智能体。
 
-长任务也更容易检查：单个任务执行超过 10 分钟时，skill 会要求 Codex 评估是否有必要拆成更细、可独立检查的任务；只有确实能改善执行或进度可见性时才拆分。
+长任务也更容易检查：单个任务执行超过 10 分钟后，进度工具会在下一次读取或更新时返回拆分复核提醒，要求 Codex 拆出可独立阶段，或记录不拆分的原因；不会为了拆分而中断正在运行的 Dagu、CI 或命令。
 
 ## 安装
 
@@ -56,9 +56,10 @@ flowchart LR
 
 ```sh
 codex plugin marketplace add carpe-horam/task-progress-codex
+codex plugin add task-progress@task-progress-codex
 ```
 
-然后在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装。如果插件目录尚未更新，重载或重启 Codex 后再查看。
+也可以在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装。首次安装后重启 Codex，让插件服务和界面加载完成。
 
 ### 从本地克隆安装
 
@@ -68,6 +69,23 @@ codex plugin marketplace add ./task-progress-codex
 ```
 
 然后在 **Plugins Directory** 中安装 **Task Progress**。
+
+### 更新插件
+
+从 GitHub Marketplace 安装的插件，先刷新 Marketplace 快照：
+
+```sh
+codex plugin marketplace upgrade task-progress-codex
+```
+
+从本地克隆安装的插件，先在仓库目录拉取新版本：
+
+```sh
+cd task-progress-codex
+git pull --ff-only origin main
+```
+
+更新后重启 Codex 桌面端，使本地安装加载新文件。更新 Marketplace 快照只刷新可用插件来源；如果桌面端仍显示旧版，请在 **Plugins Directory** 中重新安装或更新 **Task Progress**，然后重启 Codex。
 
 ## 开始使用
 
@@ -82,7 +100,11 @@ codex plugin marketplace add ./task-progress-codex
 - 多步骤任务使用 HTN 任务网络；线性步骤模式仅用于用户明确要求线性流程或恢复旧版任务。
 - 同一会话复用 session ID；开始新任务时，当前任务进入历史记录。
 - 同一任务需要调整方案时，使用重规划轮次；重试会保留新的执行尝试记录。
-- 对不确定的模型或思考强度不猜测；未知值会显示为未记录。
+- 重试会使依赖旧结果的下游及相关验收失效，必须重新执行或验收；卡片可展开查看保留的执行记录。
+- 叶任务和顺序步骤必须先启动再标记完成；清空会话后，新任务的写入必须携带 `task_instance_id`，避免迟到请求污染新任务。
+- 导出会标明旧执行记录是否已失效，并区分分组验收与取消/失败收尾。
+- 自动刷新保留键盘焦点、文本选择和阅读位置，显示同步失败及恢复状态；卡片适配窄窗口和宿主明暗主题。
+- 对不确定的模型或思考强度不猜测；未知值会显示为未记录。调用方填写的配置会标注采集时间，并明确显示“未经 Codex 宿主核验”。
 
 ## 数据与运行要求
 
@@ -90,6 +112,11 @@ codex plugin marketplace add ./task-progress-codex
 - 运行 MCP 服务需要 Python 3。当前 `.mcp.json` 启动配置面向 macOS/Linux；仓库包含 Windows 启动器，但 Windows MCP 配置尚未验证。
 - 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
 - Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。
+- 清除任务会删除当前进度、任务历史和视图登记；只保留不含任务内容的顺序计数器，防止迟到响应恢复已清除内容或替换新任务。
+
+## 开发验证
+
+后端回归使用 Python 标准库：`python3 -m unittest discover -s tests -v`。浏览器回归运行真实前端、隔离服务端与模拟 MCP Apps 宿主，需已有 Playwright 和 Chrome：`node tests/test_app.cjs`。详见 [测试说明](tests/README.md)。
 
 ## 项目结构
 
