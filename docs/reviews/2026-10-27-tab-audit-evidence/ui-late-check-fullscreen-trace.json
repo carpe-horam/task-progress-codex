@@ -1,0 +1,247 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+        "view_id": "view-mvqh4red-gcmnz8k6nc",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "3c8fcfd7-011a-4813-80a8-dba2b96163ec",
+        "display_mode": "inline"
+      },
+      "at": 1793092758738,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "view_id": "view-mvqh4red-gcmnz8k6nc",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      }
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+        "view_id": "view-mvqh4rgb-agnlhcm7k25",
+        "view_sequence": 2,
+        "state_revision": 1,
+        "task_instance_id": "3c8fcfd7-011a-4813-80a8-dba2b96163ec",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793092758784,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "view_id": "view-mvqh4rgb-agnlhcm7k25",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      }
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+        "view_id": "view-mvqh4red-gcmnz8k6nc",
+        "display_mode": "inline"
+      },
+      "at": 1793092761756,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话已打开完整进度标签页，会话内视图暂时隐藏。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "view_id": "view-mvqh4red-gcmnz8k6nc",
+          "status": "hidden_by_fullscreen",
+          "registered": true,
+          "is_latest": true
+        }
+      }
+    },
+    {
+      "frame": "tab",
+      "name": "unregister_ui_view",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+        "view_id": "view-mvqh4rgb-agnlhcm7k25"
+      },
+      "at": 1793092761759,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话尚未登记进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "view_id": "view-mvqh4rgb-agnlhcm7k25",
+          "status": "unregistered",
+          "registered": false,
+          "is_latest": false
+        }
+      }
+    },
+    {
+      "frame": "main",
+      "name": "get_progress",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c"
+      },
+      "at": 1793092761863,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：Race A: stale inline check（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 1\n状态：in_progress\n单步原因：single isolated task\n- [root] Race A: stale inline check — ready"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 1,
+            "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+            "task_instance_id": "3c8fcfd7-011a-4813-80a8-dba2b96163ec",
+            "task_history": [],
+            "task_title": "Race A: stale inline check",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated task",
+            "status": "in_progress",
+            "root_status": "ready",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 1,
+            "executing_count": 0,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 0,
+            "root_id": "root",
+            "created_at": "2026-10-27T17:19:18+08:00",
+            "updated_at": "2026-10-27T17:19:18+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "Race A: stale inline check",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "pending",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {},
+                "profile": null,
+                "attempt": 0,
+                "attempt_id": null,
+                "attempts": [],
+                "started_at": null,
+                "finished_at": null,
+                "status": "ready",
+                "ready": true,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [
+              "root"
+            ],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "state_revision": 1,
+          "view_sequence": 3
+        }
+      }
+    },
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+        "view_id": "view-mvqh4red-gcmnz8k6nc",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "3c8fcfd7-011a-4813-80a8-dba2b96163ec",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793092761866,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7fe75528-4ab9-45b1-a0a8-281e24d1016c",
+          "view_id": "view-mvqh4red-gcmnz8k6nc",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      }
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793092758732
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793092758754
+    },
+    {
+      "frame": "tab",
+      "height": 193,
+      "at": 1793092758783
+    },
+    {
+      "frame": "tab",
+      "height": 256,
+      "at": 1793092758794
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793092761863
+    }
+  ],
+  "modeRequests": [],
+  "held": []
+}

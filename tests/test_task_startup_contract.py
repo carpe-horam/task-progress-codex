@@ -100,12 +100,19 @@ class TaskStartupContractTests(unittest.TestCase):
         events = hooks["hooks"]
         self.assertIn("SessionStart", events)
         self.assertIn("UserPromptSubmit", events)
-        self.assertEqual(manifest["version"], "0.1.2")
+        self.assertRegex(manifest["version"], r"^\d+\.\d+\.\d+$")
         serialized = json.dumps(manifest).lower()
         self.assertNotIn("trusted_hash", serialized)
         self.assertNotIn("trust", serialized)
-        app = (PLUGIN / "app.html").read_text()
-        self.assertIn("version: '0.1.2'", app)
+        initialized = json.loads(server.handle({"jsonrpc": "2.0", "id": 1,
+                                               "method": "initialize", "params": {}}))
+        self.assertEqual(initialized["result"]["serverInfo"]["version"], manifest["version"])
+        resource = json.loads(server.handle({"jsonrpc": "2.0", "id": 2,
+                                            "method": "resources/read",
+                                            "params": {"uri": server.RESOURCE_URI}}))
+        app = resource["result"]["contents"][0]["text"]
+        self.assertIn(f"version: '{manifest['version']}'", app)
+        self.assertNotIn("__TASK_PROGRESS_VERSION__", app)
 
     def test_tool_schema_exposes_atomic_plan_and_idempotency_fields(self):
         response = json.loads(server.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/list"}))

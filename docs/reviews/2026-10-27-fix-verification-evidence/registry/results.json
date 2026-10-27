@@ -1,0 +1,519 @@
+{
+  "binding": {
+    "server": "/Users/machengling/.codex/worktrees/4d11/task-process/plugins/task-progress/server.py",
+    "sha256_before": "abc3ff032397f01feb7c30cf4b09898bdf9da6b2eb61d3eef9e8df667ed7a2aa",
+    "sha256_after": "abc3ff032397f01feb7c30cf4b09898bdf9da6b2eb61d3eef9e8df667ed7a2aa",
+    "source_stable_during_run": true,
+    "session_dir": "/tmp/task-progress-fix-verify-registry/sessions",
+    "python_version": "3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "script": "/private/tmp/task-progress-fix-verify-registry/verify_registry.py"
+  },
+  "results": [
+    {
+      "case": "UI02_owner_recovery",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "before": "superseded",
+        "after": "latest",
+        "reregister": "registered",
+        "registry": {
+          "views": {
+            "old": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "dbe0c995-9ecf-4e43-869a-19b11708ff9e",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "dbe0c995-9ecf-4e43-869a-19b11708ff9e"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "new": 1793098949.1932101
+          },
+          "inline_owner": "old",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 2,
+            "task_instance_id": "dbe0c995-9ecf-4e43-869a-19b11708ff9e"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "UI02_fullscreen_return_source",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "hidden": "hidden_by_fullscreen",
+        "return": "superseded",
+        "after_return": "latest",
+        "registry_after_return": {
+          "views": {
+            "inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "8329e215-0719-4972-b5f2-18f17a0e625a",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "8329e215-0719-4972-b5f2-18f17a0e625a"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            },
+            "tab": {
+              "state_revision": 2,
+              "view_sequence": 3,
+              "task_instance_id": "8329e215-0719-4972-b5f2-18f17a0e625a",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "8329e215-0719-4972-b5f2-18f17a0e625a"
+              },
+              "inline_eligible": false,
+              "expires_at": null
+            }
+          },
+          "released_views": {},
+          "inline_owner": "inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "8329e215-0719-4972-b5f2-18f17a0e625a"
+          }
+        },
+        "after_teardown": "latest"
+      },
+      "passed": true
+    },
+    {
+      "case": "UI03_same_source_single_owner",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "checks": [
+          "superseded",
+          "latest"
+        ],
+        "retry_first": "superseded",
+        "checks_after_retry": [
+          "superseded",
+          "latest"
+        ],
+        "after_owner_close": "latest",
+        "registry": {
+          "views": {
+            "mount-1": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "0a609fe9-b883-4ff9-bda1-db6ff0a59e96",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "0a609fe9-b883-4ff9-bda1-db6ff0a59e96"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "mount-2": 1793098949.247861
+          },
+          "inline_owner": "mount-1",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "0a609fe9-b883-4ff9-bda1-db6ff0a59e96"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "UI04A_close_accepted",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "before": "hidden_by_fullscreen",
+        "after": "latest",
+        "late_registration": "superseded",
+        "after_late": "latest",
+        "registry": {
+          "views": {
+            "inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "f6e900c0-20d9-4144-82d7-542588055eab",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "f6e900c0-20d9-4144-82d7-542588055eab"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "tab": 1793098949.267312
+          },
+          "inline_owner": "inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "f6e900c0-20d9-4144-82d7-542588055eab"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "UI04A_close_before_initial_register",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "late_initial_registration": "superseded",
+        "inline": "latest",
+        "registry": {
+          "views": {
+            "inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "e3131349-f8a3-4242-8a0d-ab33fd9879aa",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "e3131349-f8a3-4242-8a0d-ab33fd9879aa"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "tab": 1793098949.281894
+          },
+          "inline_owner": "inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "e3131349-f8a3-4242-8a0d-ab33fd9879aa"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "UI04B_stale_demote_releases_lease",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "return": "superseded",
+        "stored_mode": "inline",
+        "newer_inline": "latest",
+        "registry": {
+          "views": {
+            "old-inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            },
+            "tab": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3"
+              },
+              "inline_eligible": false,
+              "expires_at": null
+            },
+            "newer-inline": {
+              "state_revision": 1,
+              "view_sequence": 2,
+              "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 2,
+                "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {},
+          "inline_owner": "newer-inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 2,
+            "task_instance_id": "c01222bf-3180-4a9d-9a8e-9c9aebeedbc3"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "UI05_unregister_late_heartbeat",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "after_unregister": "latest",
+        "late_heartbeat": "superseded",
+        "after_heartbeat": "latest",
+        "much_later_heartbeat": "superseded",
+        "after_much_later": "latest",
+        "registry": {
+          "views": {
+            "inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "5fe2e5f5-328a-4131-88d3-632aea275ca1",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "5fe2e5f5-328a-4131-88d3-632aea275ca1"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "tab": 2000
+          },
+          "inline_owner": "inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "5fe2e5f5-328a-4131-88d3-632aea275ca1"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "old_card_recovery_vs_historical_remount",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "late_old_mount": "superseded",
+        "original_after_close": "latest",
+        "historic_after_close": "superseded",
+        "registry": {
+          "views": {
+            "original": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "a8732a70-c538-4c9b-a8f8-f3ea43c75b4f",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "a8732a70-c538-4c9b-a8f8-f3ea43c75b4f"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            },
+            "historic-remount": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "a8732a70-c538-4c9b-a8f8-f3ea43c75b4f",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "a8732a70-c538-4c9b-a8f8-f3ea43c75b4f"
+              },
+              "inline_eligible": false,
+              "expires_at": null
+            }
+          },
+          "released_views": {
+            "replacement": 1793098949.326489
+          },
+          "inline_owner": "original",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 2,
+            "task_instance_id": "a8732a70-c538-4c9b-a8f8-f3ea43c75b4f"
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "mode_transition_late_heartbeat",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "after_demote": "latest",
+        "late_old_fullscreen_heartbeat": "registered",
+        "after_late_heartbeat": "hidden_by_fullscreen",
+        "registry": {
+          "views": {
+            "inline": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "90a6d1fd-f20f-434b-8caa-f75c218a73a3",
+              "display_mode": "inline",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "90a6d1fd-f20f-434b-8caa-f75c218a73a3"
+              },
+              "inline_eligible": true,
+              "expires_at": null
+            },
+            "tab": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "90a6d1fd-f20f-434b-8caa-f75c218a73a3",
+              "display_mode": "fullscreen",
+              "inline_source": {
+                "state_revision": 1,
+                "view_sequence": 1,
+                "task_instance_id": "90a6d1fd-f20f-434b-8caa-f75c218a73a3"
+              },
+              "inline_eligible": false,
+              "expires_at": 1793098984.344121
+            }
+          },
+          "released_views": {},
+          "inline_owner": "inline",
+          "latest_inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "90a6d1fd-f20f-434b-8caa-f75c218a73a3"
+          }
+        }
+      },
+      "passed": false,
+      "failure": "Old fullscreen heartbeat after completed demotion must not restore the old mode/lease"
+    },
+    {
+      "case": "F01_initial_no_session_retry",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "first_session": "1e0b67bf-e4e9-4815-9106-87bcb453d89b",
+        "second_session": "89e97f68-6be5-46f6-9e78-c2b10bd9d8de",
+        "first_instance": "ccdb34d8-fc10-4e9c-ad68-fbe121d022e9",
+        "second_instance": "915dd86c-9320-43ef-b32c-7303c6b3b37e"
+      },
+      "passed": false,
+      "failure": "Identical request_id retry without session must recover original allocation"
+    },
+    {
+      "case": "F01_replan_retry",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "initial_instance": "b6e386bb-92fd-490a-8c23-b59a950b368f",
+        "replanned_epoch": 1,
+        "replayed_instance": "f5a12b2d-8011-4b50-a8d6-5137b4aa21fc",
+        "current_epoch": 0,
+        "current_nodes": [
+          "root"
+        ],
+        "history_instances": [
+          "b6e386bb-92fd-490a-8c23-b59a950b368f"
+        ]
+      },
+      "passed": false,
+      "failure": "Initialization replay may not replace progressed/replanned current task"
+    },
+    {
+      "case": "F01_task_switch_retry",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "a_instance": "cb8d7a6d-02c4-4e89-8552-cfd8a1e63bb2",
+        "b_instance": "edf328d1-adea-496d-8156-523a517d301d",
+        "replayed_instance": "b43e99c2-dbe0-4146-b816-5a099f2bb594",
+        "current_title": "Task A",
+        "current_status": "pending",
+        "history": [
+          {
+            "title": "Task A",
+            "status": "pending"
+          },
+          {
+            "title": "Task B",
+            "status": "running"
+          }
+        ]
+      },
+      "passed": false,
+      "failure": "Replay of archived initialization must not replace current running task"
+    },
+    {
+      "case": "F02_linear_late_completion",
+      "assertion_direction": "positive acceptance",
+      "observed": {
+        "before": {
+          "index": 0,
+          "description": "Only step",
+          "status": "in_progress",
+          "started_at": "2026-10-27T19:02:29+08:00",
+          "finished_at": null,
+          "assignment": {
+            "model": "verify-executor-B",
+            "execution_mode": "main_session",
+            "reasoning_effort": "high",
+            "metadata_provenance": {
+              "source": "mcp_tool_input",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "mcp_tool_input",
+              "reasoning_effort_source": "mcp_tool_input",
+              "captured_at": "2026-10-27T19:02:29+08:00",
+              "scope": "step_start"
+            }
+          }
+        },
+        "error": null,
+        "after": {
+          "index": 0,
+          "description": "Only step",
+          "status": "completed",
+          "started_at": "2026-10-27T19:02:29+08:00",
+          "finished_at": "2026-10-27T19:02:29+08:00",
+          "assignment": {
+            "model": "verify-executor-B",
+            "execution_mode": "main_session",
+            "reasoning_effort": "high",
+            "metadata_provenance": {
+              "source": "mcp_tool_input",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "mcp_tool_input",
+              "reasoning_effort_source": "mcp_tool_input",
+              "captured_at": "2026-10-27T19:02:29+08:00",
+              "scope": "step_start"
+            }
+          },
+          "note": "Late completion from executor A"
+        },
+        "overall_status": "completed",
+        "update_step_parameters": [
+          "session_id",
+          "step_index",
+          "status",
+          "note",
+          "assignment",
+          "task_instance_id"
+        ]
+      },
+      "passed": false,
+      "failure": "Ambiguous old completion without current-attempt proof must not finish executor B"
+    }
+  ]
+}

@@ -1,0 +1,431 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw1u-h5lzel9swij",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+        "display_mode": "inline"
+      },
+      "at": 1793098970069,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw1u-h5lzel9swij",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098970079,
+      "deliveredAt": 1793098970079
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw1u-h5lzel9swij",
+        "display_mode": "inline"
+      },
+      "at": 1793098970079,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw1u-h5lzel9swij",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098970085,
+      "deliveredAt": 1793098970085
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw4y-rbdb4vqmgl",
+        "view_sequence": 2,
+        "state_revision": 1,
+        "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098970103,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw4y-rbdb4vqmgl",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098970109,
+      "deliveredAt": 1793098970109
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw1u-h5lzel9swij",
+        "display_mode": "inline"
+      },
+      "at": 1793098973079,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话已打开完整进度标签页，会话内视图暂时隐藏。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw1u-h5lzel9swij",
+          "status": "hidden_by_fullscreen",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098973081,
+      "held": true,
+      "deliveredAt": 1793098973210
+    },
+    {
+      "frame": "tab",
+      "name": "unregister_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw4y-rbdb4vqmgl"
+      },
+      "at": 1793098973094,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话尚未登记进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw4y-rbdb4vqmgl",
+          "status": "unregistered",
+          "registered": false,
+          "is_latest": false
+        }
+      },
+      "completedAt": 1793098973095,
+      "deliveredAt": 1793098973095
+    },
+    {
+      "frame": "main",
+      "name": "get_progress",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa"
+      },
+      "at": 1793098973198,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI01 stale check positive acceptance（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 1\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI01 stale check positive acceptance — ready"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 1,
+            "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+            "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+            "task_history": [],
+            "task_title": "UI01 stale check positive acceptance",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "ready",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 1,
+            "executing_count": 0,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 0,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:02:49+08:00",
+            "updated_at": "2026-10-27T19:02:49+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI01 stale check positive acceptance",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "pending",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {},
+                "profile": null,
+                "attempt": 0,
+                "attempt_id": null,
+                "attempts": [],
+                "started_at": null,
+                "finished_at": null,
+                "status": "ready",
+                "ready": true,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [
+              "root"
+            ],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "state_revision": 1,
+          "view_sequence": 3
+        }
+      },
+      "completedAt": 1793098973200,
+      "deliveredAt": 1793098973200
+    },
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw1u-h5lzel9swij",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098973201,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw1u-h5lzel9swij",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098973202,
+      "deliveredAt": 1793098973202
+    },
+    {
+      "frame": "main",
+      "name": "get_progress",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa"
+      },
+      "at": 1793098975041,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI01 stale check positive acceptance（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 0\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI01 stale check positive acceptance — executing\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 2,
+            "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+            "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+            "task_history": [],
+            "task_title": "UI01 stale check positive acceptance",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "executing",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 0,
+            "executing_count": 1,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 1,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:02:49+08:00",
+            "updated_at": "2026-10-27T19:02:53+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI01 stale check positive acceptance",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "running",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-27T19:02:53+08:00",
+                    "scope": "attempt_start"
+                  }
+                },
+                "profile": null,
+                "attempt": 1,
+                "attempt_id": "3de82842-5b7c-431e-bc1e-6dd32d69f8bd",
+                "attempts": [
+                  {
+                    "attempt": 1,
+                    "attempt_id": "3de82842-5b7c-431e-bc1e-6dd32d69f8bd",
+                    "kind": "execution",
+                    "execution_status": "running",
+                    "outcome": null,
+                    "summary": "",
+                    "evidence": [],
+                    "started_at": "2026-10-27T19:02:53+08:00",
+                    "assignment": {
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-27T19:02:53+08:00",
+                        "scope": "attempt_start"
+                      }
+                    },
+                    "finished_at": null
+                  }
+                ],
+                "started_at": "2026-10-27T19:02:53+08:00",
+                "finished_at": null,
+                "status": "executing",
+                "ready": false,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "state_revision": 2,
+          "view_sequence": 5
+        }
+      },
+      "completedAt": 1793098975043,
+      "deliveredAt": 1793098975043
+    },
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+        "view_id": "view-mvqktw1u-h5lzel9swij",
+        "view_sequence": 5,
+        "state_revision": 2,
+        "task_instance_id": "5f312624-196a-48cb-bdc3-d1c46105b9fd",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098975045,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "e481c1df-1ec4-4a6f-a263-f339e9bb8bfa",
+          "view_id": "view-mvqktw1u-h5lzel9swij",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098975047,
+      "deliveredAt": 1793098975047
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793098970026
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793098970069
+    },
+    {
+      "frame": "tab",
+      "height": 193,
+      "at": 1793098970102
+    },
+    {
+      "frame": "tab",
+      "height": 256,
+      "at": 1793098970103
+    },
+    {
+      "frame": "main",
+      "height": 271,
+      "at": 1793098975045
+    }
+  ],
+  "modeRequests": [],
+  "held": []
+}

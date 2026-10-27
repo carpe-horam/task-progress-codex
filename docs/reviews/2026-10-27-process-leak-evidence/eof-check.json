@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-10-27T19:42:04.928318+08:00",
+  "scope": "Disposable installed-plugin child; only initialize and stdin EOF; no real user processes terminated.",
+  "old_013_cache_exists": false,
+  "old_013_probe": "Not run: FileNotFoundError, installed directory no longer exists.",
+  "result": {
+    "directory_version": "0.1.4",
+    "pid": 98269,
+    "returncode": 0,
+    "elapsed_seconds": 0.081,
+    "reported_version": "0.1.4",
+    "terminated_naturally_after_stdin_eof": true
+  }
+}

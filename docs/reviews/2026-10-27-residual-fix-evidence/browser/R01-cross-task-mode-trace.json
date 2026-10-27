@@ -1,0 +1,127 @@
+[
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "cross-tab",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "fb1b72be-23bd-4647-821c-d7dd3de4a1e4",
+      "display_mode": "fullscreen",
+      "mode_generation": 0
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "已登记当前进度视图。"
+        }
+      ],
+      "structuredContent": {
+        "session_id": "6c068aef-d6f9-48e8-8c4c-3054b6391b8d",
+        "view_id": "cross-tab",
+        "status": "registered",
+        "registered": true,
+        "is_latest": true
+      }
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "cross-main",
+      "state_revision": 2,
+      "view_sequence": 2,
+      "task_instance_id": "abbafd65-c678-485a-955c-1fedb4593790",
+      "display_mode": "inline",
+      "mode_generation": 0
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "已登记当前进度视图。"
+        }
+      ],
+      "structuredContent": {
+        "session_id": "6c068aef-d6f9-48e8-8c4c-3054b6391b8d",
+        "view_id": "cross-main",
+        "status": "registered",
+        "registered": true,
+        "is_latest": true
+      }
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "cross-tab",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "fb1b72be-23bd-4647-821c-d7dd3de4a1e4",
+      "display_mode": "inline",
+      "mode_generation": 2
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "当前实例已被本会话的新进度视图替代。"
+        }
+      ],
+      "structuredContent": {
+        "session_id": "6c068aef-d6f9-48e8-8c4c-3054b6391b8d",
+        "view_id": "cross-tab",
+        "status": "superseded",
+        "registered": true,
+        "is_latest": false
+      }
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "cross-tab",
+      "state_revision": 2,
+      "view_sequence": 2,
+      "task_instance_id": "abbafd65-c678-485a-955c-1fedb4593790",
+      "display_mode": "fullscreen",
+      "mode_generation": 1
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "当前实例已被本会话的新进度视图替代。"
+        }
+      ],
+      "structuredContent": {
+        "session_id": "6c068aef-d6f9-48e8-8c4c-3054b6391b8d",
+        "view_id": "cross-tab",
+        "status": "superseded",
+        "registered": true,
+        "is_latest": false
+      }
+    }
+  },
+  {
+    "name": "check_ui_view",
+    "args": {
+      "view_id": "cross-main"
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "当前实例是本会话的活动进度视图。"
+        }
+      ],
+      "structuredContent": {
+        "session_id": "6c068aef-d6f9-48e8-8c4c-3054b6391b8d",
+        "view_id": "cross-main",
+        "status": "latest",
+        "registered": true,
+        "is_latest": true
+      }
+    }
+  }
+]

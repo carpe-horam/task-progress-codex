@@ -1,0 +1,11 @@
+Error: [{"type":"text","text":"planning_required: 空的根任务不能开工。请先调用 decompose_task 提交粗粒度计划；如果这是单步任务，请通过 init_task_network 的 atomic_reason 明确记录单步原因。"}]
+    at Interface.<anonymous> (/Users/machengling/.codex/worktrees/4d11/task-process/tests/test_view_mode_regressions.cjs:27:65)
+    at Interface.emit (node:events:509:20)
+    at [_onLine] [as _onLine] (node:internal/readline/interface:465:12)
+    at [_normalWrite] [as _normalWrite] (node:internal/readline/interface:647:22)
+    at Socket.ondata (node:internal/readline/interface:263:23)
+    at Socket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)

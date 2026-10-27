@@ -202,7 +202,9 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 开始主会话步骤时至少传 `assignment: {"execution_mode":"main_session"}`；只有当前上下文明确提供的模型、思维强度、thread ID 和 turn ID 才附加，不能从初始化快照或旧任务复制。子智能体步骤将 `execution_mode` 设为 `subagent`，并记录该次派发明确指定的 `agent_name`、`fork_turns`、`model` 和 `reasoning_effort`。未知的主会话元数据不阻止步骤启动。
 
-完成步骤：`update_step({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","step_index":0,"status":"completed","note":"验收结果"})`；执行元数据会保留，无需重复传入。
+开始步骤后，保存响应中该步骤的 `attempt_id`；运行中的备注更新、完成、重置和重开都须传回当前 ID。完成步骤：`update_step({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","step_index":0,"attempt_id":"<当前尝试 ID>","status":"completed","note":"验收结果"})`；执行元数据会保留，无需重复传入。
+
+重置为 `pending` 会结束当前尝试并保留历史；下一次启动返回新的 `attempt_id`，旧 ID 不得继续使用。重开已完成步骤时先传其当前 ID，再保存启动响应中的新 ID。旧存储中尚无 ID 的既有尝试允许兼容收尾或重置，之后的新尝试严格校验 ID。
 
 `step_index` 从 0 开始。旧版顺序模式先完成当前步骤再启动下一步，最多一个步骤 in_progress。新任务默认使用 HTN；不要对网络状态调用 `update_step`，也不要对旧版清单调用网络更新工具。
 
@@ -215,6 +217,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 - `session_id` 是 Codex 会话的数据边界；所有读取、更新、渲染、重规划和清理操作显式传入它。本会话内多个任务复用同一个 ID，以 `task_instance_id` 区分任务实例。
 - 每个 Codex 会话使用自己生成并保存的 ID，不能复制、猜测或读取其他会话的 ID。其他会话的任务不得阻止本会话初始化。
 - 恢复先调用 `get_progress`，读取当前任务及其 `task_instance_id`；只有明确开始新任务才调用初始化工具。若已知 ID 的本会话数据不存在，说明实际情况，确需开始新任务时仍使用该会话 ID 初始化；首次没有已知 ID 时让初始化工具生成并保存。
+- `init_task_network` 的同一次初始化重试可复用稳定的 `request_id`；首次省略 `session_id` 时使用全局唯一键（建议 UUID），收到会话 ID 后可带该 ID 重试。同一任务重规划后重试返回当前计划；绑定任务已归档或清除时旧键会被拒绝，不能用它恢复旧任务或覆盖当前任务。清理任务内容仍保留请求哈希和身份墓碑，以防迟到请求重建已清除任务。
 - fullscreen 标签页每 10 秒续租；关闭时释放登记，宿主未发 teardown 时租约 35 秒后过期。会话内卡片在标签页打开期间隐藏，关闭后恢复；普通更新只改数据，不应为了刷新卡片重复调用 `render_progress`。不要用清理进度来关闭或重开面板。
 - 任务数据按插件 `session_id` 隔离。当前公开 MCP Apps 上下文未定义“当前会话是历史/归档会话”的状态标志，因此不要声称插件能主动隐藏已经保存的历史会话卡片；若宿主后续提供该标志，应再增加历史会话抑制。
 - `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。

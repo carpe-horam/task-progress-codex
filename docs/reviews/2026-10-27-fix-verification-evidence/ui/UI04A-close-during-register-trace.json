@@ -1,0 +1,309 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku36h-tcyp9mduhs",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735",
+        "display_mode": "inline"
+      },
+      "at": 1793098979257,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku36h-tcyp9mduhs",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098979263,
+      "deliveredAt": 1793098979263
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku36h-tcyp9mduhs",
+        "display_mode": "inline"
+      },
+      "at": 1793098979263,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku36h-tcyp9mduhs",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098979265,
+      "deliveredAt": 1793098979265
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku384-3eb30lkhe8j",
+        "view_sequence": 2,
+        "state_revision": 1,
+        "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098979289,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku384-3eb30lkhe8j",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098979295,
+      "held": true
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku36h-tcyp9mduhs",
+        "display_mode": "inline"
+      },
+      "at": 1793098982265,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话已打开完整进度标签页，会话内视图暂时隐藏。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku36h-tcyp9mduhs",
+          "status": "hidden_by_fullscreen",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098982266,
+      "deliveredAt": 1793098982266
+    },
+    {
+      "frame": "tab",
+      "name": "unregister_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku384-3eb30lkhe8j"
+      },
+      "at": 1793098982644,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话尚未登记进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku384-3eb30lkhe8j",
+          "status": "unregistered",
+          "registered": false,
+          "is_latest": false
+        }
+      },
+      "completedAt": 1793098982645,
+      "deliveredAt": 1793098982645
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+        "view_id": "view-mvqku36h-tcyp9mduhs",
+        "display_mode": "inline"
+      },
+      "at": 1793098985265,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku36h-tcyp9mduhs",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098985266,
+      "deliveredAt": 1793098985266
+    },
+    {
+      "frame": "main",
+      "name": "get_progress",
+      "args": {
+        "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074"
+      },
+      "at": 1793098985268,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI04A close pending registration（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 1\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI04A close pending registration — ready"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 1,
+            "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+            "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735",
+            "task_history": [],
+            "task_title": "UI04A close pending registration",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "ready",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 1,
+            "executing_count": 0,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 0,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:02:59+08:00",
+            "updated_at": "2026-10-27T19:02:59+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI04A close pending registration",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "pending",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {},
+                "profile": null,
+                "attempt": 0,
+                "attempt_id": null,
+                "attempts": [],
+                "started_at": null,
+                "finished_at": null,
+                "status": "ready",
+                "ready": true,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [
+              "root"
+            ],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "state_revision": 1,
+          "view_sequence": 3
+        }
+      },
+      "completedAt": 1793098985271,
+      "deliveredAt": 1793098985271
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793098979242
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793098979257
+    },
+    {
+      "frame": "tab",
+      "height": 193,
+      "at": 1793098979288
+    },
+    {
+      "frame": "tab",
+      "height": 256,
+      "at": 1793098979289
+    },
+    {
+      "frame": "main",
+      "height": 0,
+      "at": 1793098982267
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793098985268
+    }
+  ],
+  "modeRequests": [],
+  "held": [
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "38f4d4a9-8f7f-43d9-b9ae-ba783e429074",
+          "view_id": "view-mvqku384-3eb30lkhe8j",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      }
+    }
+  ]
+}

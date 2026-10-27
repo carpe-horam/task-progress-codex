@@ -1,0 +1,148 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "a8fcb4e4-3f42-4fa7-9a0d-2aba7281eb3a",
+        "view_id": "view-mvqlt3ag-8v9gckxzs6o",
+        "view_sequence": 6,
+        "state_revision": 6,
+        "task_instance_id": "0b61023f-eeba-4a6c-a9a5-90ced404412a",
+        "display_mode": "inline",
+        "mode_generation": 0
+      },
+      "sentAt": 1793100612372,
+      "executedAt": 1793100612372,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "a8fcb4e4-3f42-4fa7-9a0d-2aba7281eb3a",
+          "view_id": "view-mvqlt3ag-8v9gckxzs6o",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100612378
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "a8fcb4e4-3f42-4fa7-9a0d-2aba7281eb3a",
+        "view_id": "view-mvqlt3ag-8v9gckxzs6o",
+        "display_mode": "inline"
+      },
+      "sentAt": 1793100612379,
+      "executedAt": 1793100612379,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "a8fcb4e4-3f42-4fa7-9a0d-2aba7281eb3a",
+          "view_id": "view-mvqlt3ag-8v9gckxzs6o",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100612381
+    },
+    {
+      "frame": "main",
+      "name": "save_export_files",
+      "args": {
+        "files": [
+          {
+            "name": "Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.xlsx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "encoding": "base64",
+            "contentLength": 52124
+          },
+          {
+            "name": "Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.html",
+            "mime_type": "text/html",
+            "encoding": "utf-8",
+            "contentLength": 30371
+          }
+        ]
+      },
+      "sentAt": 1793100612471,
+      "executedAt": 1793100612471,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已将 Excel 和 HTML 保存到 /var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports。"
+          }
+        ],
+        "structuredContent": {
+          "saved": true,
+          "output_directory": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports",
+          "files": [
+            {
+              "name": "Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.xlsx",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.xlsx",
+              "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "size_bytes": 39092
+            },
+            {
+              "name": "Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.html",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Resolved root acceptance-a8fcb4e4-20261027T113012Z.html",
+              "mime_type": "text/html",
+              "size_bytes": 32450
+            }
+          ]
+        }
+      },
+      "completedAt": 1793100612478
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793100612353
+    },
+    {
+      "frame": "main",
+      "height": 507,
+      "at": 1793100612371
+    },
+    {
+      "frame": "main",
+      "height": 535,
+      "at": 1793100612473
+    },
+    {
+      "frame": "main",
+      "height": 580,
+      "at": 1793100612481
+    }
+  ],
+  "initializations": [
+    {
+      "appInfo": {
+        "name": "task-progress",
+        "version": "0.1.4"
+      },
+      "appCapabilities": {
+        "availableDisplayModes": [
+          "inline",
+          "fullscreen"
+        ]
+      },
+      "protocolVersion": "2026-01-26"
+    }
+  ]
+}

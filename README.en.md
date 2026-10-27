@@ -2,6 +2,8 @@
 
 [简体中文](README.md) | English
 
+Current version: **0.2.0** · [Changelog](CHANGELOG.md)
+
 **Turn multi-step Codex work into a clear, trackable, reviewable task network.**
 
 [![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
@@ -57,18 +59,21 @@ Add this marketplace from a terminal:
 ```sh
 codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-You can also open **Plugins Directory** in the Codex desktop app, find **Task Progress**, and install it. Restart Codex after the first installation so the plugin server and UI load.
+You can also install **Task Progress** from **Plugins Directory**, then run `service_manager.py install` above. Since 0.2.0, all chats connect to one user-level background service; installing the plugin alone does not start that service. Restart Codex after installation.
 
 ### Install from a local clone
 
 ```sh
 git clone https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
+python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
+codex plugin add task-progress@task-progress-codex
 ```
 
-Then install **Task Progress** from **Plugins Directory**.
+Restart Codex after installation. Run the installer using a stable Python 3 installation; the background service records its absolute interpreter path.
 
 ### Update the plugin
 
@@ -85,7 +90,26 @@ cd task-progress-codex
 git pull --ff-only origin main
 ```
 
-Restart the Codex desktop app after updating so the local installation loads the new files. Refreshing a marketplace snapshot updates the available plugin source; if the desktop app still shows an older version, update or reinstall **Task Progress** in **Plugins Directory**, then restart Codex.
+After refreshing the source, reinstall the plugin, run `service_manager.py install` from the new installed version (or the updated local clone), then restart Codex. The installer reuses an identical release or switches to a new runtime directory, restoring the previous installation if health checks fail. Refreshing the marketplace alone does not update the installed plugin or background service.
+
+### Shared background service (macOS)
+
+All local Codex chats connect directly to `http://127.0.0.1:53421/mcp`, sharing **one Python service process**. Client connections and UI tabs remain independent, and task data is separated by `session_id`; requests can execute concurrently. The user LaunchAgent `io.task-progress.mcp` starts at login and restarts the daemon after a crash. There is no Python proxy process per chat.
+
+Runtime files live in `~/Library/Application Support/Task Progress/releases/`, independently of replaceable plugin caches. Credentials live in `~/.cache/task-progress/service/http-headers.json`, with directory mode 0700 and file mode 0600. Codex briefly runs `http_headers_helper` to read them. The service binds only to loopback, validates Host and Bearer credentials, and rejects browser cross-origin requests.
+
+Manage the service from a local clone:
+
+```sh
+python3 plugins/task-progress/service_manager.py status --json
+python3 plugins/task-progress/service_manager.py install   # Install, upgrade, or start a stopped service
+python3 plugins/task-progress/service_manager.py stop      # Affects every chat using the service
+python3 plugins/task-progress/service_manager.py uninstall # Preserve tasks, credentials, and releases
+```
+
+Existing stdio chats may retain their old processes until Codex restarts. The installer does not terminate those chats. If an unrelated service occupies the port, installation fails without stopping that process. Logs are in `~/.cache/task-progress/service/service.{stdout,stderr}.log`.
+
+Automatic background management currently supports macOS. On Linux, run `service_manager.py prepare`, then `shared_service.py`, and configure your own user service. Windows background management and client credential helpers have not been verified.
 
 ## Getting started
 
@@ -105,8 +129,8 @@ Default behavior:
 
 ## Data and requirements
 
-- The MCP server runs locally over stdio. Task progress is stored on the current device under `~/.cache/task-progress/sessions`; it is not uploaded with this GitHub repository or shared with other users.
-- Python 3 is required to run the MCP server. The current `.mcp.json` launcher configuration targets macOS and Linux. A Windows launcher is included, but the Windows MCP configuration has not been verified.
+- The MCP server uses authenticated local HTTP shared by chats belonging to the same OS user. Task progress remains under `~/.cache/task-progress/sessions` without migration; it is not uploaded with this repository or shared with other users.
+- Python 3 and a Codex client supporting Streamable HTTP and `http_headers_helper` are required. Automatic service installation currently targets macOS. The `server.py` stdio entry point remains for compatibility and isolated testing; the default plugin connection no longer launches it.
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
 - Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.
 
@@ -131,6 +155,8 @@ Clearing a session deletes its progress, task history, and view registration. Co
     ├── .mcp.json                       # Local MCP server configuration
     ├── app.html                        # Interactive task progress UI
     ├── server.py                       # MCP server and local progress storage
+    ├── shared_service.py               # Shared authenticated HTTP service
+    ├── service_manager.py              # User background service management
     ├── skills/track-progress/          # Automatic planning and tracking rules
     └── skills/cleanup-task-progress-history/  # Explicit cleanup for archived sessions
 ```

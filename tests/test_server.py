@@ -16,6 +16,22 @@ ASSIGNMENT = {"execution_mode": "main_session", "model": "test-fixture", "reason
 
 
 class ProgressTests(unittest.TestCase):
+    def test_idle_session_locks_are_released_in_a_long_lived_service(self):
+        import gc
+        import uuid
+        with server._session_lock(self.sid):
+            active = server._SESSION_LOCKS[self.sid]
+            # Touch many unrelated sessions without retaining their locks.
+            for _ in range(100):
+                with server._session_lock(str(uuid.uuid4())):
+                    pass
+            gc.collect()
+            self.assertIs(server._SESSION_LOCKS[self.sid], active)
+            self.assertEqual(len(server._SESSION_LOCKS), 1)
+        del active
+        gc.collect()
+        self.assertEqual(len(server._SESSION_LOCKS), 0)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="task-progress-test-")
         self.previous_dir = server.SESSION_DIR
@@ -473,7 +489,8 @@ class ProgressTests(unittest.TestCase):
         p = r["structuredContent"]["progress"]
         result = server.update_step(self.sid, 0, "in_progress", assignment=ASSIGNMENT, task_instance_id=p["task_instance_id"])
         self.assertGreater(result["structuredContent"]["state_revision"], p["state_revision"])
-        server.update_step(self.sid, 0, "completed", task_instance_id=p["task_instance_id"])
+        attempt_id = result["structuredContent"]["progress"]["steps"][0]["attempt_id"]
+        server.update_step(self.sid, 0, "completed", task_instance_id=p["task_instance_id"], attempt_id=attempt_id)
 
     def test_linear_order_single_running_and_reopen_guards(self):
         result = server.init_progress(["First", "Second"], legacy_linear=True)
@@ -481,16 +498,18 @@ class ProgressTests(unittest.TestCase):
         for status in ["in_progress", "completed"]:
             with self.assertRaises(server.ProgressError):
                 server.update_step(sid, 1, status, assignment=ASSIGNMENT)
-        server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT)
+        first_run = server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT)
+        first_attempt = first_run["structuredContent"]["progress"]["steps"][0]["attempt_id"]
         with self.assertRaises(server.ProgressError):
             server.update_step(sid, 1, "in_progress", assignment=ASSIGNMENT)
-        server.update_step(sid, 0, "completed")
-        server.update_step(sid, 1, "in_progress", assignment=ASSIGNMENT)
+        server.update_step(sid, 0, "completed", attempt_id=first_attempt)
+        second_run = server.update_step(sid, 1, "in_progress", assignment=ASSIGNMENT)
+        second_attempt = second_run["structuredContent"]["progress"]["steps"][1]["attempt_id"]
         for status in ["pending", "in_progress"]:
             with self.assertRaises(server.ProgressError):
-                server.update_step(sid, 0, status, assignment=ASSIGNMENT)
-        server.update_step(sid, 1, "pending")
-        server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT)
+                server.update_step(sid, 0, status, assignment=ASSIGNMENT, attempt_id=first_attempt)
+        server.update_step(sid, 1, "pending", attempt_id=second_attempt)
+        server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT, attempt_id=first_attempt)
         self.assertEqual([step["status"] for step in server.get_progress(sid)["structuredContent"]["progress"]["steps"]], ["in_progress", "pending"])
 
     def test_legacy_deadlocked_plan_can_still_be_read_and_replanned(self):
@@ -532,7 +551,10 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
         self.assertEqual(len(replies[1]["tools"]), 14)
-        self.assertEqual(replies[2]["contents"][0]["text"], (PLUGIN / "app.html").read_text())
+        manifest_version = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
+        self.assertEqual(replies[0]["serverInfo"]["version"], manifest_version)
+        self.assertEqual(replies[2]["contents"][0]["text"], server._resource_html())
+        self.assertNotIn("__TASK_PROGRESS_VERSION__", replies[2]["contents"][0]["text"])
 
     def test_stdio_recovers_from_malformed_requests(self):
         messages = ["[]", "null", "{", json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": None}),

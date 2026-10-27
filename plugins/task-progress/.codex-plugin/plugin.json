@@ -1,6 +1,6 @@
 {
   "name": "task-progress",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "默认自动跟踪 Codex 主会话与 agent 的多步骤任务；按会话隔离保存 HTN 任务网络、依赖、并行任务与验收证据。",
   "author": {
     "name": "machengling",

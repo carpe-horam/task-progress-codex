@@ -1,0 +1,38 @@
+{
+  "late_request_sent_at_ms": 1793099073683,
+  "late_request_executed_at_ms": 1793099090033,
+  "held_ms": 16350,
+  "late_status": "registered",
+  "main_height_events": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793099068718
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793099068720
+    },
+    {
+      "frame": "main",
+      "height": 0,
+      "at": 1793099068730
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793099089735
+    },
+    {
+      "frame": "main",
+      "height": 0,
+      "at": 1793099092731
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793099125731
+    }
+  ]
+}

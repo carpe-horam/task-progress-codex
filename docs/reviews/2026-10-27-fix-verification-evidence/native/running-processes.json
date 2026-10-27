@@ -1,0 +1,137 @@
+{
+  "time": "2026-10-27T19:02:15.898481+08:00",
+  "processes": [
+    {
+      "identity": "42528  5314 Tue Oct 27 16:50:32 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "50743  5314 Tue Oct 27 16:58:01 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "52583  5314 Tue Oct 27 19:00:52 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "65752  5314 Tue Oct 27 17:21:18 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "65832  5314 Tue Oct 27 17:21:32 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "69590  5314 Tue Oct 27 17:28:21 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "72287  5314 Tue Oct 27 17:31:16 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79898  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79902  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79910  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79916  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79924  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79938  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79955  5314 Tue Oct 27 16:01:06 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79960  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79963  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79974  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79978  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79981  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79988  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "79993  5314 Tue Oct 27 16:01:07 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    },
+    {
+      "identity": "88632  5314 Tue Oct 27 18:01:19 2026     /Users/machengling/miniconda3/bin/python3 ./server.py",
+      "cwd": [
+        "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3"
+      ]
+    }
+  ]
+}

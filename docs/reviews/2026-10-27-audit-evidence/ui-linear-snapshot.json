@@ -1,0 +1,56 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "📋 任务：Legacy linear first step done\n📊 进度：1/2 步完成（50%）\n状态：in_progress\n  ✅ [0] Step one\n  ⬜ [1] Step two"
+    }
+  ],
+  "structuredContent": {
+    "progress": {
+      "schema_version": 1,
+      "state_revision": 3,
+      "session_id": "2ccd147b-9cf3-4cc5-88f3-05838b8d7d8b",
+      "task_instance_id": "25137d54-2977-44c7-bf5d-4926677a0aef",
+      "task_history": [],
+      "epoch": 0,
+      "task_title": "Legacy linear first step done",
+      "status": "in_progress",
+      "completed": 1,
+      "total": 2,
+      "percent": 50,
+      "created_at": "2026-10-27T17:03:02+08:00",
+      "updated_at": "2026-10-27T17:03:02+08:00",
+      "steps": [
+        {
+          "index": 0,
+          "description": "Step one",
+          "status": "completed",
+          "started_at": "2026-10-27T17:03:02+08:00",
+          "finished_at": "2026-10-27T17:03:02+08:00",
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T17:03:02+08:00",
+              "scope": "step_start"
+            }
+          }
+        },
+        {
+          "index": 1,
+          "description": "Step two",
+          "status": "pending",
+          "started_at": null,
+          "finished_at": null
+        }
+      ],
+      "split_review_due": []
+    },
+    "session_id": "2ccd147b-9cf3-4cc5-88f3-05838b8d7d8b",
+    "state_revision": 3,
+    "view_sequence": 3
+  }
+}

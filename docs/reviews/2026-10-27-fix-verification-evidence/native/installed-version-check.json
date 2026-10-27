@@ -1,0 +1,11 @@
+{
+  "manifest_version": "0.1.3",
+  "fresh_server_handshake_version": "0.1.2",
+  "app_version": "0.1.2",
+  "versions_match": false,
+  "regressions": {
+    "run": 13,
+    "failures": 0,
+    "errors": 0
+  }
+}

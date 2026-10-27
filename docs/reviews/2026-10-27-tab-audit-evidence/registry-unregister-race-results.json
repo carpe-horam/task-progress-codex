@@ -1,0 +1,28 @@
+{
+  "after_unregister": "latest",
+  "late_heartbeat_register": "registered",
+  "after_late_heartbeat": "hidden_by_fullscreen",
+  "registry": {
+    "views": {
+      "inline": {
+        "state_revision": 1,
+        "view_sequence": 1,
+        "task_instance_id": "efb0974b-98ed-4e4d-8bb9-6ec9861f7e87",
+        "display_mode": "inline",
+        "expires_at": null
+      },
+      "tab": {
+        "state_revision": 1,
+        "view_sequence": 1,
+        "task_instance_id": "efb0974b-98ed-4e4d-8bb9-6ec9861f7e87",
+        "display_mode": "fullscreen",
+        "expires_at": 1036
+      }
+    },
+    "latest_inline": {
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "efb0974b-98ed-4e4d-8bb9-6ec9861f7e87"
+    }
+  }
+}

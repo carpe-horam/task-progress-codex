@@ -1,0 +1,148 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "9bc3361b-648a-44f0-8722-37fb391f5b9d",
+        "view_id": "view-mvqlt2er-nne7w9zep0b",
+        "view_sequence": 6,
+        "state_revision": 6,
+        "task_instance_id": "c3827d86-04a8-410c-9351-fbf1c41007fe",
+        "display_mode": "inline",
+        "mode_generation": 0
+      },
+      "sentAt": 1793100611228,
+      "executedAt": 1793100611228,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "9bc3361b-648a-44f0-8722-37fb391f5b9d",
+          "view_id": "view-mvqlt2er-nne7w9zep0b",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100611251
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "9bc3361b-648a-44f0-8722-37fb391f5b9d",
+        "view_id": "view-mvqlt2er-nne7w9zep0b",
+        "display_mode": "inline"
+      },
+      "sentAt": 1793100611251,
+      "executedAt": 1793100611251,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "9bc3361b-648a-44f0-8722-37fb391f5b9d",
+          "view_id": "view-mvqlt2er-nne7w9zep0b",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100611253
+    },
+    {
+      "frame": "main",
+      "name": "save_export_files",
+      "args": {
+        "files": [
+          {
+            "name": "Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.xlsx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "encoding": "base64",
+            "contentLength": 51704
+          },
+          {
+            "name": "Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.html",
+            "mime_type": "text/html",
+            "encoding": "utf-8",
+            "contentLength": 30208
+          }
+        ]
+      },
+      "sentAt": 1793100611335,
+      "executedAt": 1793100611335,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已将 Excel 和 HTML 保存到 /var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports。"
+          }
+        ],
+        "structuredContent": {
+          "saved": true,
+          "output_directory": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports",
+          "files": [
+            {
+              "name": "Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.xlsx",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.xlsx",
+              "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "size_bytes": 38777
+            },
+            {
+              "name": "Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.html",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Root cancelled-9bc3361b-20261027T113011Z.html",
+              "mime_type": "text/html",
+              "size_bytes": 32294
+            }
+          ]
+        }
+      },
+      "completedAt": 1793100611344
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793100611210
+    },
+    {
+      "frame": "main",
+      "height": 507,
+      "at": 1793100611228
+    },
+    {
+      "frame": "main",
+      "height": 535,
+      "at": 1793100611337
+    },
+    {
+      "frame": "main",
+      "height": 580,
+      "at": 1793100611350
+    }
+  ],
+  "initializations": [
+    {
+      "appInfo": {
+        "name": "task-progress",
+        "version": "0.1.4"
+      },
+      "appCapabilities": {
+        "availableDisplayModes": [
+          "inline",
+          "fullscreen"
+        ]
+      },
+      "protocolVersion": "2026-01-26"
+    }
+  ]
+}

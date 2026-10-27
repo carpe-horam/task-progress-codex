@@ -1,0 +1,43 @@
+{
+  "hooks_error": null,
+  "task_progress_hooks": [
+    {
+      "key": "task-progress@task-progress-codex:hooks/hooks.json:session_start:0:0",
+      "eventName": "sessionStart",
+      "handlerType": "command",
+      "command": "\"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/scripts/launch_progress_mcp\" \"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/hooks/task_progress_hook.py\"",
+      "async": false,
+      "matcher": "startup|resume|compact|fork",
+      "timeoutSec": 2,
+      "statusMessage": "Preparing Task Progress guidance",
+      "additionalContextLimit": null,
+      "sourcePath": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/hooks/hooks.json",
+      "source": "plugin",
+      "pluginId": "task-progress@task-progress-codex",
+      "displayOrder": 6,
+      "enabled": true,
+      "isManaged": false,
+      "currentHash": "sha256:246be98e6b9b7b88fe51369b40e619183bb3e632ad2d44dd566fa96ad3006c42/sha256:6138c1a5acb596189e34d86d4cc901c7bb40db28b9cf67ad00c4dc94869d2530",
+      "trustStatus": "untrusted"
+    },
+    {
+      "key": "task-progress@task-progress-codex:hooks/hooks.json:user_prompt_submit:0:0",
+      "eventName": "userPromptSubmit",
+      "handlerType": "command",
+      "command": "\"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/scripts/launch_progress_mcp\" \"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/hooks/task_progress_hook.py\"",
+      "async": false,
+      "matcher": null,
+      "timeoutSec": 2,
+      "statusMessage": "Checking Task Progress guidance",
+      "additionalContextLimit": null,
+      "sourcePath": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4/hooks/hooks.json",
+      "source": "plugin",
+      "pluginId": "task-progress@task-progress-codex",
+      "displayOrder": 7,
+      "enabled": true,
+      "isManaged": false,
+      "currentHash": "sha256:50156ff722853a51419b69061e2f19bce2b124b88ec4a5f58f46e1f7d1797caf/sha256:6138c1a5acb596189e34d86d4cc901c7bb40db28b9cf67ad00c4dc94869d2530",
+      "trustStatus": "untrusted"
+    }
+  ]
+}

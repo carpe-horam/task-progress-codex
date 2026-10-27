@@ -1,0 +1,148 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+        "view_id": "view-mvqlt045-cqywu75hjer",
+        "view_sequence": 4,
+        "state_revision": 4,
+        "task_instance_id": "712af187-6dae-4645-ac9b-28a107f2dd1f",
+        "display_mode": "inline",
+        "mode_generation": 0
+      },
+      "sentAt": 1793100608255,
+      "executedAt": 1793100608255,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+          "view_id": "view-mvqlt045-cqywu75hjer",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100608279
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+        "view_id": "view-mvqlt045-cqywu75hjer",
+        "display_mode": "inline"
+      },
+      "sentAt": 1793100608280,
+      "executedAt": 1793100608280,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+          "view_id": "view-mvqlt045-cqywu75hjer",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793100608282
+    },
+    {
+      "frame": "main",
+      "name": "save_export_files",
+      "args": {
+        "files": [
+          {
+            "name": "Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.xlsx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "encoding": "base64",
+            "contentLength": 38860
+          },
+          {
+            "name": "Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.html",
+            "mime_type": "text/html",
+            "encoding": "utf-8",
+            "contentLength": 26239
+          }
+        ]
+      },
+      "sentAt": 1793100608399,
+      "executedAt": 1793100608399,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已将 Excel 和 HTML 保存到 /var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports。"
+          }
+        ],
+        "structuredContent": {
+          "saved": true,
+          "output_directory": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports",
+          "files": [
+            {
+              "name": "Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.xlsx",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.xlsx",
+              "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "size_bytes": 29143
+            },
+            {
+              "name": "Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.html",
+              "path": "/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/task-progress-browser-h9Rf50/Downloads/Task Progress Exports/Task-Progress-Partial linear report-12c40fd2-20261027T113008Z.html",
+              "mime_type": "text/html",
+              "size_bytes": 27928
+            }
+          ]
+        }
+      },
+      "completedAt": 1793100608406
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793100608239
+    },
+    {
+      "frame": "main",
+      "height": 299,
+      "at": 1793100608255
+    },
+    {
+      "frame": "main",
+      "height": 327,
+      "at": 1793100608400
+    },
+    {
+      "frame": "main",
+      "height": 372,
+      "at": 1793100608414
+    }
+  ],
+  "initializations": [
+    {
+      "appInfo": {
+        "name": "task-progress",
+        "version": "0.1.4"
+      },
+      "appCapabilities": {
+        "availableDisplayModes": [
+          "inline",
+          "fullscreen"
+        ]
+      },
+      "protocolVersion": "2026-01-26"
+    }
+  ]
+}

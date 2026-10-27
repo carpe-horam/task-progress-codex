@@ -2,6 +2,8 @@
 
 简体中文 | [English](README.en.md)
 
+当前版本：**0.2.0** · [更新记录](CHANGELOG.md)
+
 **把 Codex 的多步骤工作变成清楚、可追踪、可复盘的任务网络。**
 
 [![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
@@ -57,18 +59,21 @@ flowchart LR
 ```sh
 codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-也可以在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装。首次安装后重启 Codex，让插件服务和界面加载完成。
+也可以在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装，然后执行上面的 `service_manager.py install`。0.2.0 起由一个用户级后台服务接收所有会话的连接；插件安装本身不会启动该后台服务。首次安装后重启 Codex，让插件服务和界面加载完成。
 
 ### 从本地克隆安装
 
 ```sh
 git clone https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
+python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
+codex plugin add task-progress@task-progress-codex
 ```
 
-然后在 **Plugins Directory** 中安装 **Task Progress**。
+安装完成后重启 Codex。使用稳定安装的 Python 3 运行安装器；后台服务会记住该解释器的绝对路径。
 
 ### 更新插件
 
@@ -85,7 +90,26 @@ cd task-progress-codex
 git pull --ff-only origin main
 ```
 
-更新后重启 Codex 桌面端，使本地安装加载新文件。更新 Marketplace 快照只刷新可用插件来源；如果桌面端仍显示旧版，请在 **Plugins Directory** 中重新安装或更新 **Task Progress**，然后重启 Codex。
+更新来源后，重新安装插件，并从新安装目录运行 `service_manager.py install`（本地克隆可直接运行仓库中的安装器），最后重启 Codex。安装器会复用相同版本，或切换到新的运行目录；新服务健康检查失败时恢复旧安装。更新 Marketplace 快照只刷新可用插件来源，不会自动更新已安装插件和后台服务。
+
+### 全局后台服务（macOS）
+
+所有本机 Codex 会话直接连接 `http://127.0.0.1:53421/mcp`，共享 **一个 Python 服务进程**。会话连接和 UI 标签页仍是独立的，任务按 `session_id` 隔离；共享进程不意味着将所有请求串行执行。服务由用户 LaunchAgent `io.task-progress.mcp` 托管，登录后自动启动、异常退出后自动恢复。不会为每个会话额外启动 Python 代理。
+
+安装器将运行文件复制到 `~/Library/Application Support/Task Progress/releases/`，插件缓存更新不会删除正在使用的运行文件。凭据位于 `~/.cache/task-progress/service/http-headers.json`，目录权限为 0700、文件权限为 0600。Codex 通过 `http_headers_helper` 短暂读取凭据；服务只监听本机环回地址，校验 Host 和 Bearer 凭据并拒绝浏览器跨域请求。
+
+从本地仓库管理服务：
+
+```sh
+python3 plugins/task-progress/service_manager.py status --json
+python3 plugins/task-progress/service_manager.py install   # 安装、更新或重新启动已停止的服务
+python3 plugins/task-progress/service_manager.py stop      # 停止当前服务；影响所有使用它的会话
+python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent，保留任务、凭据和运行版本
+```
+
+从旧版 stdio 升级时，已经打开的会话可能继续持有旧进程，需重启 Codex 才能全部释放并切换；安装器不会强制终止这些会话。端口被非本插件服务占用时安装会报错，不会停止未知进程。服务日志在 `~/.cache/task-progress/service/service.{stdout,stderr}.log`。
+
+自动后台管理目前支持 macOS。Linux 可先运行 `service_manager.py prepare`，再运行 `shared_service.py`，并自行配置用户服务；Windows 的后台管理与客户端凭据助手尚未验证。
 
 ## 开始使用
 
@@ -109,8 +133,8 @@ git pull --ff-only origin main
 
 ## 数据与运行要求
 
-- MCP 服务通过本机 stdio 启动。任务进度保存在当前用户设备的 `~/.cache/task-progress/sessions`，不会随着 GitHub 仓库上传或与其他用户共享。
-- 运行 MCP 服务需要 Python 3。当前 `.mcp.json` 启动配置面向 macOS/Linux；仓库包含 Windows 启动器，但 Windows MCP 配置尚未验证。
+- MCP 服务使用本机认证 HTTP，由同一操作系统用户的会话共享。任务进度继续保存在 `~/.cache/task-progress/sessions`，不需要迁移，不会随着 GitHub 仓库上传或与其他用户共享。
+- 需要 Python 3 和支持 Streamable HTTP、`http_headers_helper` 的 Codex 客户端；自动安装后台服务目前面向 macOS。`server.py` 保留 stdio 入口供兼容与隔离测试使用，默认插件连接不再启动它。
 - 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
 - Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。
 - 清除任务会删除当前进度、任务历史和视图登记；只保留不含任务内容的顺序计数器，防止迟到响应恢复已清除内容或替换新任务。
@@ -130,6 +154,8 @@ git pull --ff-only origin main
     ├── .mcp.json                       # 本机 MCP 服务配置
     ├── app.html                        # 交互式任务进度界面
     ├── server.py                       # MCP 服务与本地进度存储
+    ├── shared_service.py               # 全局认证 HTTP 服务
+    ├── service_manager.py              # 用户后台服务安装与管理
     ├── skills/track-progress/          # 自动规划与跟踪规则
     └── skills/cleanup-task-progress-history/  # 用户明确要求时清理已归档会话数据
 ```

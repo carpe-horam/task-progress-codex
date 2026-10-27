@@ -1,0 +1,541 @@
+{
+  "browser": "156.0.8078.48",
+  "date": "2026-10-27T11:03:47.449Z",
+  "results": [
+    {
+      "id": "UI01-late-check",
+      "status": "PASS",
+      "before": 1,
+      "after": 2,
+      "rootStatus": "进行中",
+      "refresh": "每 5 秒自动刷新"
+    },
+    {
+      "id": "UI04A-close-during-register",
+      "status": "PASS",
+      "inlineClass": "card",
+      "unregisterCount": 1,
+      "registry": {
+        "views": {
+          "view-mvqku36h-tcyp9mduhs": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {
+          "view-mvqku384-3eb30lkhe8j": 1793098982.645033
+        },
+        "inline_owner": "view-mvqku36h-tcyp9mduhs",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "ef26c927-4392-4b81-91a2-f024b8d0d735"
+        }
+      }
+    },
+    {
+      "id": "UI04B-older-tab-return",
+      "status": "PASS",
+      "mainClass": "card",
+      "returnedTabClass": "card inline-stale compact",
+      "registry": {
+        "views": {
+          "view-mvqku886-4h904zkrldj": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "880f1148-82e1-49d2-aad7-4d9a4d82b7b5",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "880f1148-82e1-49d2-aad7-4d9a4d82b7b5"
+            },
+            "inline_eligible": false,
+            "expires_at": null
+          },
+          "view-mvqku89u-akf9ih6jvu": {
+            "state_revision": 1,
+            "view_sequence": 2,
+            "task_instance_id": "880f1148-82e1-49d2-aad7-4d9a4d82b7b5",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 2,
+              "task_instance_id": "880f1148-82e1-49d2-aad7-4d9a4d82b7b5"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {},
+        "inline_owner": "view-mvqku89u-akf9ih6jvu",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 2,
+          "task_instance_id": "880f1148-82e1-49d2-aad7-4d9a4d82b7b5"
+        }
+      }
+    },
+    {
+      "id": "UI02-newer-tab-close",
+      "status": "PASS",
+      "checksBefore": 3,
+      "checksAfter": 4,
+      "mainClass": "card",
+      "registry": {
+        "views": {
+          "view-mvqkub15-9q4tuf8a7ea": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {
+          "view-mvqkub2s-bvxk9ektszn": 1793098995.807211
+        },
+        "inline_owner": "view-mvqkub15-9q4tuf8a7ea",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 2,
+          "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5"
+        }
+      }
+    },
+    {
+      "id": "UI03-same-source-owner",
+      "status": "PASS",
+      "before": {
+        "views": {
+          "view-mvqkuihd-4ycpk5bk97x": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          },
+          "view-mvqkuij0-vjrr7ktyiv": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {},
+        "inline_owner": "view-mvqkuij0-vjrr7ktyiv",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7"
+        }
+      },
+      "calls": [
+        {
+          "frame": "first",
+          "view": "view-mvqkuihd-4ycpk5bk97x",
+          "check": "superseded"
+        },
+        {
+          "frame": "second",
+          "view": "view-mvqkuij0-vjrr7ktyiv",
+          "check": "latest"
+        }
+      ],
+      "after": {
+        "views": {
+          "view-mvqkuihd-4ycpk5bk97x": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {
+          "view-mvqkuij0-vjrr7ktyiv": 1793099002.494198
+        },
+        "inline_owner": "view-mvqkuihd-4ycpk5bk97x",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "222b0985-d84c-4b7b-9e49-72a328beecc7"
+        }
+      },
+      "remainingClass": "card"
+    },
+    {
+      "id": "UI05-late-heartbeat",
+      "status": "PASS",
+      "calls": [
+        {
+          "name": "register_ui_view",
+          "args": {
+            "view_id": "inline",
+            "display_mode": "inline",
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "inline",
+            "status": "registered",
+            "registered": true,
+            "is_latest": true
+          }
+        },
+        {
+          "name": "register_ui_view",
+          "args": {
+            "view_id": "tab",
+            "display_mode": "fullscreen",
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "tab",
+            "status": "registered",
+            "registered": true,
+            "is_latest": true
+          }
+        },
+        {
+          "name": "unregister_ui_view",
+          "args": {
+            "view_id": "tab"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "tab",
+            "status": "unregistered",
+            "registered": false,
+            "is_latest": false
+          }
+        },
+        {
+          "name": "check_ui_view",
+          "args": {
+            "view_id": "inline"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "inline",
+            "status": "latest",
+            "registered": true,
+            "is_latest": true
+          }
+        },
+        {
+          "name": "register_ui_view",
+          "args": {
+            "view_id": "tab",
+            "display_mode": "fullscreen",
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "tab",
+            "status": "superseded",
+            "registered": true,
+            "is_latest": false
+          }
+        },
+        {
+          "name": "check_ui_view",
+          "args": {
+            "view_id": "inline"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "inline",
+            "status": "latest",
+            "registered": true,
+            "is_latest": true
+          }
+        },
+        {
+          "name": "register_ui_view",
+          "args": {
+            "view_id": "tab-new",
+            "display_mode": "fullscreen",
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+          },
+          "result": {
+            "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+            "view_id": "tab-new",
+            "status": "registered",
+            "registered": true,
+            "is_latest": true
+          }
+        }
+      ],
+      "registry": {
+        "views": {
+          "inline": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          },
+          "tab-new": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7",
+            "display_mode": "fullscreen",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+            },
+            "inline_eligible": false,
+            "expires_at": 1793099040.485235
+          }
+        },
+        "released_views": {
+          "tab": 1793099005.482441
+        },
+        "inline_owner": "inline",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+        }
+      }
+    },
+    {
+      "id": "UI06-hidden-height",
+      "status": "PASS",
+      "sizes": [
+        {
+          "frame": "main",
+          "height": 193,
+          "at": 1793099005731
+        },
+        {
+          "frame": "main",
+          "height": 256,
+          "at": 1793099005745
+        },
+        {
+          "frame": "main",
+          "height": 0,
+          "at": 1793099008758
+        }
+      ],
+      "hiddenSizes": [
+        {
+          "frame": "main",
+          "height": 0,
+          "at": 1793099008758
+        }
+      ],
+      "restoredSizes": [
+        {
+          "frame": "main",
+          "height": 193,
+          "at": 1793099005731
+        },
+        {
+          "frame": "main",
+          "height": 256,
+          "at": 1793099005745
+        },
+        {
+          "frame": "main",
+          "height": 0,
+          "at": 1793099008758
+        },
+        {
+          "frame": "main",
+          "height": 256,
+          "at": 1793099014759
+        }
+      ]
+    },
+    {
+      "id": "rapid-mode-switch",
+      "status": "PASS",
+      "registry": {
+        "views": {
+          "view-mvqkuv25-wjd7ezz66": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "da81be4b-38f7-472f-909e-ef6275f167b3",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "da81be4b-38f7-472f-909e-ef6275f167b3"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {},
+        "inline_owner": "view-mvqkuv25-wjd7ezz66",
+        "latest_inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "da81be4b-38f7-472f-909e-ef6275f167b3"
+        }
+      },
+      "mainClass": "card"
+    },
+    {
+      "id": "cross-task-recovery",
+      "status": "PASS",
+      "title": "Cross task B",
+      "class": "card",
+      "registry": {
+        "views": {
+          "view-mvqkuvmd-uwg5jx8f9rn": {
+            "state_revision": 1,
+            "view_sequence": 1,
+            "task_instance_id": "f6deb728-69e7-49db-bd82-201f0b67d755",
+            "display_mode": "inline",
+            "inline_source": {
+              "state_revision": 1,
+              "view_sequence": 1,
+              "task_instance_id": "f6deb728-69e7-49db-bd82-201f0b67d755"
+            },
+            "inline_eligible": true,
+            "expires_at": null
+          }
+        },
+        "released_views": {
+          "view-mvqkuvo0-wdh861wj2k": 1793099019.526356
+        },
+        "inline_owner": "view-mvqkuvmd-uwg5jx8f9rn",
+        "latest_inline": {
+          "state_revision": 2,
+          "view_sequence": 2,
+          "task_instance_id": "07453696-aaa5-4ee2-95c3-ff461c6dc83e"
+        }
+      }
+    },
+    {
+      "id": "F05-root-evidence",
+      "status": "FAIL",
+      "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(detail.htmlHasSummary)\n\n    at /private/tmp/task-progress-fix-verify-ui/verify.cjs:39:786\n    at async run (/private/tmp/task-progress-fix-verify-ui/verify.cjs:24:50)\n    at async /private/tmp/task-progress-fix-verify-ui/verify.cjs:39:1",
+      "htmlHasSummary": false,
+      "htmlHasEvidence": false,
+      "rootCount": 0,
+      "files": [
+        {
+          "name": "Task-Progress-F05 root synthesis evidence-71b27f96-20261027T110342Z.xlsx",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F05 root synthesis evidence-71b27f96-20261027T110342Z.xlsx",
+          "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "size_bytes": 39174
+        },
+        {
+          "name": "Task-Progress-F05 root synthesis evidence-71b27f96-20261027T110342Z.html",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F05 root synthesis evidence-71b27f96-20261027T110342Z.html",
+          "mime_type": "text/html",
+          "size_bytes": 30417
+        }
+      ]
+    },
+    {
+      "id": "F04-failed-root",
+      "status": "FAIL",
+      "error": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /失败/. Input:\n\n'待汇总验收'\n\n    at /private/tmp/task-progress-fix-verify-ui/verify.cjs:40:651\n    at async run (/private/tmp/task-progress-fix-verify-ui/verify.cjs:24:50)\n    at async /private/tmp/task-progress-fix-verify-ui/verify.cjs:40:1",
+      "sourceStatus": "failed",
+      "delivery": "待汇总验收",
+      "ended": "已结束2/ 2 项",
+      "files": [
+        {
+          "name": "Task-Progress-F04 failed root delivery-0aae4fd5-20261027T110343Z.xlsx",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F04 failed root delivery-0aae4fd5-20261027T110343Z.xlsx",
+          "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "size_bytes": 37219
+        },
+        {
+          "name": "Task-Progress-F04 failed root delivery-0aae4fd5-20261027T110343Z.html",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F04 failed root delivery-0aae4fd5-20261027T110343Z.html",
+          "mime_type": "text/html",
+          "size_bytes": 30364
+        }
+      ]
+    },
+    {
+      "id": "F03-linear-partial",
+      "status": "FAIL",
+      "error": "AssertionError [ERR_ASSERTION]: Expected \"actual\" to be strictly unequal to: '已解决'\n    at /private/tmp/task-progress-fix-verify-ui/verify.cjs:41:762\n    at async run (/private/tmp/task-progress-fix-verify-ui/verify.cjs:24:50)\n    at async /private/tmp/task-progress-fix-verify-ui/verify.cjs:41:1",
+      "sourceStatus": "in_progress",
+      "sourceCompleted": 1,
+      "delivery": "已解决",
+      "ended": "已结束0/ 2 项",
+      "files": [
+        {
+          "name": "Task-Progress-F03 linear first step done-e3b1d388-20261027T110344Z.xlsx",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F03 linear first step done-e3b1d388-20261027T110344Z.xlsx",
+          "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "size_bytes": 29224
+        },
+        {
+          "name": "Task-Progress-F03 linear first step done-e3b1d388-20261027T110344Z.html",
+          "path": "/tmp/task-progress-fix-verify-ui/home/Downloads/Task Progress Exports/Task-Progress-F03 linear first step done-e3b1d388-20261027T110344Z.html",
+          "mime_type": "text/html",
+          "size_bytes": 27243
+        }
+      ]
+    },
+    {
+      "id": "F06-archived-time",
+      "status": "FAIL",
+      "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '已用 1小时0分3秒'\n- '已用 0秒'\n      ^\n\n    at /private/tmp/task-progress-fix-verify-ui/verify.cjs:42:1122\n    at async run (/private/tmp/task-progress-fix-verify-ui/verify.cjs:24:50)\n    at async /private/tmp/task-progress-fix-verify-ui/verify.cjs:42:1",
+      "archivedAt": "2026-10-27T19:03:44+08:00",
+      "initial": "已用 0秒",
+      "realWait": "已用 3秒",
+      "clockPlusHour": "已用 1小时0分3秒"
+    }
+  ]
+}

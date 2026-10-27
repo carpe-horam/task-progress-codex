@@ -1,0 +1,109 @@
+[
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "inline",
+      "display_mode": "inline",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "inline",
+      "status": "registered",
+      "registered": true,
+      "is_latest": true
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "tab",
+      "display_mode": "fullscreen",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "tab",
+      "status": "registered",
+      "registered": true,
+      "is_latest": true
+    }
+  },
+  {
+    "name": "unregister_ui_view",
+    "args": {
+      "view_id": "tab"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "tab",
+      "status": "unregistered",
+      "registered": false,
+      "is_latest": false
+    }
+  },
+  {
+    "name": "check_ui_view",
+    "args": {
+      "view_id": "inline"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "inline",
+      "status": "latest",
+      "registered": true,
+      "is_latest": true
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "tab",
+      "display_mode": "fullscreen",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "tab",
+      "status": "superseded",
+      "registered": true,
+      "is_latest": false
+    }
+  },
+  {
+    "name": "check_ui_view",
+    "args": {
+      "view_id": "inline"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "inline",
+      "status": "latest",
+      "registered": true,
+      "is_latest": true
+    }
+  },
+  {
+    "name": "register_ui_view",
+    "args": {
+      "view_id": "tab-new",
+      "display_mode": "fullscreen",
+      "state_revision": 1,
+      "view_sequence": 1,
+      "task_instance_id": "d361d4b4-60c2-42f7-a9f2-2c62f22df9b7"
+    },
+    "result": {
+      "session_id": "ad641212-91ff-4775-90f8-82e738f6363e",
+      "view_id": "tab-new",
+      "status": "registered",
+      "registered": true,
+      "is_latest": true
+    }
+  }
+]

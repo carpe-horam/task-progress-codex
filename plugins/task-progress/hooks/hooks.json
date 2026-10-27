@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
             "timeout": 2,
             "statusMessage": "Preparing Task Progress guidance"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
             "timeout": 2,
             "statusMessage": "Checking Task Progress guidance"
           }

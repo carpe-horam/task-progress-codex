@@ -1,0 +1,43 @@
+{
+  "source": "Read-only hooks/list from bundled desktop app-server in audit cwd; no thread/turn started",
+  "hooks": [
+    {
+      "key": "task-progress@task-progress-codex:hooks/hooks.json:session_start:0:0",
+      "eventName": "sessionStart",
+      "handlerType": "command",
+      "command": "python3 \"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3/hooks/task_progress_hook.py\"",
+      "async": false,
+      "matcher": "startup|resume|compact|fork",
+      "timeoutSec": 2,
+      "statusMessage": "Preparing Task Progress guidance",
+      "additionalContextLimit": null,
+      "sourcePath": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3/hooks/hooks.json",
+      "source": "plugin",
+      "pluginId": "task-progress@task-progress-codex",
+      "displayOrder": 6,
+      "enabled": true,
+      "isManaged": false,
+      "currentHash": "sha256:d02e892b0078915dd36dcf78205f4d60d54bf420aa0e9859a4aa5e8fa4583c9d/sha256:4a87926e5e27a4c45be315774e6cb911530d4b6220bf4f0abfa1c57203fc6047",
+      "trustStatus": "untrusted"
+    },
+    {
+      "key": "task-progress@task-progress-codex:hooks/hooks.json:user_prompt_submit:0:0",
+      "eventName": "userPromptSubmit",
+      "handlerType": "command",
+      "command": "python3 \"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3/hooks/task_progress_hook.py\"",
+      "async": false,
+      "matcher": null,
+      "timeoutSec": 2,
+      "statusMessage": "Checking Task Progress guidance",
+      "additionalContextLimit": null,
+      "sourcePath": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3/hooks/hooks.json",
+      "source": "plugin",
+      "pluginId": "task-progress@task-progress-codex",
+      "displayOrder": 7,
+      "enabled": true,
+      "isManaged": false,
+      "currentHash": "sha256:43404acc4e116328fea2faa467a5906ca4a6782195457d50e50045790dafe789/sha256:4a87926e5e27a4c45be315774e6cb911530d4b6220bf4f0abfa1c57203fc6047",
+      "trustStatus": "untrusted"
+    }
+  ]
+}

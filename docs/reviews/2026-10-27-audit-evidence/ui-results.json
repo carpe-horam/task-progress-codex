@@ -1,0 +1,33 @@
+{
+  "browser": "156.0.8078.48",
+  "host": "Real app.html and isolated Python server with simulated MCP Apps parent",
+  "results": [
+    {
+      "case": "root_acceptance_missing_in_html",
+      "sourceHasSummary": "ROOT_ACCEPTANCE_UNIQUE_SUMMARY",
+      "htmlHasSummary": false,
+      "htmlHasEvidence": false,
+      "rootNodeCount": 0
+    },
+    {
+      "case": "failed_root_mislabeled_waiting_synthesis",
+      "status": "failed",
+      "delivery": "待汇总验收",
+      "ended": "已结束2/ 2 项"
+    },
+    {
+      "case": "linear_completion_and_delivery_wrong",
+      "sourceStatus": "in_progress",
+      "sourceCompleted": 1,
+      "ended": "已结束0/ 2 项",
+      "delivery": "已解决"
+    },
+    {
+      "case": "archived_running_elapsed_keeps_growing",
+      "archivedAt": "2026-10-27T17:03:02+08:00",
+      "initial": "已用 1秒",
+      "afterRealWait": "已用 3秒",
+      "afterClockPlusOneHour": "已用 1小时0分3秒"
+    }
+  ]
+}

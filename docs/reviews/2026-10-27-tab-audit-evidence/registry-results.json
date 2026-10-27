@@ -1,0 +1,110 @@
+{
+  "same_result_two_mounts": {
+    "register_first": "registered",
+    "register_second": "registered",
+    "check_first": "latest",
+    "check_second": "latest",
+    "registry": {
+      "views": {
+        "mount-1": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "39a01f88-660d-4d0b-bf0f-dab8efb8395c",
+          "display_mode": "inline",
+          "expires_at": null
+        },
+        "mount-2": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "39a01f88-660d-4d0b-bf0f-dab8efb8395c",
+          "display_mode": "inline",
+          "expires_at": null
+        }
+      },
+      "latest_inline": {
+        "state_revision": 1,
+        "view_sequence": 1,
+        "task_instance_id": "39a01f88-660d-4d0b-bf0f-dab8efb8395c"
+      }
+    }
+  },
+  "unregister_latest_has_no_live_owner": {
+    "original_before_unregister": "superseded",
+    "original_after_unregister": "superseded",
+    "removed_after_unregister": "unregistered",
+    "original_reregister": "superseded",
+    "registry": {
+      "views": {
+        "original-inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "0daa0ac2-93d3-4249-992c-0c1d38e996ae",
+          "display_mode": "inline",
+          "expires_at": null
+        }
+      },
+      "latest_inline": {
+        "state_revision": 1,
+        "view_sequence": 2,
+        "task_instance_id": "0daa0ac2-93d3-4249-992c-0c1d38e996ae"
+      }
+    }
+  },
+  "fullscreen_polled_source_becomes_inline_owner_then_removed": {
+    "before_return": "hidden_by_fullscreen",
+    "return_to_inline": "registered",
+    "original_after_return": "superseded",
+    "original_after_tab_teardown": "superseded",
+    "registry": {
+      "views": {
+        "original-inline": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "0fb01f3f-2fbb-4188-9a95-f9e8016e70ad",
+          "display_mode": "inline",
+          "expires_at": null
+        }
+      },
+      "latest_inline": {
+        "state_revision": 2,
+        "view_sequence": 3,
+        "task_instance_id": "0fb01f3f-2fbb-4188-9a95-f9e8016e70ad"
+      }
+    }
+  },
+  "rejected_fullscreen_to_inline_keeps_fullscreen_lease": {
+    "return_to_inline": "superseded",
+    "stored_mode_after_return": "fullscreen",
+    "newer_inline_after_return": "hidden_by_fullscreen",
+    "newer_inline_at_34s": "hidden_by_fullscreen",
+    "newer_inline_at_36s": "latest"
+  },
+  "task_switch_retains_old_fullscreen_lease": {
+    "old_renew": "superseded",
+    "new_task_tab_register": "duplicate_fullscreen",
+    "new_inline": "hidden_by_fullscreen",
+    "registry": {
+      "views": {
+        "old-task-tab": {
+          "state_revision": 1,
+          "view_sequence": 1,
+          "task_instance_id": "61c48495-8bb2-45ff-8917-873fdce65bc0",
+          "display_mode": "fullscreen",
+          "expires_at": 2035
+        },
+        "new-task-inline": {
+          "state_revision": 2,
+          "view_sequence": 2,
+          "task_instance_id": "982dd07a-9f8e-43f0-a631-ed1b0b23bc5b",
+          "display_mode": "inline",
+          "expires_at": null
+        }
+      },
+      "latest_inline": {
+        "state_revision": 2,
+        "view_sequence": 2,
+        "task_instance_id": "982dd07a-9f8e-43f0-a631-ed1b0b23bc5b"
+      }
+    }
+  }
+}

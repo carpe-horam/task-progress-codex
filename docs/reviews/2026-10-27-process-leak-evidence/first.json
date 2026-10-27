@@ -1,0 +1,769 @@
+{
+  "captured_at": "2026-10-27T19:38:58.569277+08:00",
+  "processes": [
+    {
+      "pid": 50743,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 3248,
+      "cpu_time": "0:01.52",
+      "started_at": "Tue Oct 27 16:58:01 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 50743,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x6ba8122f739a7950",
+          "peer_fds": []
+        },
+        {
+          "pid": 50743,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x9f1142af9cd2f227",
+          "peer_fds": []
+        },
+        {
+          "pid": 50743,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xf4b0662171d9df2f",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 52583,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 816,
+      "cpu_time": "0:00.05",
+      "started_at": "Tue Oct 27 19:00:52 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 52583,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x1b8dd26449e09bce",
+          "peer_fds": []
+        },
+        {
+          "pid": 52583,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x83f034d5b1a8ac43",
+          "peer_fds": []
+        },
+        {
+          "pid": 52583,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xd25a3203d1e80076",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 65752,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 832,
+      "cpu_time": "0:00.13",
+      "started_at": "Tue Oct 27 17:21:18 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 65752,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x6ecc07f26d4b7cf4",
+          "peer_fds": []
+        },
+        {
+          "pid": 65752,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xe577e96b7b07701e",
+          "peer_fds": []
+        },
+        {
+          "pid": 65752,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x2792ee07a0e1a8c5",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 65832,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 832,
+      "cpu_time": "0:00.04",
+      "started_at": "Tue Oct 27 17:21:32 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 65832,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xe07b9e8561dcc7b6",
+          "peer_fds": []
+        },
+        {
+          "pid": 65832,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xa6fe26f5a1f07163",
+          "peer_fds": []
+        },
+        {
+          "pid": 65832,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x5596c61068ed6f07",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 69590,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 3248,
+      "cpu_time": "0:01.43",
+      "started_at": "Tue Oct 27 17:28:21 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 69590,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xbc7f028fa1e4edb7",
+          "peer_fds": []
+        },
+        {
+          "pid": 69590,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xe33d7e0dfbb2f2b2",
+          "peer_fds": []
+        },
+        {
+          "pid": 69590,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xcefb863185bc42a",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 72287,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 832,
+      "cpu_time": "0:00.05",
+      "started_at": "Tue Oct 27 17:31:16 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 72287,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xb77e63ae7ef04aba",
+          "peer_fds": []
+        },
+        {
+          "pid": 72287,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x5c15f936ee761138",
+          "peer_fds": []
+        },
+        {
+          "pid": 72287,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x823e0cf66398a032",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79898,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79898,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x98af5e112eba748",
+          "peer_fds": []
+        },
+        {
+          "pid": 79898,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x5138c07db3f86968",
+          "peer_fds": []
+        },
+        {
+          "pid": 79898,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x48d1329d77c361f5",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79902,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 4992,
+      "cpu_time": "0:09.70",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79902,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xf7900adef9486dac",
+          "peer_fds": []
+        },
+        {
+          "pid": 79902,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x231d02aa2f2c5603",
+          "peer_fds": []
+        },
+        {
+          "pid": 79902,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x93b55a9118fa065f",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79910,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79910,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x19c00fda269aaef5",
+          "peer_fds": []
+        },
+        {
+          "pid": 79910,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x6c4fe7ccf6faaa01",
+          "peer_fds": []
+        },
+        {
+          "pid": 79910,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x2cd5a9eb92a11b74",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79916,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 1568,
+      "cpu_time": "0:00.74",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79916,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x23acadb25023eedf",
+          "peer_fds": []
+        },
+        {
+          "pid": 79916,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xcb1ae7d370a3bb34",
+          "peer_fds": []
+        },
+        {
+          "pid": 79916,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xd4bee4797161afc3",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79924,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79924,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x9b8121be064cae17",
+          "peer_fds": []
+        },
+        {
+          "pid": 79924,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x360ddaccbb054cc2",
+          "peer_fds": []
+        },
+        {
+          "pid": 79924,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xb383de07fbf79abc",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79938,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 816,
+      "cpu_time": "0:00.39",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79938,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x2ea893ee75e25c4",
+          "peer_fds": []
+        },
+        {
+          "pid": 79938,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x215528953bdb3575",
+          "peer_fds": []
+        },
+        {
+          "pid": 79938,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xc16ccd8e302b5e60",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79955,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:06 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79955,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x1a7dc46fabca68da",
+          "peer_fds": []
+        },
+        {
+          "pid": 79955,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x7ba006515779efc5",
+          "peer_fds": []
+        },
+        {
+          "pid": 79955,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x1e641f7df62700d4",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79960,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79960,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x37ac79069ffa9af6",
+          "peer_fds": []
+        },
+        {
+          "pid": 79960,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xc009f34b47615a7e",
+          "peer_fds": []
+        },
+        {
+          "pid": 79960,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xe8571239c9bc8782",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79963,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 816,
+      "cpu_time": "0:00.51",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79963,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xb2c9da74716dc9a5",
+          "peer_fds": []
+        },
+        {
+          "pid": 79963,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x991fc863903f967d",
+          "peer_fds": []
+        },
+        {
+          "pid": 79963,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x8a5340353e1d60f6",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79974,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 816,
+      "cpu_time": "0:00.42",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79974,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xab0172cb12340f98",
+          "peer_fds": []
+        },
+        {
+          "pid": 79974,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x6d5182210b42d6f5",
+          "peer_fds": []
+        },
+        {
+          "pid": 79974,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x49238f976d93ae15",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79978,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 672,
+      "cpu_time": "0:00.06",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79978,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xc4a8a5566ee2073f",
+          "peer_fds": []
+        },
+        {
+          "pid": 79978,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x45eaac0acfb9604d",
+          "peer_fds": []
+        },
+        {
+          "pid": 79978,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x3e5bcf7f238ca41",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79981,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.2,
+      "rss_kib": 15040,
+      "cpu_time": "0:08.61",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79981,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x3c64dc803f68fdbe",
+          "peer_fds": []
+        },
+        {
+          "pid": 79981,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xb19db71370ef5075",
+          "peer_fds": []
+        },
+        {
+          "pid": 79981,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xae8dda83cb638c4a",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79988,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 1936,
+      "cpu_time": "0:02.02",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79988,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x7057f5b312adf99e",
+          "peer_fds": []
+        },
+        {
+          "pid": 79988,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xbb553d3e6a0535b6",
+          "peer_fds": []
+        },
+        {
+          "pid": 79988,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x7bb6e7a8fd3f811a",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 79993,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 832,
+      "cpu_time": "0:00.45",
+      "started_at": "Tue Oct 27 16:01:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 79993,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xb4c06a028f11c1a8",
+          "peer_fds": []
+        },
+        {
+          "pid": 79993,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x767bd42c06b619d9",
+          "peer_fds": []
+        },
+        {
+          "pid": 79993,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x9fd30b04270d4c9d",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 80168,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 1904,
+      "cpu_time": "0:00.07",
+      "started_at": "Tue Oct 27 19:31:01 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 80168,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x741d295e8a48e05c",
+          "peer_fds": []
+        },
+        {
+          "pid": 80168,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x78828b01a93ba67c",
+          "peer_fds": []
+        },
+        {
+          "pid": 80168,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x784c821c9b47632b",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 84244,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 1920,
+      "cpu_time": "0:00.08",
+      "started_at": "Tue Oct 27 19:34:07 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.4",
+      "stdio": [
+        {
+          "pid": 84244,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0x18502fdc55c1a76b",
+          "peer_fds": []
+        },
+        {
+          "pid": 84244,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0xaeed7eeba6bfc9bd",
+          "peer_fds": []
+        },
+        {
+          "pid": 84244,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0x5b6ea972f68bfe35",
+          "peer_fds": []
+        }
+      ]
+    },
+    {
+      "pid": 88632,
+      "ppid": 5314,
+      "state": "S",
+      "cpu_percent": 0.0,
+      "rss_kib": 832,
+      "cpu_time": "0:00.05",
+      "started_at": "Tue Oct 27 18:01:19 2026",
+      "cwd": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.3",
+      "stdio": [
+        {
+          "pid": 88632,
+          "fd": "0",
+          "type": "PIPE",
+          "name": "->0xae45c84738fa79b4",
+          "peer_fds": []
+        },
+        {
+          "pid": 88632,
+          "fd": "1",
+          "type": "PIPE",
+          "name": "->0x12f7f67dc039a905",
+          "peer_fds": []
+        },
+        {
+          "pid": 88632,
+          "fd": "2",
+          "type": "PIPE",
+          "name": "->0xa99d8fe7199432a9",
+          "peer_fds": []
+        }
+      ]
+    }
+  ],
+  "count": 23,
+  "rss_mib": 44.25,
+  "cpu_percent": 0.2,
+  "all_three_stdio_connected_to_parent": null,
+  "pipe_probe_note": "First sample machine-readable lsof omitted the PIPE device identifier; connection result unavailable. Second sample uses plain lsof device/peer pairs and confirms all connections."
+}

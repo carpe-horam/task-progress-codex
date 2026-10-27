@@ -1,0 +1,795 @@
+{
+  "calls": [
+    {
+      "frame": "main",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub15-9q4tuf8a7ea",
+        "view_sequence": 1,
+        "state_revision": 1,
+        "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+        "display_mode": "inline"
+      },
+      "at": 1793098989433,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub15-9q4tuf8a7ea",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098989440,
+      "deliveredAt": 1793098989440
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub15-9q4tuf8a7ea",
+        "display_mode": "inline"
+      },
+      "at": 1793098989440,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub15-9q4tuf8a7ea",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098989442,
+      "deliveredAt": 1793098989442
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub2s-bvxk9ektszn",
+        "view_sequence": 2,
+        "state_revision": 1,
+        "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098989465,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub2s-bvxk9ektszn",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098989471,
+      "deliveredAt": 1793098989471
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub15-9q4tuf8a7ea",
+        "display_mode": "inline"
+      },
+      "at": 1793098992441,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话已打开完整进度标签页，会话内视图暂时隐藏。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub15-9q4tuf8a7ea",
+          "status": "hidden_by_fullscreen",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098992443,
+      "deliveredAt": 1793098992443
+    },
+    {
+      "frame": "tab",
+      "name": "get_progress",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4"
+      },
+      "at": 1793098992883,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI02 original inline restoration（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 0\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI02 original inline restoration — executing\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 2,
+            "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+            "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+            "task_history": [],
+            "task_title": "UI02 original inline restoration",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "executing",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 0,
+            "executing_count": 1,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 1,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:03:09+08:00",
+            "updated_at": "2026-10-27T19:03:12+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI02 original inline restoration",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "running",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-27T19:03:12+08:00",
+                    "scope": "attempt_start"
+                  }
+                },
+                "profile": null,
+                "attempt": 1,
+                "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                "attempts": [
+                  {
+                    "attempt": 1,
+                    "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                    "kind": "execution",
+                    "execution_status": "running",
+                    "outcome": null,
+                    "summary": "",
+                    "evidence": [],
+                    "started_at": "2026-10-27T19:03:12+08:00",
+                    "assignment": {
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-27T19:03:12+08:00",
+                        "scope": "attempt_start"
+                      }
+                    },
+                    "finished_at": null
+                  }
+                ],
+                "started_at": "2026-10-27T19:03:12+08:00",
+                "finished_at": null,
+                "status": "executing",
+                "ready": false,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "state_revision": 2,
+          "view_sequence": 4
+        }
+      },
+      "completedAt": 1793098992887,
+      "deliveredAt": 1793098992887
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub2s-bvxk9ektszn",
+        "view_sequence": 4,
+        "state_revision": 2,
+        "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+        "display_mode": "fullscreen"
+      },
+      "at": 1793098992892,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub2s-bvxk9ektszn",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098992897,
+      "deliveredAt": 1793098992897
+    },
+    {
+      "frame": "tab",
+      "name": "get_progress",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4"
+      },
+      "at": 1793098992897,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI02 original inline restoration（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 0\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI02 original inline restoration — executing\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 2,
+            "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+            "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+            "task_history": [],
+            "task_title": "UI02 original inline restoration",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "executing",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 0,
+            "executing_count": 1,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 1,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:03:09+08:00",
+            "updated_at": "2026-10-27T19:03:12+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI02 original inline restoration",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "running",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-27T19:03:12+08:00",
+                    "scope": "attempt_start"
+                  }
+                },
+                "profile": null,
+                "attempt": 1,
+                "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                "attempts": [
+                  {
+                    "attempt": 1,
+                    "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                    "kind": "execution",
+                    "execution_status": "running",
+                    "outcome": null,
+                    "summary": "",
+                    "evidence": [],
+                    "started_at": "2026-10-27T19:03:12+08:00",
+                    "assignment": {
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-27T19:03:12+08:00",
+                        "scope": "attempt_start"
+                      }
+                    },
+                    "finished_at": null
+                  }
+                ],
+                "started_at": "2026-10-27T19:03:12+08:00",
+                "finished_at": null,
+                "status": "executing",
+                "ready": false,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "state_revision": 2,
+          "view_sequence": 5
+        }
+      },
+      "completedAt": 1793098992899,
+      "deliveredAt": 1793098992899
+    },
+    {
+      "frame": "tab",
+      "name": "register_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub2s-bvxk9ektszn",
+        "view_sequence": 2,
+        "state_revision": 1,
+        "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+        "display_mode": "inline"
+      },
+      "at": 1793098992897,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已登记当前进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub2s-bvxk9ektszn",
+          "status": "registered",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098992900,
+      "deliveredAt": 1793098992900
+    },
+    {
+      "frame": "tab",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub2s-bvxk9ektszn",
+        "display_mode": "inline"
+      },
+      "at": 1793098992900,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub2s-bvxk9ektszn",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098992901,
+      "deliveredAt": 1793098992901
+    },
+    {
+      "frame": "tab",
+      "name": "get_progress",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4"
+      },
+      "at": 1793098994466,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI02 original inline restoration（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 0\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI02 original inline restoration — executing\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 2,
+            "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+            "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+            "task_history": [],
+            "task_title": "UI02 original inline restoration",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "executing",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 0,
+            "executing_count": 1,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 1,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:03:09+08:00",
+            "updated_at": "2026-10-27T19:03:12+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI02 original inline restoration",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "running",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-27T19:03:12+08:00",
+                    "scope": "attempt_start"
+                  }
+                },
+                "profile": null,
+                "attempt": 1,
+                "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                "attempts": [
+                  {
+                    "attempt": 1,
+                    "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                    "kind": "execution",
+                    "execution_status": "running",
+                    "outcome": null,
+                    "summary": "",
+                    "evidence": [],
+                    "started_at": "2026-10-27T19:03:12+08:00",
+                    "assignment": {
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-27T19:03:12+08:00",
+                        "scope": "attempt_start"
+                      }
+                    },
+                    "finished_at": null
+                  }
+                ],
+                "started_at": "2026-10-27T19:03:12+08:00",
+                "finished_at": null,
+                "status": "executing",
+                "ready": false,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "state_revision": 2,
+          "view_sequence": 6
+        }
+      },
+      "completedAt": 1793098994468,
+      "deliveredAt": 1793098994468
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub15-9q4tuf8a7ea",
+        "display_mode": "inline"
+      },
+      "at": 1793098995441,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例已被本会话的新进度视图替代。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub15-9q4tuf8a7ea",
+          "status": "superseded",
+          "registered": true,
+          "is_latest": false
+        }
+      },
+      "completedAt": 1793098995444,
+      "deliveredAt": 1793098995444
+    },
+    {
+      "frame": "tab",
+      "name": "unregister_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub2s-bvxk9ektszn"
+      },
+      "at": 1793098995805,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "本会话尚未登记进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub2s-bvxk9ektszn",
+          "status": "unregistered",
+          "registered": false,
+          "is_latest": false
+        }
+      },
+      "completedAt": 1793098995809,
+      "deliveredAt": 1793098995809
+    },
+    {
+      "frame": "main",
+      "name": "check_ui_view",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+        "view_id": "view-mvqkub15-9q4tuf8a7ea",
+        "display_mode": "inline"
+      },
+      "at": 1793098998441,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "当前实例是本会话的活动进度视图。"
+          }
+        ],
+        "structuredContent": {
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "view_id": "view-mvqkub15-9q4tuf8a7ea",
+          "status": "latest",
+          "registered": true,
+          "is_latest": true
+        }
+      },
+      "completedAt": 1793098998444,
+      "deliveredAt": 1793098998444
+    },
+    {
+      "frame": "main",
+      "name": "get_progress",
+      "args": {
+        "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4"
+      },
+      "at": 1793098998446,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "📋 目标：UI02 original inline restoration（计划第 1 轮）\n🧭 规划状态：atomic\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，待执行 0\n状态：in_progress\n单步原因：single isolated acceptance fixture\n- [root] UI02 original inline restoration — executing\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+          }
+        ],
+        "structuredContent": {
+          "progress": {
+            "schema_version": 2,
+            "state_revision": 2,
+            "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+            "task_instance_id": "c7653d3e-d4d5-439a-8c14-5f41f7661bb5",
+            "task_history": [],
+            "task_title": "UI02 original inline restoration",
+            "main_session": null,
+            "planning_status": "atomic",
+            "planning_note": "single isolated acceptance fixture",
+            "status": "in_progress",
+            "root_status": "executing",
+            "completed": 0,
+            "total": 1,
+            "percent": 0,
+            "resolved_leaf_count": 0,
+            "open_leaf_count": 0,
+            "failed_leaf_count": 0,
+            "ready_count": 0,
+            "executing_count": 1,
+            "split_review_due": [],
+            "blocked_count": 0,
+            "epoch": 0,
+            "revision": 1,
+            "root_id": "root",
+            "created_at": "2026-10-27T19:03:09+08:00",
+            "updated_at": "2026-10-27T19:03:12+08:00",
+            "nodes": [
+              {
+                "id": "root",
+                "title": "UI02 original inline restoration",
+                "parent_id": null,
+                "children": [],
+                "depends_on": [],
+                "dependency_policy": "resolved",
+                "execution_status": "running",
+                "outcome": null,
+                "summary": "",
+                "evidence": [],
+                "assignment": {
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-27T19:03:12+08:00",
+                    "scope": "attempt_start"
+                  }
+                },
+                "profile": null,
+                "attempt": 1,
+                "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                "attempts": [
+                  {
+                    "attempt": 1,
+                    "attempt_id": "4b431065-4f90-4265-840a-5b335ecb6e68",
+                    "kind": "execution",
+                    "execution_status": "running",
+                    "outcome": null,
+                    "summary": "",
+                    "evidence": [],
+                    "started_at": "2026-10-27T19:03:12+08:00",
+                    "assignment": {
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-27T19:03:12+08:00",
+                        "scope": "attempt_start"
+                      }
+                    },
+                    "finished_at": null
+                  }
+                ],
+                "started_at": "2026-10-27T19:03:12+08:00",
+                "finished_at": null,
+                "status": "executing",
+                "ready": false,
+                "blocked_by": [],
+                "dependencies": []
+              }
+            ],
+            "ready_tasks": [],
+            "next_actions": [
+              "启动原子任务 root"
+            ],
+            "history": []
+          },
+          "session_id": "7370d145-5152-4e14-8581-ff29ebbdcda4",
+          "state_revision": 2,
+          "view_sequence": 7
+        }
+      },
+      "completedAt": 1793098998450,
+      "deliveredAt": 1793098998450
+    }
+  ],
+  "sizes": [
+    {
+      "frame": "main",
+      "height": 193,
+      "at": 1793098989418
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793098989433
+    },
+    {
+      "frame": "tab",
+      "height": 193,
+      "at": 1793098989464
+    },
+    {
+      "frame": "tab",
+      "height": 256,
+      "at": 1793098989465
+    },
+    {
+      "frame": "main",
+      "height": 0,
+      "at": 1793098992443
+    },
+    {
+      "frame": "tab",
+      "height": 271,
+      "at": 1793098992892
+    },
+    {
+      "frame": "main",
+      "height": 81,
+      "at": 1793098995445
+    },
+    {
+      "frame": "main",
+      "height": 79,
+      "at": 1793098995445
+    },
+    {
+      "frame": "main",
+      "height": 256,
+      "at": 1793098998446
+    },
+    {
+      "frame": "main",
+      "height": 271,
+      "at": 1793098998454
+    }
+  ],
+  "modeRequests": [],
+  "held": []
+}

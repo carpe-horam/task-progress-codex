@@ -1,0 +1,219 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "📋 目标：Failed root delivery（计划第 1 轮）\n🧭 规划状态：planned\n📊 叶任务结束：2/2（100%），已解决 0，未解决 0，待执行 0\n状态：failed\n- [root] Failed root delivery — failed\n  执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验\n  结果：ALL_WORK_FAILED\n  - [a] Leaf A — failed\n    执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验\n  - [b] Leaf B — failed\n    执行：主会话；model=未记录；reasoning=未记录；调用方填报，未经 Codex 宿主核验"
+    }
+  ],
+  "structuredContent": {
+    "progress": {
+      "schema_version": 2,
+      "state_revision": 6,
+      "session_id": "be2475b7-bf48-4a75-bb8e-ce70f179832a",
+      "task_instance_id": "db00f11a-686d-4e66-a38f-8841f5187eb4",
+      "task_history": [],
+      "task_title": "Failed root delivery",
+      "main_session": null,
+      "planning_status": "planned",
+      "planning_note": "",
+      "status": "failed",
+      "root_status": "failed",
+      "completed": 2,
+      "total": 2,
+      "percent": 100,
+      "resolved_leaf_count": 0,
+      "open_leaf_count": 0,
+      "failed_leaf_count": 2,
+      "ready_count": 0,
+      "executing_count": 0,
+      "split_review_due": [],
+      "blocked_count": 0,
+      "epoch": 0,
+      "revision": 5,
+      "root_id": "root",
+      "created_at": "2026-10-27T17:03:01+08:00",
+      "updated_at": "2026-10-27T17:03:01+08:00",
+      "nodes": [
+        {
+          "id": "root",
+          "title": "Failed root delivery",
+          "parent_id": null,
+          "children": [
+            "a",
+            "b"
+          ],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "failed",
+          "outcome": null,
+          "summary": "ALL_WORK_FAILED",
+          "evidence": [],
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T17:03:01+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "profile": null,
+          "attempt": 1,
+          "attempt_id": "1e5217c5-3a17-48b2-ba5c-b510e033497d",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "1e5217c5-3a17-48b2-ba5c-b510e033497d",
+              "kind": "group_termination",
+              "execution_status": "failed",
+              "outcome": null,
+              "summary": "ALL_WORK_FAILED",
+              "evidence": [],
+              "started_at": "2026-10-27T17:03:01+08:00",
+              "assignment": {
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-27T17:03:01+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "finished_at": "2026-10-27T17:03:01+08:00"
+            }
+          ],
+          "started_at": "2026-10-27T17:03:01+08:00",
+          "finished_at": "2026-10-27T17:03:01+08:00",
+          "status": "failed",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "a",
+          "title": "Leaf A",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "failed",
+          "outcome": null,
+          "summary": "",
+          "evidence": [],
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T17:03:01+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "profile": null,
+          "attempt": 1,
+          "attempt_id": "2eb49742-939f-4c9c-8d36-0afb5f3a9db8",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "2eb49742-939f-4c9c-8d36-0afb5f3a9db8",
+              "kind": "execution",
+              "execution_status": "failed",
+              "outcome": null,
+              "summary": "",
+              "evidence": [],
+              "started_at": "2026-10-27T17:03:01+08:00",
+              "assignment": {
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-27T17:03:01+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "finished_at": "2026-10-27T17:03:01+08:00"
+            }
+          ],
+          "started_at": "2026-10-27T17:03:01+08:00",
+          "finished_at": "2026-10-27T17:03:01+08:00",
+          "status": "failed",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "b",
+          "title": "Leaf B",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "failed",
+          "outcome": null,
+          "summary": "",
+          "evidence": [],
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T17:03:01+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "profile": null,
+          "attempt": 1,
+          "attempt_id": "075a69e0-a1ca-4e3c-8184-9803ac1c6003",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "075a69e0-a1ca-4e3c-8184-9803ac1c6003",
+              "kind": "execution",
+              "execution_status": "failed",
+              "outcome": null,
+              "summary": "",
+              "evidence": [],
+              "started_at": "2026-10-27T17:03:01+08:00",
+              "assignment": {
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-27T17:03:01+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "finished_at": "2026-10-27T17:03:01+08:00"
+            }
+          ],
+          "started_at": "2026-10-27T17:03:01+08:00",
+          "finished_at": "2026-10-27T17:03:01+08:00",
+          "status": "failed",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        }
+      ],
+      "ready_tasks": [],
+      "next_actions": [
+        "get_ready_tasks，然后启动返回的 ready 叶任务"
+      ],
+      "history": []
+    },
+    "session_id": "be2475b7-bf48-4a75-bb8e-ce70f179832a",
+    "state_revision": 6,
+    "view_sequence": 6
+  }
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -12,7 +13,8 @@ import sys
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+import weakref
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +39,7 @@ RESOURCE_URI = "ui://task-progress/progress-inspector/v3"
 LEGACY_RESOURCE_URIS = ("ui://task-progress/progress-inspector/v2",)
 RESOURCE_MIME = "text/html;profile=mcp-app"
 APP_HTML_PATH = Path(__file__).with_name("app.html")
+PLUGIN_MANIFEST_PATH = Path(__file__).with_name(".codex-plugin") / "plugin.json"
 
 VALID_STATUSES = ("pending", "in_progress", "completed")
 EXECUTION_STATUSES = ("pending", "running", "finished", "failed", "cancelled")
@@ -59,7 +62,9 @@ STATUS_ICONS = {
     "in_progress": "🔄",
     "pending": "⬜",
 }
-_SESSION_LOCKS: dict[str, threading.RLock] = {}
+# A shared daemon may see thousands of sessions. Keep locks alive only while
+# acquired/waiting; callers retain a strong reference across their whole use.
+_SESSION_LOCKS = weakref.WeakValueDictionary()
 _SESSION_LOCKS_GUARD = threading.Lock()
 
 
@@ -238,6 +243,10 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "status": step["status"],
             "started_at": step.get("started_at"),
             "finished_at": step.get("finished_at"),
+            "attempt": step.get("attempt", 0),
+            "attempt_id": step.get("attempt_id"),
+            "attempts": deepcopy(step.get("attempts", [])),
+            "legacy_attempt": step.get("legacy_attempt", False),
             **({"assignment": step["assignment"]} if step.get("assignment") else {}),
             **({"note": step["note"]} if step.get("note") else {}),
         }
@@ -769,7 +778,7 @@ def init_task_network(
     atomic_reason: str | None = None,
     request_id: str | None = None,
 ) -> dict[str, Any]:
-    sid = _normalize_session_id(session_id, generate=True)
+    requested_sid = _normalize_session_id(session_id) if session_id is not None else None
     if not isinstance(task_title, str) or not task_title.strip():
         raise ProgressError("task_title 必须是非空字符串。")
     if tasks is not None and atomic_reason is not None:
@@ -788,31 +797,74 @@ def init_task_network(
         {"task_title": normalized_title, "tasks": tasks, "atomic_reason": atomic_reason,
          "main_session": fingerprint_main}, sort_keys=True, ensure_ascii=False, default=str,
     )
-    with _session_lock(sid):
-        previous = _read(sid)
-        if request_id and previous and previous.get("init_request_id") == request_id:
-            if previous.get("init_request_fingerprint") != request_fingerprint:
+    # One process/file lock protects allocation as well as the ledger. Session
+    # locks alone cannot deduplicate a request that has not yet received a sid.
+    ledger_lock = str(uuid.uuid5(uuid.NAMESPACE_URL, "task-progress:init-request-ledger"))
+    ledger_path = SESSION_DIR / ".init-request-ledger.json"
+    fingerprint_hash = hashlib.sha256(request_fingerprint.encode()).hexdigest()
+
+    def request_key(scope: str) -> str:
+        return hashlib.sha256(json.dumps([scope, request_id]).encode()).hexdigest()
+
+    with _session_lock(ledger_lock) if request_id else nullcontext():
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8")) if request_id and ledger_path.exists() else {}
+        key = request_key(requested_sid or "generated-session")
+        binding = ledger.get(key) if request_id else None
+        sid = binding["session_id"] if binding else requested_sid or str(uuid.uuid4())
+        with _session_lock(sid):
+            previous = _read(sid)
+            if binding and binding["fingerprint_hash"] != fingerprint_hash:
                 raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
-            data = previous
-        else:
-            data = _new_network(
-                sid,
-                normalized_title,
-                main_session=normalized_main,
-            )
-            if tasks is not None:
-                if not isinstance(tasks, list) or len(tasks) < 2:
-                    raise ProgressError("多阶段初始计划必须提供至少两个有独立结果边界的 tasks；单步任务请填写 atomic_reason。")
-                _add_tasks(data, data["root_id"], tasks)
-                data["planning_status"] = "planned"
-            elif atomic_reason is not None:
-                data["planning_status"] = "atomic"
-                data["planning_note"] = atomic_reason.strip()
+            if binding and previous and _task_instance_id(previous) == binding["task_instance_id"]:
+                # Return the current revision of the original instance, including
+                # replanning, rather than restoring its initialization snapshot.
+                data = previous
+            elif binding and not (
+                binding.get("status") == "reserved"
+                and _read_order(sid)["state_revision"] == binding["previous_revision"]
+                and (_task_instance_id(previous) if previous else None) == binding["previous_instance_id"]
+            ):
+                raise ProgressError("该初始化请求绑定的任务已归档、清除或被替换；旧请求已过期，当前任务不会回滚。")
+            elif request_id and not binding and previous and previous.get("init_request_id") == request_id:
+                # Adopt a current pre-ledger task without rewriting its state.
+                if previous.get("init_request_fingerprint") != request_fingerprint:
+                    raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
+                data = previous
+            else:
+                data = _new_network(sid, normalized_title, main_session=normalized_main)
+                if binding:
+                    data["task_instance_id"] = binding["task_instance_id"]
+                if tasks is not None:
+                    if not isinstance(tasks, list) or len(tasks) < 2:
+                        raise ProgressError("多阶段初始计划必须提供至少两个有独立结果边界的 tasks；单步任务请填写 atomic_reason。")
+                    _add_tasks(data, data["root_id"], tasks)
+                    data["planning_status"] = "planned"
+                elif atomic_reason is not None:
+                    data["planning_status"] = "atomic"
+                    data["planning_note"] = atomic_reason.strip()
+                if request_id:
+                    data["init_request_id"] = request_id
+                    data["init_request_fingerprint"] = request_fingerprint
+                    binding = {
+                        "session_id": sid, "task_instance_id": data["task_instance_id"],
+                        "fingerprint_hash": fingerprint_hash, "status": "reserved",
+                        "previous_revision": _read_order(sid)["state_revision"],
+                        "previous_instance_id": _task_instance_id(previous) if previous else None,
+                    }
+                    ledger[key] = binding
+                    ledger[request_key(sid)] = binding
+                    # Reserve the identity before writing data. A crash cannot
+                    # turn a no-session retry into another independent task.
+                    _atomic_json(ledger_path, ledger)
+                data["task_history"] = _archive_current_task(previous)
+                _write(sid, data)
             if request_id:
-                data["init_request_id"] = request_id
-                data["init_request_fingerprint"] = request_fingerprint
-            data["task_history"] = _archive_current_task(previous)
-            _write(sid, data)
+                # Retain only hashes and identity tombstones, never task content.
+                binding = {"session_id": sid, "task_instance_id": _task_instance_id(data),
+                           "fingerprint_hash": fingerprint_hash, "status": "committed"}
+                ledger[key] = binding
+                ledger[request_key(sid)] = binding
+                _atomic_json(ledger_path, ledger)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid)
 
@@ -1087,8 +1139,8 @@ def rebuild_task_network(
         data.update({key: replacement[key] for key in (
             "epoch", "root_id", "nodes", "task_title", "planning_status", "planning_note"
         )})
-        data.pop("init_request_id", None)
-        data.pop("init_request_fingerprint", None)
+        # The initialization binding remains valid across plan epochs. Durable
+        # ledger entries also survive replacing or clearing this task object.
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     progress = _progress_payload(data)
@@ -1238,6 +1290,7 @@ def update_step(
     note: str = "",
     assignment: dict[str, Any] | None = None,
     task_instance_id: str | None = None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
@@ -1258,6 +1311,14 @@ def update_step(
         normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
         step = data["steps"][step_index]
         previous_status = step["status"]
+        if attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id.strip()):
+            raise ProgressError("attempt_id 必须是非空字符串。")
+        current_attempt = step.get("attempt_id")
+        if current_attempt:
+            if attempt_id != current_attempt and not (attempt_id is None and step.get("legacy_attempt")):
+                raise ProgressError("attempt_id 缺失或不匹配；旧执行尝试不能更新、完成或重置当前步骤。")
+        elif attempt_id is not None:
+            raise ProgressError("当前步骤尚无该 attempt_id；请先启动并读取新的执行尝试。")
         if status in ("in_progress", "completed") and any(
             previous["status"] != "completed" for previous in data["steps"][:step_index]
         ):
@@ -1275,10 +1336,33 @@ def update_step(
             raise ProgressError("重开前序步骤前，请先从后往前将后续步骤恢复为 pending。")
         step.setdefault("started_at", None)
         step.setdefault("finished_at", None)
+        # Existing running/completed v1 storage has no token. Preserve that
+        # attempt, permit legacy calls only for its remaining lifetime, and
+        # require tokens for every start after reset/reopen.
+        if not current_attempt and previous_status in ("in_progress", "completed"):
+            step["attempt"] = int(step.get("attempt", 0)) + 1
+            step["attempt_id"] = str(uuid.uuid4())
+            step["legacy_attempt"] = True
+            step.setdefault("attempts", []).append({
+                "attempt": step["attempt"], "attempt_id": step["attempt_id"],
+                "kind": "execution", "legacy_attempt": True,
+                "status": previous_status,
+                "execution_status": "running" if previous_status == "in_progress" else "finished",
+                "started_at": step["started_at"], "finished_at": step["finished_at"],
+                "assignment": deepcopy(step.get("assignment", {})),
+                "summary": step.get("note", ""), "evidence": [],
+            })
         if status == "pending":
+            if step.get("attempts") and step.get("attempt_id"):
+                record = step["attempts"][-1]
+                if previous_status == "in_progress":
+                    record.update(status="cancelled", execution_status="cancelled", finished_at=_now(),
+                                  summary=note or step.get("note", ""))
             step["started_at"] = None
             step["finished_at"] = None
             step.pop("assignment", None)
+            step["attempt_id"] = None
+            step["legacy_attempt"] = False
         elif status == "in_progress":
             if previous_status != "in_progress" or not step["started_at"]:
                 _require_execution_metadata(normalized_assignment)
@@ -1286,6 +1370,16 @@ def update_step(
                 # A new run (including reopening a completed step) gets a fresh
                 # snapshot so fields from an earlier dispatch cannot linger.
                 step["assignment"] = _stamp_assignment(normalized_assignment or {}, scope="step_start")
+                step["attempt"] = int(step.get("attempt", 0)) + 1
+                step["attempt_id"] = str(uuid.uuid4())
+                step["legacy_attempt"] = False
+                step.pop("note", None)
+                step.setdefault("attempts", []).append({
+                    "attempt": step["attempt"], "attempt_id": step["attempt_id"],
+                    "kind": "execution", "status": "in_progress", "execution_status": "running",
+                    "started_at": step["started_at"], "finished_at": None,
+                    "assignment": deepcopy(step["assignment"]), "summary": "", "evidence": [],
+                })
             elif normalized_assignment is not None:
                 snapshot = step.get("assignment", {})
                 changed = [
@@ -1314,11 +1408,17 @@ def update_step(
                         + ", ".join(changed)
                         + "。"
                     )
+            step["legacy_attempt"] = False
         step["status"] = status
         if note:
             data["steps"][step_index]["note"] = note
         elif status == "pending":
             data["steps"][step_index].pop("note", None)
+        if status != "pending" and step.get("attempts"):
+            step["attempts"][-1].update(
+                status=status, execution_status="finished" if status == "completed" else "running",
+                finished_at=step["finished_at"], summary=step.get("note", ""),
+            )
         _write(sid, data)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid)
@@ -1342,7 +1442,7 @@ def render_progress(session_id: str) -> dict[str, Any]:
 def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any]:
     messages = {
         "registered": "已登记当前进度视图。",
-        "latest": "当前实例是本会话最新的进度视图。",
+        "latest": "当前实例是本会话的活动进度视图。",
         "hidden_by_fullscreen": "本会话已打开完整进度标签页，会话内视图暂时隐藏。",
         "superseded": "当前实例已被本会话的新进度视图替代。",
         "duplicate_fullscreen": "本会话已有完整进度标签页打开。",
@@ -1361,10 +1461,48 @@ def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any
     }
 
 
+def _ui_source_order(source: dict[str, Any]) -> tuple[int, int]:
+    return tuple(value if isinstance(value, int) and not isinstance(value, bool) else -1
+                 for value in (source.get("state_revision"), source.get("view_sequence")))
+
+
+def _ui_fullscreen_active(view: dict[str, Any], now: float) -> bool:
+    return (view.get("display_mode") == "fullscreen"
+            and isinstance(view.get("expires_at"), (int, float))
+            and view["expires_at"] > now)
+
+
+def _prepare_ui_registry(metadata: dict[str, Any]) -> None:
+    """Keep issuance order separate from the owner of a currently mounted card."""
+    views = metadata.setdefault("views", {})
+    metadata.setdefault("released_views", {})
+    for view in views.values():
+        # Keep expired mounts' original source until teardown: a late heartbeat
+        # or mode change must not acquire a new inline issuance identity.
+        # Migrate registries written before explicit ownership was introduced.
+        view.setdefault("inline_source", {key: view.get(key) for key in (
+            "state_revision", "view_sequence", "task_instance_id"
+        )})
+        view.setdefault("inline_eligible", view.get("display_mode") == "inline")
+    inline = {vid: view for vid, view in views.items()
+              if view.get("display_mode") == "inline" and view.get("inline_eligible")}
+    if metadata.get("latest_inline") is None and inline:
+        metadata["latest_inline"] = dict(max(
+            inline.values(), key=lambda view: _ui_source_order(view["inline_source"])
+        )["inline_source"])
+    if metadata.get("inline_owner") not in inline:
+        # Only cards that previously qualified for ownership can be restored.
+        # A newly mounted historical result cannot lower the issuance watermark.
+        metadata["inline_owner"] = max(
+            inline, key=lambda vid: _ui_source_order(inline[vid]["inline_source"]), default=None
+        )
+
+
 def register_ui_view(
     session_id: str, view_id: str, view_sequence: int | None = None,
     state_revision: int | None = None, task_instance_id: str | None = None,
     display_mode: str = "inline",
+    mode_generation: int | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
@@ -1372,8 +1510,52 @@ def register_ui_view(
         data = _read(sid)
         if data is None:
             return _ui_view_result(sid, vid, "missing_progress")
-        # Legacy cards have no issuance order. They may keep displaying progress,
-        # but must never replace a card whose source result can be ordered.
+        if display_mode not in ("inline", "fullscreen"):
+            raise ProgressError("display_mode 必须是 inline 或 fullscreen。")
+        if mode_generation is not None and (
+            not isinstance(mode_generation, int) or isinstance(mode_generation, bool) or mode_generation < 0
+        ):
+            raise ProgressError("mode_generation 必须是非负整数。")
+        path = _ui_view_file(sid)
+        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        now = time.time()
+        previous = current.get("views", {}).get(vid)
+        mode_state = current.get("mode_generations", {}).get(vid)
+        previous_generation = mode_state["generation"] if mode_state else previous.get("mode_generation") if previous else None
+        previous_mode = mode_state["display_mode"] if mode_state else previous.get("display_mode") if previous else None
+        # Reject stale/legacy requests before preparing ownership or releasing
+        # any lease. A late demotion is as unsafe as a late fullscreen renewal.
+        if previous_generation is not None and (
+            mode_generation is None or mode_generation < previous_generation
+            or (mode_generation == previous_generation and previous_mode != display_mode)
+        ):
+            return _ui_view_result(sid, vid, "superseded")
+        if vid in current.get("released_views", {}):
+            return _ui_view_result(sid, vid, "superseded")
+        _prepare_ui_registry(current)
+        views = current["views"]
+        previous = views.get(vid)
+        returning_inline = bool(previous and previous.get("display_mode") == "fullscreen"
+                                and display_mode == "inline")
+        if mode_generation is not None:
+            # Mode observations and source eligibility are independent. Even a
+            # stale task result, missing source, or duplicate fullscreen must
+            # fence off requests from an earlier host mode. No lease is granted
+            # merely by recording this watermark.
+            current.setdefault("mode_generations", {})[vid] = {
+                "generation": mode_generation, "display_mode": display_mode,
+            }
+            if previous:
+                previous["mode_generation"] = mode_generation
+        if returning_inline:
+            # Release the fullscreen lease even if this source is subsequently
+            # rejected as stale. Polling in a tab must not promote its card source.
+            previous["display_mode"] = "inline"
+            previous["expires_at"] = None
+        if returning_inline or mode_generation is not None:
+            _prepare_ui_registry(current)
+            _atomic_json(path, current)
+        # Legacy cards cannot claim ownership over an ordered result.
         if view_sequence is None or state_revision is None or task_instance_id is None:
             return _ui_view_result(sid, vid, "unregistered")
         if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
@@ -1384,55 +1566,50 @@ def register_ui_view(
             raise ProgressError("视图顺序超出服务端已发出的范围。")
         if task_instance_id != _task_instance_id(data):
             return _ui_view_result(sid, vid, "superseded")
-        if display_mode not in ("inline", "fullscreen"):
-            raise ProgressError("display_mode 必须是 inline 或 fullscreen。")
-        path = _ui_view_file(sid)
-        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         candidate = {"state_revision": state_revision, "view_sequence": view_sequence,
                      "task_instance_id": task_instance_id}
-        views = current.setdefault("views", {})
-        now = time.time()
-        for stale_id, view in list(views.items()):
-            if view.get("display_mode") == "fullscreen" and view.get("expires_at", 0) <= now:
-                views.pop(stale_id, None)
         if display_mode == "fullscreen" and any(
-            other_id != vid and view.get("display_mode") == "fullscreen"
-            and isinstance(view.get("expires_at"), (int, float))
-            and view["expires_at"] > now
+            other_id != vid and _ui_fullscreen_active(view, now)
             for other_id, view in views.items()
         ):
             _atomic_json(path, current)
             return _ui_view_result(sid, vid, "duplicate_fullscreen")
+        inline_source = (previous["inline_source"] if previous and (
+            display_mode == "fullscreen" or returning_inline
+        ) else candidate)
+        eligible = bool(previous and previous.get("inline_eligible"))
+        status = "registered"
         if display_mode == "inline":
-            latest_inline = current.get("latest_inline")
-            if latest_inline is None:
-                # Migrate old registries without allowing fullscreen polls to
-                # become the inline card's replacement order.
-                inline_views = [
-                    view for view in views.values()
-                    if view.get("display_mode") == "inline"
-                ]
-                if inline_views:
-                    latest_inline = max(
-                        inline_views,
-                        key=lambda view: (view.get("state_revision", -1), view.get("view_sequence", -1)),
-                    )
-            latest_inline_order = (
-                latest_inline.get("state_revision", -1), latest_inline.get("view_sequence", -1)
-            ) if latest_inline else (-1, -1)
-            if (state_revision, view_sequence) < latest_inline_order:
-                return _ui_view_result(sid, vid, "superseded")
-            if (state_revision, view_sequence) > latest_inline_order or not latest_inline:
-                current["latest_inline"] = candidate
+            watermark = current.get("latest_inline") or {}
+            source_order = _ui_source_order(inline_source)
+            latest_order = _ui_source_order(watermark)
+            if source_order > latest_order:
+                current["latest_inline"] = dict(inline_source)
+                current["inline_owner"] = vid
+                eligible = True
+            elif source_order == latest_order and (
+                current.get("inline_owner") in (None, vid) or previous is None
+            ):
+                # A new mount of the same result replaces its old mount once;
+                # an already superseded mount cannot reclaim ownership by retry.
+                current["inline_owner"] = vid
+                eligible = True
+            elif current.get("inline_owner") != vid:
+                status = "superseded"
         views[vid] = {**candidate, "display_mode": display_mode,
-                      "expires_at": time.time() + 35 if display_mode == "fullscreen" else None}
+                      "mode_generation": mode_generation,
+                      "inline_source": dict(inline_source), "inline_eligible": eligible,
+                      "expires_at": now + 35 if display_mode == "fullscreen" else None}
+        _prepare_ui_registry(current)
         _atomic_json(path, current)
-    return _ui_view_result(sid, vid, "registered")
+    return _ui_view_result(sid, vid, status)
 
 
 def check_ui_view(session_id: str, view_id: str, display_mode: str = "inline") -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
+    if display_mode not in ("inline", "fullscreen"):
+        raise ProgressError("display_mode 必须是 inline 或 fullscreen。")
     with _session_lock(sid):
         if not _session_file(sid).exists():
             return _ui_view_result(sid, vid, "missing_progress")
@@ -1440,49 +1617,24 @@ def check_ui_view(session_id: str, view_id: str, display_mode: str = "inline") -
         if not path.exists():
             return _ui_view_result(sid, vid, "unregistered")
         metadata = json.loads(path.read_text(encoding="utf-8"))
-        views = metadata.get("views", {})
-        own = views.get(vid)
-        if not own:
-            return _ui_view_result(sid, vid, "unregistered")
-        latest_inline = metadata.get("latest_inline")
-        if latest_inline is None:
-            inline_views = [
-                view for view in views.values()
-                if view.get("display_mode") == "inline"
-            ]
-            if inline_views:
-                latest_inline = max(
-                    inline_views,
-                    key=lambda view: (view.get("state_revision", -1), view.get("view_sequence", -1)),
-                )
-        own_order = (own.get("state_revision", -1), own.get("view_sequence", -1))
-        latest_order = (
-            latest_inline.get("state_revision", -1), latest_inline.get("view_sequence", -1)
-        ) if latest_inline else (-1, -1)
-        if display_mode == "inline" and (
-            latest_inline is None
-            or own_order != latest_order
-            or own.get("task_instance_id") != latest_inline.get("task_instance_id")
-        ):
+        now = time.time()
+        _prepare_ui_registry(metadata)
+        views = metadata["views"]
+        if vid in metadata["released_views"]:
+            status = "superseded"
+        elif vid not in views:
+            status = "unregistered"
+        elif display_mode == "fullscreen" and not _ui_fullscreen_active(views[vid], now):
+            status = "unregistered"
+        elif display_mode == "inline" and metadata.get("inline_owner") != vid:
             status = "superseded"
         else:
-            now = time.time()
-            expired = [view_id for view_id, view in views.items()
-                       if view.get("display_mode") == "fullscreen"
-                       and not isinstance(view.get("expires_at"), (int, float))]
-            for expired_id in expired:
-                views.pop(expired_id, None)
             fullscreen_open = any(
-                view_id != vid and view.get("display_mode") == "fullscreen"
-                and isinstance(view.get("expires_at"), (int, float))
-                and view["expires_at"] > now
-                for view_id, view in views.items()
+                other_id != vid and _ui_fullscreen_active(view, now)
+                for other_id, view in views.items()
             )
-            for fullscreen_id, view in list(views.items()):
-                if view.get("display_mode") == "fullscreen" and view.get("expires_at", 0) <= now:
-                    views.pop(fullscreen_id, None)
-            _atomic_json(path, metadata)
             status = "hidden_by_fullscreen" if display_mode == "inline" and fullscreen_open else "latest"
+        _atomic_json(path, metadata)
     return _ui_view_result(sid, vid, status)
 
 
@@ -1491,10 +1643,12 @@ def unregister_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
     vid = _normalize_view_id(view_id)
     with _session_lock(sid):
         path = _ui_view_file(sid)
-        if not path.exists():
-            return _ui_view_result(sid, vid, "unregistered")
-        metadata = json.loads(path.read_text(encoding="utf-8"))
+        metadata = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        # view_id denotes one mount for its entire lifetime. Remember release
+        # even if an in-flight initial registration has not arrived yet.
+        metadata.setdefault("released_views", {})[vid] = time.time()
         metadata.setdefault("views", {}).pop(vid, None)
+        _prepare_ui_registry(metadata)
         _atomic_json(path, metadata)
     return _ui_view_result(sid, vid, "unregistered")
 
@@ -1679,7 +1833,7 @@ TOOLS = [
     {
         "name": "register_ui_view",
         "title": "登记当前进度视图",
-        "description": "仅供 App 登记或续租进度视图；旧结果不能抢占新卡片，打开的 fullscreen 视图会隐藏会话内嵌卡片。不修改任务进度。",
+        "description": "仅供 App 登记或续租进度视图；每个挂载使用唯一 view_id，注销后不可复用。每次宿主模式切换递增 mode_generation，续租复用当前世代；较旧世代及同世代不同模式会被拒绝，旧版无世代请求不能覆盖已带世代的登记。inline 保留来源高水位与唯一活动 owner，旧结果不能抢占新卡片；fullscreen 续租不提升 inline 来源顺序。不修改任务进度。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1689,6 +1843,7 @@ TOOLS = [
                 "state_revision": {"type": "integer", "minimum": 0, "description": "首次工具结果的 state_revision"},
                 "task_instance_id": _task_instance_property(),
                 "display_mode": {"type": "string", "enum": ["inline", "fullscreen"], "description": "当前宿主展示模式"},
+                "mode_generation": {"type": "integer", "minimum": 0, "description": "挂载内宿主模式世代；初始0，每次模式切换递增，心跳续租保持相同值。旧版可省略，但不可覆盖已带世代的登记。"},
             },
             "required": ["session_id", "view_id"],
         },
@@ -1697,7 +1852,7 @@ TOOLS = [
     {
         "name": "check_ui_view",
         "title": "检查当前进度视图",
-        "description": "仅供 App 查询当前视图状态；fullscreen 标签页打开时返回 hidden_by_fullscreen，关闭后会话内卡片恢复。",
+        "description": "仅供 App 查询当前视图状态；superseded inline 可继续轻量检查，活动 owner 注销后合格旧卡可恢复为 latest。已注销的 view_id 始终返回 superseded。fullscreen 标签页打开时返回 hidden_by_fullscreen。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1712,7 +1867,7 @@ TOOLS = [
     {
         "name": "unregister_ui_view",
         "title": "释放进度视图登记",
-        "description": "仅供 App 在 fullscreen 视图关闭时释放视图租约；不修改任务进度。",
+        "description": "仅供 App 在挂载销毁时注销视图；释放 fullscreen 租约并恢复合格的 inline owner。该 view_id 终身失效，迟到登记或续租返回 superseded；新挂载必须使用新 view_id。不修改任务进度。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1753,7 +1908,7 @@ TOOLS = [
     {
         "name": "init_task_network",
         "title": "初始化任务网络",
-        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 用于安全重试，相同 ID 与内容不会重复归档。返回 task_instance_id、planning_status、ready_tasks 和 next_actions。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
+        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。返回 task_instance_id、planning_status、ready_tasks 和 next_actions。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1774,7 +1929,7 @@ TOOLS = [
                 },
                 "tasks": {"type": "array", "items": _task_schema(), "description": "初始粗粒度计划；多阶段任务至少两个有独立结果边界的阶段，每项必须包含 assignment.execution_mode。"},
                 "atomic_reason": {"type": "string", "description": "明确说明为何这是单步任务；与 tasks 互斥。"},
-                "request_id": {"type": "string", "description": "可选幂等键；重试同一初始化请求时复用。"},
+                "request_id": {"type": "string", "description": "可选稳定幂等键；重试同一初始化内容时复用。已知session按session隔离；省略session时键须全局唯一（建议UUID），并可随后带返回的session重试。哈希与身份墓碑保留至缓存整体删除，清除任务后旧键仍拒绝重建。"},
             },
         "required": ["task_title"],
         },
@@ -1853,12 +2008,13 @@ TOOLS = [
     {
         "name": "update_step",
         "title": "更新任务步骤",
-        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供 execution_mode。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。所有入参会标记为调用方填报、未经 Codex 宿主核验。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回结构化进度数据；普通更新不调用展示工具，首次展示调用 render_progress，完整进度默认内嵌在会话中。",
+        "description": "更新旧版线性步骤。pending 须先 in_progress 才可 completed；每次启动生成新的 attempt_id，首次启动须提供 execution_mode；随后运行更新、完成、重置和重开都须传当前 attempt_id。重置把运行尝试记为 cancelled，保留 attempts 历史；重新启动取得新ID，旧ID不能完成新尝试。旧存储无ID的现有尝试仅在首次收尾/重置前兼容省略；以后启动均升级到严格ID校验。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。入参为调用方填报、未经宿主核验。会话存在 task_history 或清空过进度时须传当前 task_instance_id。普通更新只写数据，首次展示调用 render_progress。",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": _session_property(),
                 "task_instance_id": _task_instance_property(),
+                "attempt_id": {"type": "string", "description": "当前步骤返回的执行尝试ID；启动pending步骤可省略，其后的运行更新、完成、重置和重开必填，旧尝试ID始终拒绝。"},
                 "step_index": {"type": "integer", "description": "步骤索引（从 0 开始）"},
                 "status": {"type": "string", "enum": list(VALID_STATUSES)},
                 "note": {"type": "string", "description": "可选备注"},
@@ -1921,7 +2077,7 @@ TOOLS = [
     {
         "name": "clear_progress",
         "title": "清除本会话进度",
-        "description": "仅用于清理用户明确确认已归档的 Codex 会话中的全部 Task Progress 数据。调用前必须按 cleanup-task-progress-history skill 核对归档依据、对应 session_id、保留期限与删除范围；本工具不会读取或验证 Codex 归档状态，不得用于活动会话或归档状态不明的会话。清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。",
+        "description": "仅用于清理用户明确确认已归档的 Codex 会话中的全部任务内容。调用前必须按 cleanup-task-progress-history skill 核对归档依据、对应 session_id、保留期限与删除范围；本工具不会读取或验证 Codex 归档状态，不得用于活动会话或归档状态不明的会话。清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。只保留排序与请求哈希/身份墓碑，防止旧初始化或执行请求重建已清除任务；不保留任务内容。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -1936,6 +2092,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "register_ui_view": lambda args: register_ui_view(
         args.get("session_id"), args.get("view_id"), args.get("view_sequence"),
         args.get("state_revision"), args.get("task_instance_id"), args.get("display_mode", "inline"),
+        args.get("mode_generation"),
     ),
     "check_ui_view": lambda args: check_ui_view(
         args.get("session_id"), args.get("view_id"), args.get("display_mode", "inline")
@@ -1977,6 +2134,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("note", ""),
         args.get("assignment"),
         args.get("task_instance_id"),
+        args.get("attempt_id"),
     ),
     "get_progress": lambda args: get_progress(args.get("session_id")),
     "render_progress": lambda args: render_progress(args.get("session_id")),
@@ -1995,8 +2153,15 @@ def _err(message_id: Any, code: int, message: str) -> str:
     )
 
 
+def _plugin_version() -> str:
+    version = json.loads(PLUGIN_MANIFEST_PATH.read_text(encoding="utf-8")).get("version")
+    if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
+        raise ValueError("插件 manifest 缺少有效 version。")
+    return version
+
+
 def _resource_html() -> str:
-    return APP_HTML_PATH.read_text(encoding="utf-8")
+    return APP_HTML_PATH.read_text(encoding="utf-8").replace("__TASK_PROGRESS_VERSION__", _plugin_version())
 
 
 def handle(message: Any) -> str | None:
@@ -2032,7 +2197,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.2"},
+                "serverInfo": {"name": "task-progress", "version": _plugin_version()},
             },
         )
 

@@ -1,0 +1,11 @@
+{
+  "new_audit_groups": 7,
+  "existing_test_app_cases": 10,
+  "existing_export_cases": 3,
+  "existing_view_mode_cases": 3,
+  "status": "passed",
+  "browser": "156.0.8078.48",
+  "final_new_suite_server_sha256": "cf78c49224cd8b4e04c3b6b1d9eb467180cf929bfc8f60ae1a1b1e08008fbed4",
+  "final_new_suite_app_sha256": "8a6971236e5dad167187f172ac3ae41ffcb23aba23c6b006ce6fd72f13f99d1d",
+  "boundary": "Simulated MCP Apps host; actual current resource/server and isolated filesystem; native Codex scheduling frequency not measured. Existing three browser suites passed before final small HTML wording/statistics and preview-row edits; final seven-group suite covers those edits."
+}

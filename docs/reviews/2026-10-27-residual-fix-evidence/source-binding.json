@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-27T19:31:40.722934+08:00",
+  "workspace": "/Users/machengling/.codex/worktrees/4d11/task-process",
+  "head": "8be27675b7815310d93e58cae6f3c8cca9ea957a",
+  "dirty": true,
+  "files": {
+    "plugins/task-progress/server.py": "cf78c49224cd8b4e04c3b6b1d9eb467180cf929bfc8f60ae1a1b1e08008fbed4",
+    "plugins/task-progress/app.html": "8a6971236e5dad167187f172ac3ae41ffcb23aba23c6b006ce6fd72f13f99d1d",
+    "plugins/task-progress/.codex-plugin/plugin.json": "8657605dcf417042356fbb5aafdb92dc0e30d183edbb50a1b81369697ed746b8",
+    "plugins/task-progress/hooks/hooks.json": "88faa5fd27a66f35ae0fbee001c0cd6a35a7e886bce6d13d631812e71c9297a5",
+    "plugins/task-progress/skills/track-progress/SKILL.md": "0f80d3399958c5670097f064561e4887da8a2a0b7a0067d7e7201574b8b69781",
+    "tests/test_state_revision_fixes.py": "96d67b825d23df83142c9853f08c5ad7e06896176a3528be232621bf87c2b9c5",
+    "tests/test_app_audit_regressions.cjs": "3897dcac72fb9711e6c5ac90988c4a78c8eca009c044da765c2e3be81b78cdd4",
+    "tests/test_hook_runtime.py": "bf551addf85c087feab9464b9b2372e293ac71b2d34a4016b35ffcc8398bad53",
+    "tests/test_plugin_version.py": "873d947754bac07f733eec6faa50ce85215318315e45cae3f22edb0d406d55cf"
+  }
+}

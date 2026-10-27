@@ -9,7 +9,8 @@ const {chromium} = require('playwright');
 
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'task-progress-view-regressions-'));
-const html = fs.readFileSync(path.join(root, 'plugins/task-progress/app.html'), 'utf8');
+// Direct-source fixture only; the served resource injects the manifest version.
+const html = fs.readFileSync(path.join(root, 'plugins/task-progress/app.html'), 'utf8').replaceAll('__TASK_PROGRESS_VERSION__', 'test-source');
 const pending = new Map();
 let seq = 0;
 let browser;
@@ -85,9 +86,9 @@ async function main() {
   }
 
   try {
-    const old = await rpc('init_task_network',{task_title:'Old task result'});
+    const old = await rpc('init_task_network',{task_title:'Old task result',atomic_reason:'One isolated UI fixture'});
     const sessionId = old.structuredContent.session_id;
-    await rpc('init_task_network',{session_id:sessionId,task_title:'Current task'});
+    await rpc('init_task_network',{session_id:sessionId,task_title:'Current task',atomic_reason:'One isolated UI fixture'});
     const staleFull = await mount('stale-full',old,'fullscreen');
     await staleFull.locator('#task-title').filter({hasText:'Current task'}).waitFor({timeout:8000});
     await staleFull.locator('.card:not(.inline-stale)').waitFor({state:'visible'});
@@ -95,7 +96,7 @@ async function main() {
     const staleState = await staleFull.locator('.card').getAttribute('class');
     assert.equal(staleState.includes('inline-stale'),false);
 
-    const fresh = await rpc('init_task_network',{task_title:'One fullscreen lease'});
+    const fresh = await rpc('init_task_network',{task_title:'One fullscreen lease',atomic_reason:'One isolated UI fixture'});
     const sid2 = fresh.structuredContent.session_id;
     await mount('full-one',fresh,'fullscreen');
     await page.waitForFunction(async sid => {
@@ -110,7 +111,7 @@ async function main() {
       return modes.filter(mode => mode === 'fullscreen').length === 1 && modes.includes('inline');
     },sid2);
 
-    const current = await rpc('init_task_network',{task_title:'Close restores inline'});
+    const current = await rpc('init_task_network',{task_title:'Close restores inline',atomic_reason:'One isolated UI fixture'});
     const sid3 = current.structuredContent.session_id;
     const inline = await mount('inline-close',current,'inline');
     await inline.locator('#task-title').filter({hasText:'Close restores inline'}).waitFor();

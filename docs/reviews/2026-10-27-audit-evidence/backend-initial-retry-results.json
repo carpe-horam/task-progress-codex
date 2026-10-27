@@ -1,0 +1,13 @@
+{
+  "same_arguments": {
+    "task_title": "Network-timeout retry fixture",
+    "atomic_reason": "One isolated operation",
+    "request_id": "same-initial-request"
+  },
+  "first_session_id": "636369a4-2d86-4277-b190-886a647c04cc",
+  "second_session_id": "8069afc5-63b5-4e55-8568-3fefaa12789d",
+  "first_instance": "7c7ea163-869d-4ae8-ba2c-440fa5ffc377",
+  "second_instance": "9445cae2-10cf-473e-ad38-f6abade2c440",
+  "session_file_count": 2,
+  "second_history_count": 0
+}

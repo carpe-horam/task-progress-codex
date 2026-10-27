@@ -1,0 +1,12 @@
+{
+  "hook": {
+    "returncode": 127,
+    "stdout": "",
+    "stderr": "/bin/sh: python3: command not found\n"
+  },
+  "launcher": {
+    "returncode": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": \"Task Progress: this is a resumed Codex session. Before continuing, read the current task network with get_progress and reuse its task_instance_id; do not initialize a duplicate task. If there is no active task and the new request is substantive, plan first. For multi-stage work, submit a coarse task tree before editing, running checks, or delegation.\"}}\n",
+    "stderr": ""
+  }
+}

@@ -10,7 +10,8 @@ const assert = require('node:assert/strict');
 const {chromium} = require('playwright');
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'task-progress-ui-audit-'));
-const html = fs.readFileSync(path.join(root, 'plugins/task-progress/app.html'), 'utf8');
+// Direct-source fixture only; the served resource injects the manifest version.
+const html = fs.readFileSync(path.join(root, 'plugins/task-progress/app.html'), 'utf8').replaceAll('__TASK_PROGRESS_VERSION__', 'test-source');
 const pending = new Map(); let seq = 0; const results = []; let browser;
 const python = spawn('python3', ['-c', `import importlib.util, pathlib, sys
 spec=importlib.util.spec_from_file_location('audit_server',sys.argv[1])
@@ -165,7 +166,8 @@ async function main() {
   assert.equal(await card.locator('#task-title').textContent(),'新的任务');
   record('stale_task_notification_is_ignored','pass','Archived task cannot replace the new task');
   const newest=await mount('newest',next);
-  await newest.locator('#task-title').filter({hasText:'新的任务'}).waitFor();
+  // The inline title is populated but intentionally hidden by the active fullscreen view.
+  await newest.locator('#task-title').filter({hasText:'新的任务'}).waitFor({state:'attached'});
   await newest.locator('.card.tab-hidden').waitFor({state:'attached'});
   assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
   await card.locator('#task-history-section > summary').click();

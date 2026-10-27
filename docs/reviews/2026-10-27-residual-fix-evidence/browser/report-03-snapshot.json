@@ -1,0 +1,121 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "📋 任务：Partial linear report\n📊 进度：2/2 步完成（100%）\n状态：completed\n  ✅ [0] First\n  ✅ [1] Second"
+    }
+  ],
+  "structuredContent": {
+    "progress": {
+      "schema_version": 1,
+      "state_revision": 5,
+      "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+      "task_instance_id": "712af187-6dae-4645-ac9b-28a107f2dd1f",
+      "task_history": [],
+      "epoch": 0,
+      "task_title": "Partial linear report",
+      "status": "completed",
+      "completed": 2,
+      "total": 2,
+      "percent": 100,
+      "created_at": "2026-10-27T19:30:06+08:00",
+      "updated_at": "2026-10-27T19:30:09+08:00",
+      "steps": [
+        {
+          "index": 0,
+          "description": "First",
+          "status": "completed",
+          "started_at": "2026-10-27T19:30:06+08:00",
+          "finished_at": "2026-10-27T19:30:06+08:00",
+          "attempt": 1,
+          "attempt_id": "528bd2c8-2d4c-4de5-b71d-fbb0cfb43f35",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "528bd2c8-2d4c-4de5-b71d-fbb0cfb43f35",
+              "kind": "execution",
+              "status": "completed",
+              "execution_status": "finished",
+              "started_at": "2026-10-27T19:30:06+08:00",
+              "finished_at": "2026-10-27T19:30:06+08:00",
+              "assignment": {
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-27T19:30:06+08:00",
+                  "scope": "step_start"
+                }
+              },
+              "summary": "",
+              "evidence": []
+            }
+          ],
+          "legacy_attempt": false,
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T19:30:06+08:00",
+              "scope": "step_start"
+            }
+          }
+        },
+        {
+          "index": 1,
+          "description": "Second",
+          "status": "completed",
+          "started_at": "2026-10-27T19:30:07+08:00",
+          "finished_at": "2026-10-27T19:30:09+08:00",
+          "attempt": 1,
+          "attempt_id": "e8cab0c4-4edd-41e6-b8c0-ef598ae93e9b",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "e8cab0c4-4edd-41e6-b8c0-ef598ae93e9b",
+              "kind": "execution",
+              "status": "completed",
+              "execution_status": "finished",
+              "started_at": "2026-10-27T19:30:07+08:00",
+              "finished_at": "2026-10-27T19:30:09+08:00",
+              "assignment": {
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-27T19:30:07+08:00",
+                  "scope": "step_start"
+                }
+              },
+              "summary": "",
+              "evidence": []
+            }
+          ],
+          "legacy_attempt": false,
+          "assignment": {
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-27T19:30:07+08:00",
+              "scope": "step_start"
+            }
+          }
+        }
+      ],
+      "split_review_due": []
+    },
+    "session_id": "12c40fd2-e528-43de-a9e9-0dac0b996030",
+    "state_revision": 5,
+    "view_sequence": 5
+  }
+}
