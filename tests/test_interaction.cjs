@@ -37,12 +37,12 @@ async function main(){
   });
   await page.setContent('<!doctype html><body style="margin:0;background:#fff"><main id="frames"></main></body>');
   await page.evaluate(()=>{
-    window.audit={snapshots:{},calls:[],failReads:false,failRegister:false,download:false};
+    window.audit={snapshots:{},modes:{},calls:[],failReads:false,failRegister:false,download:false};
     addEventListener('message',async e=>{
       const m=e.data;if(!m||m.jsonrpc!=='2.0')return;
       const frame=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===e.source);if(!frame)return;
       const reply=result=>e.source.postMessage({jsonrpc:'2.0',id:m.id,result},'*');
-      if(m.method==='ui/initialize')reply({protocolVersion:'2026-01-26',hostCapabilities:window.audit.download?{downloadFile:{}}:{},hostContext:{displayMode:'inline',theme:'light'}});
+      if(m.method==='ui/initialize')reply({protocolVersion:'2026-01-26',hostCapabilities:window.audit.download?{downloadFile:{}}:{},hostContext:{displayMode:window.audit.modes[frame.id]||'inline',theme:'light'}});
       if(m.method==='ui/notifications/initialized')e.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:window.audit.snapshots[frame.id]},'*');
       if(m.method==='ui/download-file'){window.audit.calls.push({frame:frame.id,name:m.method});reply({});}
       if(m.method==='tools/call'){
@@ -52,17 +52,17 @@ async function main(){
       }
     });
   });
-  async function mount(id,snapshot,width=900){
-    await page.evaluate(({id,snapshot,html,width})=>{window.audit.snapshots[id]=snapshot;const f=document.createElement('iframe');f.id=id;f.style=`width:${width}px;height:1000px;border:0;display:block`;f.srcdoc=html;document.getElementById('frames').append(f);},{id,snapshot,html,width});
-    const frame=page.frameLocator('#'+id);await frame.locator('#summary:not(.hidden)').waitFor();return frame;
+  async function mount(id,snapshot,width=900,displayMode='inline'){
+    await page.evaluate(({id,snapshot,html,width,displayMode})=>{window.audit.snapshots[id]=snapshot;window.audit.modes[id]=displayMode;const f=document.createElement('iframe');f.id=id;f.style=`width:${width}px;height:1000px;border:0;display:block`;f.srcdoc=html;document.getElementById('frames').append(f);},{id,snapshot,html,width,displayMode});
+    const frame=page.frameLocator('#'+id);await frame.locator('#summary').waitFor({state:'attached'});return frame;
   }
   const initial=await rpc('init_task_network',{task_title:'交互检查：任务执行与结果追溯',main_session:{model:'audit-fixture',reasoning_effort:'high'}});
   const sid=initial.structuredContent.session_id;
-  await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'读取长任务说明并复制结果'},{id:'b',title:'检查报告',depends_on:['a']}]});
+  await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'读取长任务说明并复制结果',assignment:{execution_mode:'main_session'}},{id:'b',title:'检查报告',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
   let r=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:{...assignment,dispatch_text:Array.from({length:70},(_,i)=>'第 '+i+' 行：需要保留阅读位置的长任务说明。').join('\n')}});
   const aid=r.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   r=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',attempt_id:aid,summary:'供用户复制的稳定结果文本，自动刷新时内容没有发生变化。'});
-  const card=await mount('current',r);
+  const card=await mount('current',r,900,'fullscreen');
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.name==='register_ui_view'));
   const openAndSelect=()=>{
     const leaf=document.querySelector('li.step > details[data-key$=":a"]');leaf.open=true;
@@ -139,32 +139,30 @@ async function main(){
   add('retry_attempt_visibility',{storedAttempts:r.structuredContent.progress.nodes.find(n=>n.id==='a').attempts.length,oldFailureInDOM:(await card.locator('body').textContent()).includes('FIRST_ATTEMPT_FAILURE_EVIDENCE')});
   await card.locator('#export-all').click();await card.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const report=await browser.newPage();await report.goto('file://'+path.join(temp,fs.readdirSync(temp).find(f=>f.endsWith('.html'))));
-  const text=await report.locator('#round-detail').textContent();
+  const text=await report.locator('#task-progress-report .rp-node[data-node-id="a"] .rp-node-body').textContent();
   add('export_plan_line_breaks',{text,containsLiteralBackslashN:text.includes('\\n'),containsNewline:text.includes('\n'),attemptFailureInHTML:(await report.locator('body').textContent()).includes('FIRST_ATTEMPT_FAILURE_EVIDENCE')});
-  assert.equal(text.includes('\\n'),false);assert.equal(text.includes('\n'),true);
+  assert.equal(text.includes('\\n'),false,text);assert.equal(text.includes('\n'),true,text);
   if(artifactDir)await report.screenshot({path:path.join(artifactDir,'export-after.png'),fullPage:true});
   await report.close();
   const nextTask=await rpc('init_task_network',{session_id:sid,task_title:'切换后的任务'});
   await page.evaluate(r=>document.getElementById('current').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*'),nextTask);
   await card.locator('#task-title').filter({hasText:'切换后的任务'}).waitFor();
-  const checks=await page.evaluate(()=>window.audit.calls.filter(c=>c.frame==='current'&&c.name==='check_ui_view').length);
-  await page.waitForFunction(n=>window.audit.calls.filter(c=>c.frame==='current'&&c.name==='check_ui_view').length>n,checks,{timeout:8500});
   await card.locator('body').evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   assert.equal(await page.locator('iframe').count(),1);assert.equal(await card.locator('#task-title').isVisible(),true);
-  add('task_switch_keeps_existing_card_until_replacement','one card remains visible after view check');
+  assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
+  add('task_switch_keeps_existing_full_view','same full view shows the new task without a second iframe');
   // A transient registration error retries with the original source token, then yields to a newer view.
   await page.evaluate(()=>{window.audit.failRegister=true;});
   const recovery=await mount('registration-recovery',await rpc('get_progress',{session_id:sid}));
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view'));
   await page.evaluate(()=>{window.audit.failRegister=false;});
-  await recovery.locator('#refresh').click();await recovery.locator('#refresh:not([disabled])').waitFor();
   await page.waitForFunction(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view').length>=2,{},{timeout:5000});
   const newest=await mount('newest',await rpc('get_progress',{session_id:sid}));
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.frame==='newest'&&c.name==='register_ui_view'));
-  await card.locator('.card.superseded').waitFor({timeout:8500});
-  await recovery.locator('.card.superseded').waitFor({timeout:8500});
-  assert.equal(await newest.locator('.card').evaluate(e=>e.classList.contains('superseded')),false);
-  add('registration_failure_recovers',{registrationCalls:await page.evaluate(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view').length),viewChecks:await page.evaluate(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='check_ui_view').length),failedCardCollapsed:await recovery.locator('.card').evaluate(e=>e.classList.contains('superseded')),newestCollapsed:await newest.locator('.card').evaluate(e=>e.classList.contains('superseded'))});
+  await recovery.locator('.card.inline-stale').waitFor({timeout:8500});
+  assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
+  assert.equal(await newest.locator('.card').evaluate(e=>e.classList.contains('inline-stale')),false);
+  add('registration_failure_recovers',{registrationCalls:await page.evaluate(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view').length),viewChecks:await page.evaluate(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='check_ui_view').length),failedCardCollapsed:await recovery.locator('.card').evaluate(e=>e.classList.contains('inline-stale')),newestCollapsed:await newest.locator('.card').evaluate(e=>e.classList.contains('inline-stale'))});
   assert.deepEqual(errors,[]);add('runtime_errors',errors);
   console.log(JSON.stringify({browser:await browser.version(),host:'Simulated MCP Apps parent; actual app.html and isolated server.py',results},null,2));
 }

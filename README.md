@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
 [![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fcarpe-horam.github.io%2Ftask-progress-codex%2F&label=用户指南)](https://carpe-horam.github.io/task-progress-codex/)
 
-Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务和 `track-progress` skill。它帮助 Codex 把复杂目标拆成有依赖关系的任务，记录执行进度、结果与证据，并在 Codex 中持续展示。
+Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务、自动跟踪用的 `track-progress` skill，以及仅在用户明确要求时使用的 `cleanup-task-progress-history` skill。它帮助 Codex 把复杂目标拆成有依赖关系的任务，记录执行进度、结果与证据；需要查看时可在 Codex 中打开完整面板。
 
 > [打开交互式宣传手册与功能演示](https://carpe-horam.github.io/task-progress-codex/) · [查看插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
@@ -19,7 +19,7 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 
 | 能力 | 说明 |
 | --- | --- |
-| **自动规划多步骤任务** | Codex 主会话或 agent 遇到两个及以上步骤时，默认使用 HTN 任务网络跟踪；不需要在每个项目里重复配置规则。 |
+| **开工前先规划** | 会话启动和每条新指令都会提示先判断粒度；多阶段工作可一次提交 HTN 任务树，未规划的空 root 会被服务端拒绝开工。 |
 | **表达依赖与并行** | 标记任务前置条件。依赖已满足的任务可执行，同一批互不依赖的任务可以并行推进。 |
 | **按会话隔离与保存历史** | 每个 Codex 会话有独立进度；同一会话开始新任务后，旧任务归档到历史。重规划轮次和重试记录也会保留。 |
 | **记录执行者与模型** | 展示主会话或子智能体，以及可获取的模型和思考强度；标注调用方填报与 Codex 核验状态，未知时不猜测。 |
@@ -30,7 +30,7 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 
 ## 工作方式
 
-Task Progress 默认用 HTN（分层任务网络）表达多步骤工作：父任务可以继续拆分，子任务通过依赖关系连接。没有依赖关系的 ready 任务可以并行；有前置条件的任务会等待。
+Task Progress 默认用 HTN（分层任务网络）表达多步骤工作：父任务可以继续拆分，子任务通过依赖关系连接。没有依赖关系的 ready 任务可以并行；有前置条件的任务会等待。Codex hooks 提供非阻断启动提醒；服务端会阻止未规划的空 root 开始执行。简单问答无需任务树，单步任务需记录 `atomic_reason`。
 
 ```mermaid
 flowchart LR
@@ -89,15 +89,16 @@ git pull --ff-only origin main
 
 ## 开始使用
 
-安装并启用插件后，直接让 Codex 处理多步骤工作即可，skill 会自动跟踪任务。例如：
+安装并启用插件后，会话启动和每条新指令会收到先规划再开始实质工作的提醒。若 Codex 审核并信任插件 hooks，提醒由宿主生命周期 hook 提供；多阶段任务还可在同一次 `init_task_network` 调用中提交粗计划。服务端拒绝未规划的空 root 开工。例如：
 
 > 请梳理这个问题，按依赖拆分实现和验证步骤，并持续更新任务进度。
 
-你也可以明确要求 Codex 使用 Task Progress。进度面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。
+你也可以明确要求 Codex 使用 Task Progress。首次展示由主会话调用一次 `render_progress`，完整进度默认显示在会话内；普通任务更新只更新数据，不会重复弹出面板。用户将面板切换到 fullscreen 标签页后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
 
 默认规则：
 
 - 多步骤任务使用 HTN 任务网络；线性步骤模式仅用于用户明确要求线性流程或恢复旧版任务。
+- 多阶段新任务先提交至少两个有独立结果边界的粗任务；单步任务要记录具体 `atomic_reason`。未规划的空 root 不会进入 ready 列表或开始执行。
 - 同一会话复用 session ID；开始新任务时，当前任务进入历史记录。
 - 同一任务需要调整方案时，使用重规划轮次；重试会保留新的执行尝试记录。
 - 重试会使依赖旧结果的下游及相关验收失效，必须重新执行或验收；卡片可展开查看保留的执行记录。
@@ -129,7 +130,8 @@ git pull --ff-only origin main
     ├── .mcp.json                       # 本机 MCP 服务配置
     ├── app.html                        # 交互式任务进度界面
     ├── server.py                       # MCP 服务与本地进度存储
-    └── skills/track-progress/          # 自动规划与跟踪规则
+    ├── skills/track-progress/          # 自动规划与跟踪规则
+    └── skills/cleanup-task-progress-history/  # 用户明确要求时清理已归档会话数据
 ```
 
 ## 常见问题

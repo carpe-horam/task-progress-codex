@@ -46,14 +46,14 @@ async function main() {
   });
   await page.setContent('<!doctype html><title>Task Progress audit host</title><main id="frames"></main>');
   await page.evaluate(() => {
-    window.audit={snapshots:{},held:[],holdRead:false,calls:[]};
+    window.audit={snapshots:{},modes:{},held:[],holdRead:false,calls:[]};
     addEventListener('message', async event => {
       const m=event.data;
       if (!m || m.jsonrpc!=='2.0') return;
       const frame=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===event.source);
       if (!frame) return;
       const reply=result=>event.source.postMessage({jsonrpc:'2.0',id:m.id,result},'*');
-      if (m.method==='ui/initialize') reply({protocolVersion:'2026-01-26',hostCapabilities:{},hostContext:{displayMode:'inline'}});
+      if (m.method==='ui/initialize') reply({protocolVersion:'2026-01-26',hostCapabilities:{},hostContext:{displayMode:window.audit.modes[frame.id]||'inline'}});
       if (m.method==='ui/notifications/initialized') event.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:window.audit.snapshots[frame.id]},'*');
       if (m.method==='tools/call') {
         window.audit.calls.push(m.params.name);
@@ -63,12 +63,12 @@ async function main() {
       }
     });
   });
-  async function mount(id,snapshot) {
-    await page.evaluate(({id,snapshot,html})=>{
-      window.audit.snapshots[id]=snapshot;const f=document.createElement('iframe');f.id=id;f.name=id;f.style='display:block;width:1000px;height:650px;border:0';
+  async function mount(id,snapshot,displayMode='inline') {
+    await page.evaluate(({id,snapshot,html,displayMode})=>{
+      window.audit.snapshots[id]=snapshot;window.audit.modes[id]=displayMode;const f=document.createElement('iframe');f.id=id;f.name=id;f.style='display:block;width:1000px;height:650px;border:0';
       f.addEventListener('load',()=>f.contentWindow.addEventListener('message',event=>{if(event.data?.auditBarrier)f.contentWindow.parent.postMessage({auditAck:event.data.auditBarrier},'*');}));
       f.srcdoc=html;document.getElementById('frames').append(f);
-    },{id,snapshot,html});
+    },{id,snapshot,html,displayMode});
     const frame=page.frameLocator('#'+id);
     await frame.locator('#summary:not(.hidden)').waitFor({state:'attached'});
     await page.waitForFunction(()=>window.audit.calls.includes('register_ui_view'));
@@ -87,8 +87,8 @@ async function main() {
 
   let initial=await rpc('init_task_network',{task_title:'浏览器隔离检查',main_session:{model:'audit-fixture',reasoning_effort:'high'}});
   const sid=initial.structuredContent.session_id;
-  initial=await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'处理 <script>文本 & 中文 😀'},{id:'b',title:'验证',depends_on:['a']}]});
-  const card=await mount('current',initial);
+  initial=await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'处理 <script>文本 & 中文 😀',assignment:{execution_mode:'main_session'}},{id:'b',title:'验证',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
+  const card=await mount('current',initial,'fullscreen');
   if (!await card.locator('details[data-key$=":root"]').evaluate(e=>e.open)) await card.locator('details[data-key$=":root"] > summary').click();
   assert.equal(await card.locator('.step-title').count(),3);
   assert.equal(await card.locator('#error').textContent(),'');
@@ -101,7 +101,7 @@ async function main() {
   const running=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:fixtureAssignment});
   const aid=running.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   await notify('current',running);
-  assert.match(await card.locator('li.step:has([data-key$=":a"]) .step-execution-meta').innerText(),/未由 Codex 核实/);
+  assert.match(await card.locator('details[data-key$=":a"] > summary .step-execution-meta').innerText(),/未由 Codex 核实/);
   await page.evaluate(()=>{window.audit.holdRead=true;});
   await card.locator('#refresh').click();
   await page.waitForFunction(()=>window.audit.held.length===1);
@@ -127,11 +127,12 @@ async function main() {
   const exportHtml=exports.find(n=>n.endsWith('.html'));
   const report=await browser.newPage();
   await report.goto('file://'+path.join(temp,exportHtml));
-  assert.equal(await report.title(),'Task Progress · 任务执行报告');
+  assert.equal(await report.title(),'Task Progress · 浏览器隔离检查');
   assert((await report.locator('body').textContent()).includes('浏览器隔离检查'));
   record('export_real_click','pass',{files:exports,html_loaded:true});
   // Save only the generated fixture workbook for independent XML/package validation.
-  assert.equal(await report.locator('#completion').textContent(),'1 / 2');
+  const endedMetric=report.locator('.rp-metric').filter({hasText:'已结束'}).locator('.rp-number');
+  assert((await endedMetric.textContent()).includes('1/ 2 项'));
 
   // Observe an actual 5-second polling interval, with backend state changed silently.
   const bRunning=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'running',assignment:fixtureAssignment});
@@ -142,8 +143,8 @@ async function main() {
   await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'finished',outcome:'resolved',attempt_id:bAttempt});
   await rpc('update_task',{session_id:sid,task_id:'root',execution_status:'finished',outcome:'resolved',assignment:fixtureAssignment});
   await rpc('rebuild_task_network',{session_id:sid,reason:'Fixture second plan'});
-  await rpc('decompose_task',{session_id:sid,task_id:'root-e1',tasks:[{id:'c',title:'第二轮任务'}]});
-  let cRunning=await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'running',assignment:fixtureAssignment});
+  await rpc('decompose_task',{session_id:sid,task_id:'root-e1',tasks:[{id:'c',title:'第二轮任务',assignment:{execution_mode:'main_session'}}]});
+  let cRunning=await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'running',assignment:{...fixtureAssignment,dispatch_text:'First attempt line 1\nFirst attempt line 2'}});
   let cAttempt=cRunning.structuredContent.progress.nodes.find(n=>n.id==='c').attempt_id;
   await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'failed',attempt_id:cAttempt,summary:'Fixture failure'});
   cRunning=await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'running',retry:true,assignment:fixtureAssignment});
@@ -153,6 +154,8 @@ async function main() {
 
   // Cross-task late notifications cannot restore an archived task.
   const next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
+  const archivedC=next.structuredContent.progress.task_history[0].nodes.find(n=>n.id==='c');
+  assert.deepEqual(archivedC.attempts.map(attempt=>attempt.attempt),[1,2]);
   await notify('current',next);
   await card.locator('#task-title').filter({hasText:'新的任务'}).waitFor();
   await notify('current',finished);
@@ -162,39 +165,47 @@ async function main() {
   assert.equal(await card.locator('#task-title').textContent(),'新的任务');
   record('stale_task_notification_is_ignored','pass','Archived task cannot replace the new task');
   const newest=await mount('newest',next);
-  await card.locator('.card.superseded').waitFor({timeout:9000});
-  await newest.locator('#task-history-section > summary').click();
-  assert((await newest.locator('#task-history-list').textContent()).includes('浏览器隔离检查'));
-  await newest.locator('#export-all').click();
-  await newest.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
+  await newest.locator('#task-title').filter({hasText:'新的任务'}).waitFor();
+  await newest.locator('.card.tab-hidden').waitFor({state:'attached'});
+  assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
+  await card.locator('#task-history-section > summary').click();
+  assert((await card.locator('#task-history-list').textContent()).includes('浏览器隔离检查'));
+  await card.locator('#export-all').click();
+  await card.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const historyFile=fs.readdirSync(temp).find(n=>n.includes('新的任务')&&n.endsWith('.xlsx'));
   assert(historyFile);
+  const historyHtml=fs.readdirSync(temp).find(n=>n.includes('新的任务')&&n.endsWith('.html'));
+  assert(historyHtml);
+  await report.goto('file://'+path.join(temp,historyHtml));
+  const historyReportText=await report.locator('body').textContent();
+  assert(historyReportText.includes('Fixture failure'));
+  assert(historyReportText.includes('第 1 次'));
   const validation=execFileSync('python3',[path.join(__dirname,'validate_exports.py'),path.join(temp,historyFile)],{encoding:'utf8'});
   record('history_plan_retry_export','pass',JSON.parse(validation));
   const oldRemounted=await mount('old-remounted',finished);
-  await oldRemounted.locator('.card.superseded').waitFor({timeout:9000});
-  assert.equal(await newest.locator('.card').evaluate(e=>e.classList.contains('superseded')),false);
+  await oldRemounted.locator('.card.inline-stale').waitFor({timeout:9000});
+  assert.equal(await newest.locator('.card').evaluate(e=>e.classList.contains('inline-stale')),false);
   record('old_card_remount_does_not_hide_newest','pass','Old source card collapses; newest remains visible');
 
   // Clear/recreate uses a session-wide monotonic state order, not timestamps.
   const cleared=await rpc('clear_progress',{session_id:sid});
-  await notify('newest',cleared);
-  await newest.locator('#empty').waitFor({state:'visible'});
-  await notify('newest',next);
-  assert.equal(await newest.locator('#summary').evaluate(e=>e.classList.contains('hidden')),true);
+  await notify('current',cleared);
+  await card.locator('#empty').waitFor({state:'visible'});
+  await notify('current',next);
+  assert.equal(await card.locator('#summary').evaluate(e=>e.classList.contains('hidden')),true);
   const recreated=await rpc('init_task_network',{session_id:sid,task_title:'清除后重建'});
-  await notify('newest',recreated);
-  await newest.locator('#task-title').filter({hasText:'清除后重建'}).waitFor();
-  await notify('newest',cleared);
-  assert.equal(await newest.locator('#summary').evaluate(e=>e.classList.contains('hidden')),false);
+  await notify('current',recreated);
+  await card.locator('#task-title').filter({hasText:'清除后重建'}).waitFor();
+  await notify('current',cleared);
+  assert.equal(await card.locator('#summary').evaluate(e=>e.classList.contains('hidden')),false);
   record('clear_and_recreate_order','pass','Old task and old clear responses cannot replace newer state');
 
   // Raw plan history must retain inherited dependencies in the UI and exports.
   const inheritedInit=await rpc('init_task_network',{task_title:'继承依赖检查'});
   const inheritedSid=inheritedInit.structuredContent.session_id;
-  await rpc('decompose_task',{session_id:inheritedSid,task_id:'root',tasks:[{id:'a',title:'前置 A'},{id:'g',title:'分组 G',depends_on:['a']}]});
-  const inheritedSnapshot=await rpc('decompose_task',{session_id:inheritedSid,task_id:'g',tasks:[{id:'h',title:'继承依赖 H'}]});
-  const inheritedCard=await mount('inherited',inheritedSnapshot);
+  await rpc('decompose_task',{session_id:inheritedSid,task_id:'root',tasks:[{id:'a',title:'前置 A',assignment:{execution_mode:'main_session'}},{id:'g',title:'分组 G',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
+  const inheritedSnapshot=await rpc('decompose_task',{session_id:inheritedSid,task_id:'g',tasks:[{id:'h',title:'继承依赖 H',assignment:{execution_mode:'main_session'}}]});
+  const inheritedCard=await mount('inherited',inheritedSnapshot,'fullscreen');
   const replan=await rpc('rebuild_task_network',{session_id:inheritedSid,reason:'Validate raw history'});
   await notify('inherited',replan);
   assert.equal(await inheritedCard.locator('#history-list li.step.blocked:has(> details[data-key$=":h"])').count(),1);
@@ -202,12 +213,13 @@ async function main() {
   await inheritedCard.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const inheritedHtml=fs.readdirSync(temp).find(n=>n.includes('继承依赖检查')&&n.endsWith('.html'));
   await report.goto('file://'+path.join(temp,inheritedHtml));
-  const inheritedRow=await report.evaluate(()=>DATA.tasks.find(t=>t.taskId==='h'));
-  assert.equal(inheritedRow.status,'依赖阻塞');
-  assert.equal(inheritedRow.dependencies,'a');
-  assert.equal(inheritedRow.blockedBy,'a');
-  assert(inheritedRow.dependencyConditions.includes('继承自 g'));
-  record('inherited_dependencies_in_history_and_export','pass',inheritedRow.dependencyConditions);
+  const inheritedNode=report.locator('#task-progress-report .rp-node[data-node-id="h"]');
+  assert.equal(await inheritedNode.count(),1);
+  const inheritedNodeText=await inheritedNode.textContent();
+  assert(inheritedNodeText.includes('依赖阻塞'));
+  assert(inheritedNodeText.includes('前置条件：前置 A（未满足）'), inheritedNodeText);
+  assert(inheritedNodeText.includes('继承自 g'));
+  record('inherited_dependencies_in_history_and_export','pass',inheritedNodeText);
   record('runtime_page_errors','pass',errors);
   assert.equal(errors.length,0);
   console.log(JSON.stringify({browser:await browser.version(),host:'simulated MCP Apps parent with isolated original server and app',cases:results},null,2));

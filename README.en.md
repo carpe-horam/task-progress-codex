@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
 [![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fcarpe-horam.github.io%2Ftask-progress-codex%2F&label=User%20Guide)](https://carpe-horam.github.io/task-progress-codex/)
 
-Task Progress is a Codex plugin with an interactive task panel, an MCP server, and the `track-progress` skill. It helps Codex break complex goals into tasks with dependencies, record progress, results, and evidence, and keep that work visible in Codex.
+Task Progress is a Codex plugin with an interactive task panel, an MCP server, the automatic `track-progress` skill, and `cleanup-task-progress-history`, which runs only when the user explicitly requests cleanup. It helps Codex break complex goals into tasks with dependencies and record progress, results, and evidence. Open the full panel in Codex when you need to review that work.
 
 > [Open the interactive guide and demo](https://carpe-horam.github.io/task-progress-codex/) · [Browse the plugin source](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
@@ -19,7 +19,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, a
 
 | Feature | Description |
 | --- | --- |
-| **Automatic planning for multi-step work** | When the Codex main session or an agent has two or more identifiable steps, the plugin uses an HTN task network by default. No extra project-level rules are required. |
+| **Plan before substantive work** | Session startup and each new prompt receive a planning reminder. Multi-stage work can submit its initial HTN tree in one call, and the server rejects an unplanned empty root from starting. |
 | **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
 | **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
 | **Execution and model records** | See the executor and any available model/effort values, with caller-reported and Codex verification status; unknown values are not guessed. |
@@ -30,7 +30,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, a
 
 ## How it works
 
-Task Progress uses an HTN (Hierarchical Task Network) to represent multi-step work. Parent tasks can be decomposed into subtasks, and dependencies connect related work. Ready tasks without dependencies can run in parallel; tasks with unmet prerequisites wait.
+Task Progress uses an HTN (Hierarchical Task Network) to represent multi-step work. Parent tasks can be decomposed into subtasks, and dependencies connect related work. Ready tasks without dependencies can run in parallel; tasks with unmet prerequisites wait. Codex hooks provide non-blocking startup reminders, and the server prevents an unplanned empty root from starting. Simple questions need no task tree; a single-step task records an `atomic_reason`.
 
 ```mermaid
 flowchart LR
@@ -89,15 +89,16 @@ Restart the Codex desktop app after updating so the local installation loads the
 
 ## Getting started
 
-After installing and enabling the plugin, ask Codex to work on a multi-step task. The skill will track it automatically. For example:
+After installing and enabling the plugin, Codex receives a reminder to plan before substantive work at session startup and on each new prompt. If Codex reviews and trusts the plugin hooks, the host lifecycle hooks provide those reminders. Multi-stage work can submit its coarse plan in the same `init_task_network` call, and the server rejects an unplanned empty root from starting. For example:
 
 > Break this issue into implementation and verification steps based on their dependencies, and keep the task progress up to date.
 
-You can also explicitly ask Codex to use Task Progress. The panel shows the current task network, execution status, completion percentage, summaries, and planning history. Use **Refresh** to sync the latest status, or **Export** to save the current task as an Excel workbook and HTML report.
+You can also explicitly ask Codex to use Task Progress. The main session calls `render_progress` once; the full progress view appears inline in the conversation by default. Ordinary task updates change the data without repeatedly opening the panel. When the user switches the panel to a fullscreen tab, the inline card is temporarily hidden and returns after that tab closes. Cards from older task results collapse so they cannot show stale progress. The public MCP Apps context currently does not define a historical or archived conversation flag, so the plugin cannot reliably detect and proactively hide cards already saved in historical conversations. The main-session panel shows the current task network, execution status, completion percentage, summaries, and planning history. Use **Refresh** to sync the latest status, or **Export** to save the current task as an Excel workbook and HTML report. Subagents working in the main session's task tree update only their assigned nodes and do not open another main-session panel.
 
 Default behavior:
 
 - Multi-step tasks use an HTN task network. The linear-step mode is reserved for workflows explicitly requested as linear or for resuming an existing legacy task.
+- A new multi-stage task starts with at least two coarse tasks that have distinct result boundaries. A single-step task records a specific `atomic_reason`. An unplanned empty root is never ready and cannot start.
 - Reuse the same `session_id` within a conversation. Starting a new task moves the previous task into history.
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
 - Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.” Caller-supplied values include a capture time and are labeled as unverified by the Codex host.
@@ -130,7 +131,8 @@ Clearing a session deletes its progress, task history, and view registration. Co
     ├── .mcp.json                       # Local MCP server configuration
     ├── app.html                        # Interactive task progress UI
     ├── server.py                       # MCP server and local progress storage
-    └── skills/track-progress/          # Automatic planning and tracking rules
+    ├── skills/track-progress/          # Automatic planning and tracking rules
+    └── skills/cleanup-task-progress-history/  # Explicit cleanup for archived sessions
 ```
 
 ## FAQ

@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from copy import deepcopy
@@ -32,7 +33,8 @@ CACHE_DIR = Path.home() / ".cache" / "task-progress"
 SESSION_DIR = CACHE_DIR / "sessions"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
 
-RESOURCE_URI = "ui://task-progress/progress-inspector/v2"
+RESOURCE_URI = "ui://task-progress/progress-inspector/v3"
+LEGACY_RESOURCE_URIS = ("ui://task-progress/progress-inspector/v2",)
 RESOURCE_MIME = "text/html;profile=mcp-app"
 APP_HTML_PATH = Path(__file__).with_name("app.html")
 
@@ -351,6 +353,8 @@ def _new_network(
         "task_instance_id": str(uuid.uuid4()),
         "task_history": [],
         "task_title": task_title,
+        "planning_status": "required",
+        "planning_note": "",
         "main_session": main_session,
         "epoch": epoch,
         "revision": 0,
@@ -547,7 +551,10 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         node["depends_on"] = list(dependencies)
         node["dependency_policy"] = policy
         node["profile"] = profile
-        node["assignment"] = _normalize_assignment(item.get("assignment"))
+        assignment = _normalize_assignment(item.get("assignment"))
+        if not assignment.get("execution_mode"):
+            raise ProgressError(f"任务 {node_id} 必须指定 assignment.execution_mode。")
+        node["assignment"] = assignment
         new_nodes.append((node_id, node))
     for node_id, node in new_nodes:
         nodes[node_id] = node
@@ -591,6 +598,19 @@ def _dependencies_satisfied(data: dict[str, Any], node: dict[str, Any]) -> bool:
 
 
 def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
+    root_id = data.get("root_id")
+    planning_status = data.get("planning_status")
+    # Older persisted graphs predate planning_status. Preserve in-flight and
+    # completed root attempts, but treat an untouched empty root as unplanned.
+    if planning_status is None:
+        if data.get("nodes", {}).get(root_id, {}).get("children"):
+            planning_status = "planned"
+        elif node.get("execution_status") in ("running", *TERMINAL_EXECUTION_STATUSES):
+            planning_status = "atomic"
+        else:
+            planning_status = "required"
+    if node.get("id") == root_id and planning_status == "required":
+        return False
     return (
         not node.get("children")
         and node.get("execution_status") == "pending"
@@ -697,6 +717,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "task_history": data.get("task_history", []),
         "task_title": data["task_title"],
         "main_session": data.get("main_session"),
+        "planning_status": data.get("planning_status") or _legacy_planning_status(data),
+        "planning_note": data.get("planning_note", ""),
         "status": overall_status,
         "root_status": root_status,
         "completed": completed,
@@ -716,27 +738,81 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "updated_at": data["updated_at"],
         "nodes": enriched_nodes,
         "ready_tasks": [node["id"] for node in ready_nodes],
+        "next_actions": _planning_next_actions(data),
         "history": data.get("history", []),
     }
+
+
+def _legacy_planning_status(data: dict[str, Any]) -> str:
+    root = data.get("nodes", {}).get(data.get("root_id"), {})
+    if root.get("children"):
+        return "planned"
+    if root.get("execution_status") in ("running", *TERMINAL_EXECUTION_STATUSES):
+        return "atomic"
+    return "required"
+
+
+def _planning_next_actions(data: dict[str, Any]) -> list[str]:
+    status = data.get("planning_status") or _legacy_planning_status(data)
+    if status == "required":
+        return ["decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason"]
+    if status == "planned":
+        return ["get_ready_tasks，然后启动返回的 ready 叶任务"]
+    return ["启动原子任务 root"]
 
 
 def init_task_network(
     task_title: str,
     session_id: str | None = None,
     main_session: dict[str, Any] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    atomic_reason: str | None = None,
+    request_id: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id, generate=True)
     if not isinstance(task_title, str) or not task_title.strip():
         raise ProgressError("task_title 必须是非空字符串。")
+    if tasks is not None and atomic_reason is not None:
+        raise ProgressError("tasks 与 atomic_reason 不能同时提供；请选择计划或明确单步任务。")
+    if atomic_reason is not None and (not isinstance(atomic_reason, str) or not atomic_reason.strip()):
+        raise ProgressError("atomic_reason 必须说明该任务为何是单步工作。")
+    if request_id is not None and (not isinstance(request_id, str) or not request_id.strip()):
+        raise ProgressError("request_id 必须是非空字符串。")
+    normalized_title = task_title.strip()
+    normalized_main = _normalize_main_session(main_session)
+    fingerprint_main = (
+        {key: normalized_main.get(key) for key in ("model", "reasoning_effort", "codex_thread_id", "codex_turn_id")}
+        if normalized_main is not None else None
+    )
+    request_fingerprint = json.dumps(
+        {"task_title": normalized_title, "tasks": tasks, "atomic_reason": atomic_reason,
+         "main_session": fingerprint_main}, sort_keys=True, ensure_ascii=False, default=str,
+    )
     with _session_lock(sid):
         previous = _read(sid)
-        data = _new_network(
-            sid,
-            task_title.strip(),
-            main_session=_normalize_main_session(main_session),
-        )
-        data["task_history"] = _archive_current_task(previous)
-        _write(sid, data)
+        if request_id and previous and previous.get("init_request_id") == request_id:
+            if previous.get("init_request_fingerprint") != request_fingerprint:
+                raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
+            data = previous
+        else:
+            data = _new_network(
+                sid,
+                normalized_title,
+                main_session=normalized_main,
+            )
+            if tasks is not None:
+                if not isinstance(tasks, list) or len(tasks) < 2:
+                    raise ProgressError("多阶段初始计划必须提供至少两个有独立结果边界的 tasks；单步任务请填写 atomic_reason。")
+                _add_tasks(data, data["root_id"], tasks)
+                data["planning_status"] = "planned"
+            elif atomic_reason is not None:
+                data["planning_status"] = "atomic"
+                data["planning_note"] = atomic_reason.strip()
+            if request_id:
+                data["init_request_id"] = request_id
+                data["init_request_fingerprint"] = request_fingerprint
+            data["task_history"] = _archive_current_task(previous)
+            _write(sid, data)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid)
 
@@ -761,6 +837,9 @@ def decompose_task(
             if attempt_id is not None and attempt_id != parent.get("attempt_id"):
                 raise ProgressError("attempt_id 不匹配，不能用旧尝试分解当前任务。")
         _add_tasks(data, task_id, tasks)
+        if task_id == data.get("root_id"):
+            data["planning_status"] = "planned"
+            data["planning_note"] = ""
         if parent["execution_status"] == "running":
             # The caller has coordinated the executor; keep its original attempt
             # before turning the node into a group awaiting child results.
@@ -903,6 +982,8 @@ def update_task(
         if previous_status in TERMINAL_EXECUTION_STATUSES and execution_status != "running":
             raise ProgressError("已结束任务不能覆盖结果；如需重试，请使用 running 并设置 retry=true。")
         if execution_status == "running":
+            if node_id == data.get("root_id") and (data.get("planning_status") or _legacy_planning_status(data)) == "required":
+                raise ProgressError("planning_required: 空的根任务不能开工。请先调用 decompose_task 提交粗粒度计划；如果这是单步任务，请通过 init_task_network 的 atomic_reason 明确记录单步原因。")
             if previous_status in TERMINAL_EXECUTION_STATUSES and not retry:
                 raise ProgressError("已结束任务重试时必须设置 retry=true，且会创建新的 attempt_id。")
             if previous_status != "running" and not _dependencies_satisfied(data, node):
@@ -959,7 +1040,10 @@ def get_ready_tasks(session_id: str) -> dict[str, Any]:
     if not isinstance(progress, dict) or progress.get("schema_version") != 2:
         raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
     ready = [node for node in progress["nodes"] if node.get("ready")]
-    lines = [f"当前 ready 叶任务：{len(ready)} 个"]
+    if progress.get("planning_status") == "required":
+        lines = ["当前没有 ready 任务：规划尚未完成。", *progress.get("next_actions", [])]
+    else:
+        lines = [f"当前 ready 叶任务：{len(ready)} 个"]
     for node in ready:
         lines.append(f"- [{node['id']}] {node['title']}（依赖策略：{node['dependency_policy']}）")
         for dependency in node.get("dependencies", []):
@@ -1000,7 +1084,11 @@ def rebuild_task_network(
         new_title = task_title.strip() if isinstance(task_title, str) and task_title.strip() else data["task_title"]
         replacement = _new_network(sid, new_title, epoch=next_epoch,
                                    reserved_ids=set(data["nodes"]) | _historical_ids(data))
-        data.update({key: replacement[key] for key in ("epoch", "root_id", "nodes", "task_title")})
+        data.update({key: replacement[key] for key in (
+            "epoch", "root_id", "nodes", "task_title", "planning_status", "planning_note"
+        )})
+        data.pop("init_request_id", None)
+        data.pop("init_request_fingerprint", None)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     progress = _progress_payload(data)
@@ -1013,9 +1101,14 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
     if progress.get("schema_version") == 2:
         lines = [
             f"📋 目标：{progress['task_title']}（计划第 {progress['epoch'] + 1} 轮）",
+            f"🧭 规划状态：{progress.get('planning_status', 'required')}",
             f"📊 叶任务结束：{progress['completed']}/{progress['total']}（{progress['percent']}%），已解决 {progress['resolved_leaf_count']}，未解决 {progress['open_leaf_count']}，待执行 {progress['ready_count']}",
             f"状态：{progress['status']}",
         ]
+        if progress.get("planning_status") == "required":
+            lines.append("下一步：先提交粗粒度任务拆分；确为单步工作时，初始化时记录 atomic_reason。")
+        if progress.get("planning_note"):
+            lines.append(f"单步原因：{progress['planning_note']}")
         for task in progress.get("split_review_due", []):
             lines.append(
                 f"⚠️ 拆分复核到期：[{task['id']}] {task['title']} 已运行 {task['elapsed_minutes']} 分钟。"
@@ -1241,14 +1334,18 @@ def get_progress(session_id: str) -> dict[str, Any]:
 
 
 def render_progress(session_id: str) -> dict[str, Any]:
+    # The host must associate this tool's result with the UI template from the
+    # tool descriptor so the rendered view receives structuredContent.
     return get_progress(session_id)
 
 
 def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any]:
     messages = {
-        "registered": "已登记为本会话最新的进度视图。",
+        "registered": "已登记当前进度视图。",
         "latest": "当前实例是本会话最新的进度视图。",
+        "hidden_by_fullscreen": "本会话已打开完整进度标签页，会话内视图暂时隐藏。",
         "superseded": "当前实例已被本会话的新进度视图替代。",
+        "duplicate_fullscreen": "本会话已有完整进度标签页打开。",
         "unregistered": "本会话尚未登记进度视图。",
         "missing_progress": "本会话已无进度数据，视图不再有效。",
     }
@@ -1258,8 +1355,8 @@ def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any
             "session_id": session_id,
             "view_id": view_id,
             "status": status,
-            "registered": status in ("registered", "latest", "superseded"),
-            "is_latest": status in ("registered", "latest"),
+            "registered": status in ("registered", "latest", "hidden_by_fullscreen", "superseded"),
+            "is_latest": status in ("registered", "latest", "hidden_by_fullscreen"),
         },
     }
 
@@ -1267,6 +1364,7 @@ def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any
 def register_ui_view(
     session_id: str, view_id: str, view_sequence: int | None = None,
     state_revision: int | None = None, task_instance_id: str | None = None,
+    display_mode: str = "inline",
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
@@ -1286,16 +1384,53 @@ def register_ui_view(
             raise ProgressError("视图顺序超出服务端已发出的范围。")
         if task_instance_id != _task_instance_id(data):
             return _ui_view_result(sid, vid, "superseded")
+        if display_mode not in ("inline", "fullscreen"):
+            raise ProgressError("display_mode 必须是 inline 或 fullscreen。")
         path = _ui_view_file(sid)
         current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if (state_revision, view_sequence) < (current.get("state_revision", -1), current.get("view_sequence", -1)):
-            return _ui_view_result(sid, vid, "superseded")
-        _atomic_json(path, {"view_id": vid, "view_sequence": view_sequence,
-                            "state_revision": state_revision, "task_instance_id": task_instance_id})
+        candidate = {"state_revision": state_revision, "view_sequence": view_sequence,
+                     "task_instance_id": task_instance_id}
+        views = current.setdefault("views", {})
+        now = time.time()
+        for stale_id, view in list(views.items()):
+            if view.get("display_mode") == "fullscreen" and view.get("expires_at", 0) <= now:
+                views.pop(stale_id, None)
+        if display_mode == "fullscreen" and any(
+            other_id != vid and view.get("display_mode") == "fullscreen"
+            and isinstance(view.get("expires_at"), (int, float))
+            and view["expires_at"] > now
+            for other_id, view in views.items()
+        ):
+            _atomic_json(path, current)
+            return _ui_view_result(sid, vid, "duplicate_fullscreen")
+        if display_mode == "inline":
+            latest_inline = current.get("latest_inline")
+            if latest_inline is None:
+                # Migrate old registries without allowing fullscreen polls to
+                # become the inline card's replacement order.
+                inline_views = [
+                    view for view in views.values()
+                    if view.get("display_mode") == "inline"
+                ]
+                if inline_views:
+                    latest_inline = max(
+                        inline_views,
+                        key=lambda view: (view.get("state_revision", -1), view.get("view_sequence", -1)),
+                    )
+            latest_inline_order = (
+                latest_inline.get("state_revision", -1), latest_inline.get("view_sequence", -1)
+            ) if latest_inline else (-1, -1)
+            if (state_revision, view_sequence) < latest_inline_order:
+                return _ui_view_result(sid, vid, "superseded")
+            if (state_revision, view_sequence) > latest_inline_order or not latest_inline:
+                current["latest_inline"] = candidate
+        views[vid] = {**candidate, "display_mode": display_mode,
+                      "expires_at": time.time() + 35 if display_mode == "fullscreen" else None}
+        _atomic_json(path, current)
     return _ui_view_result(sid, vid, "registered")
 
 
-def check_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
+def check_ui_view(session_id: str, view_id: str, display_mode: str = "inline") -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     vid = _normalize_view_id(view_id)
     with _session_lock(sid):
@@ -1305,10 +1440,63 @@ def check_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
         if not path.exists():
             return _ui_view_result(sid, vid, "unregistered")
         metadata = json.loads(path.read_text(encoding="utf-8"))
-        # Keep the currently registered card usable across a task switch until
-        # a replacement actually registers; an instance change alone is not a view.
-        status = "latest" if metadata.get("view_id") == vid else "superseded"
+        views = metadata.get("views", {})
+        own = views.get(vid)
+        if not own:
+            return _ui_view_result(sid, vid, "unregistered")
+        latest_inline = metadata.get("latest_inline")
+        if latest_inline is None:
+            inline_views = [
+                view for view in views.values()
+                if view.get("display_mode") == "inline"
+            ]
+            if inline_views:
+                latest_inline = max(
+                    inline_views,
+                    key=lambda view: (view.get("state_revision", -1), view.get("view_sequence", -1)),
+                )
+        own_order = (own.get("state_revision", -1), own.get("view_sequence", -1))
+        latest_order = (
+            latest_inline.get("state_revision", -1), latest_inline.get("view_sequence", -1)
+        ) if latest_inline else (-1, -1)
+        if display_mode == "inline" and (
+            latest_inline is None
+            or own_order != latest_order
+            or own.get("task_instance_id") != latest_inline.get("task_instance_id")
+        ):
+            status = "superseded"
+        else:
+            now = time.time()
+            expired = [view_id for view_id, view in views.items()
+                       if view.get("display_mode") == "fullscreen"
+                       and not isinstance(view.get("expires_at"), (int, float))]
+            for expired_id in expired:
+                views.pop(expired_id, None)
+            fullscreen_open = any(
+                view_id != vid and view.get("display_mode") == "fullscreen"
+                and isinstance(view.get("expires_at"), (int, float))
+                and view["expires_at"] > now
+                for view_id, view in views.items()
+            )
+            for fullscreen_id, view in list(views.items()):
+                if view.get("display_mode") == "fullscreen" and view.get("expires_at", 0) <= now:
+                    views.pop(fullscreen_id, None)
+            _atomic_json(path, metadata)
+            status = "hidden_by_fullscreen" if display_mode == "inline" and fullscreen_open else "latest"
     return _ui_view_result(sid, vid, status)
+
+
+def unregister_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    vid = _normalize_view_id(view_id)
+    with _session_lock(sid):
+        path = _ui_view_file(sid)
+        if not path.exists():
+            return _ui_view_result(sid, vid, "unregistered")
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+        metadata.setdefault("views", {}).pop(vid, None)
+        _atomic_json(path, metadata)
+    return _ui_view_result(sid, vid, "unregistered")
 
 
 def clear_progress(session_id: str) -> dict[str, Any]:
@@ -1429,7 +1617,13 @@ def _task_instance_property() -> dict[str, Any]:
     }
 
 
-def _tool_meta() -> dict[str, Any]:
+def _data_tool_meta() -> dict[str, Any]:
+    """Keep ordinary data operations from implicitly opening the UI resource."""
+    return {}
+
+
+def _display_tool_meta() -> dict[str, Any]:
+    """Bind the UI resource only to the explicit display tool."""
     return {"ui": {"resourceUri": RESOURCE_URI}}
 
 
@@ -1485,7 +1679,7 @@ TOOLS = [
     {
         "name": "register_ui_view",
         "title": "登记当前进度视图",
-        "description": "仅供 App 用首次工具结果的顺序登记视图；旧结果不能抢占新卡片。不修改任务进度。",
+        "description": "仅供 App 登记或续租进度视图；旧结果不能抢占新卡片，打开的 fullscreen 视图会隐藏会话内嵌卡片。不修改任务进度。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1494,6 +1688,7 @@ TOOLS = [
                 "view_sequence": {"type": "integer", "minimum": 0, "description": "首次工具结果的 view_sequence，刷新后不可替换"},
                 "state_revision": {"type": "integer", "minimum": 0, "description": "首次工具结果的 state_revision"},
                 "task_instance_id": _task_instance_property(),
+                "display_mode": {"type": "string", "enum": ["inline", "fullscreen"], "description": "当前宿主展示模式"},
             },
             "required": ["session_id", "view_id"],
         },
@@ -1502,7 +1697,22 @@ TOOLS = [
     {
         "name": "check_ui_view",
         "title": "检查当前进度视图",
-        "description": "仅供 App 查询当前实例是否为指定会话最新视图；明确返回未登记或进度已清除。",
+        "description": "仅供 App 查询当前视图状态；fullscreen 标签页打开时返回 hidden_by_fullscreen，关闭后会话内卡片恢复。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": _session_property(),
+                "view_id": {"type": "string", "minLength": 1, "maxLength": 256},
+                "display_mode": {"type": "string", "enum": ["inline", "fullscreen"]},
+            },
+            "required": ["session_id", "view_id"],
+        },
+        "_meta": {"ui": {"visibility": ["app"]}},
+    },
+    {
+        "name": "unregister_ui_view",
+        "title": "释放进度视图登记",
+        "description": "仅供 App 在 fullscreen 视图关闭时释放视图租约；不修改任务进度。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1516,7 +1726,7 @@ TOOLS = [
     {
         "name": "init_progress",
         "title": "开始跟踪任务",
-        "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history，并由最新进度视图展示；恢复当前任务请用 get_progress。",
+        "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。此工具只写入任务数据，不触发展示；首次展示调用一次 render_progress，完整进度默认显示在会话内。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1538,12 +1748,12 @@ TOOLS = [
             },
             "required": ["steps"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "init_task_network",
         "title": "初始化任务网络",
-        "description": "多步骤新任务的默认且必选入口：创建 HTN 任务树与依赖网络，返回 progress.task_instance_id。开始同一 Codex 会话的新任务时必须复用该会话之前保存的 session_id；这样旧任务会归档到 task_history，最新卡片显示新任务并可展开查看历史，旧卡片自动折叠。未提供 session_id 只用于该会话第一次初始化。恢复当前任务请用 get_progress，当前任务重规划请用 rebuild_task_network。根任务默认 ready。",
+        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 用于安全重试，相同 ID 与内容不会重复归档。返回 task_instance_id、planning_status、ready_tasks 和 next_actions。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1562,10 +1772,13 @@ TOOLS = [
                     **_session_property(),
                     "description": "可选；同一会话创建新任务时复用，旧任务保留到 task_history。省略时生成新的 UUID。恢复当前任务请用 get_progress。",
                 },
+                "tasks": {"type": "array", "items": _task_schema(), "description": "初始粗粒度计划；多阶段任务至少两个有独立结果边界的阶段，每项必须包含 assignment.execution_mode。"},
+                "atomic_reason": {"type": "string", "description": "明确说明为何这是单步任务；与 tasks 互斥。"},
+                "request_id": {"type": "string", "description": "可选幂等键；重试同一初始化请求时复用。"},
             },
-            "required": ["task_title"],
+        "required": ["task_title"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "decompose_task",
@@ -1582,7 +1795,7 @@ TOOLS = [
             },
             "required": ["session_id", "task_id", "tasks"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "update_task",
@@ -1608,7 +1821,7 @@ TOOLS = [
             },
             "required": ["session_id", "task_id", "execution_status"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "get_ready_tasks",
@@ -1619,7 +1832,7 @@ TOOLS = [
             "properties": {"session_id": _session_property()},
             "required": ["session_id"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "rebuild_task_network",
@@ -1635,12 +1848,12 @@ TOOLS = [
             },
             "required": ["session_id", "reason"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "update_step",
         "title": "更新任务步骤",
-        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供 execution_mode。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。所有入参会标记为调用方填报、未经 Codex 宿主核验。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回文本及可视化面板数据。",
+        "description": "更新指定会话中的某一步骤状态、备注及执行者/模型/思考强度；pending 步骤须先 in_progress 才可 completed，首次启动 in_progress 必须提供 execution_mode。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。所有入参会标记为调用方填报、未经 Codex 宿主核验。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。返回结构化进度数据；普通更新不调用展示工具，首次展示调用 render_progress，完整进度默认内嵌在会话中。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1653,29 +1866,29 @@ TOOLS = [
             },
             "required": ["session_id", "step_index", "status"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "get_progress",
         "title": "读取任务进度",
-        "description": "读取指定会话的当前任务详情、task_instance_id 和 task_history 历史任务快照；HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。MCP Apps 客户端会显示交互式进度面板。",
+        "description": "读取指定会话的当前任务详情、task_instance_id 和 task_history 历史任务快照；HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。此工具只读数据；首次展示请调用一次 render_progress，完整进度默认内嵌在会话中。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
             "required": ["session_id"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
     {
         "name": "render_progress",
         "title": "展示任务进度",
-        "description": "返回指定会话的任务进度文本和交互式面板数据。",
+        "description": "首次在会话内展示指定会话的完整任务进度，并返回最新数据。只有用户点击面板入口切换到 fullscreen 后，进度标签页才会打开并暂时隐藏会话内卡片；关闭标签页后会话内卡片恢复。不要把本工具用于普通更新。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
             "required": ["session_id"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _display_tool_meta(),
     },
     {
         "name": "save_export_files",
@@ -1708,13 +1921,13 @@ TOOLS = [
     {
         "name": "clear_progress",
         "title": "清除本会话进度",
-        "description": "清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。为阻止清空前的迟到写入，后续新任务写操作必须传 task_instance_id。",
+        "description": "仅用于清理用户明确确认已归档的 Codex 会话中的全部 Task Progress 数据。调用前必须按 cleanup-task-progress-history skill 核对归档依据、对应 session_id、保留期限与删除范围；本工具不会读取或验证 Codex 归档状态，不得用于活动会话或归档状态不明的会话。清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
             "required": ["session_id"],
         },
-        "_meta": _tool_meta(),
+        "_meta": _data_tool_meta(),
     },
 ]
 
@@ -1722,17 +1935,19 @@ TOOLS = [
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "register_ui_view": lambda args: register_ui_view(
         args.get("session_id"), args.get("view_id"), args.get("view_sequence"),
-        args.get("state_revision"), args.get("task_instance_id"),
+        args.get("state_revision"), args.get("task_instance_id"), args.get("display_mode", "inline"),
     ),
     "check_ui_view": lambda args: check_ui_view(
-        args.get("session_id"), args.get("view_id")
+        args.get("session_id"), args.get("view_id"), args.get("display_mode", "inline")
     ),
+    "unregister_ui_view": lambda args: unregister_ui_view(args.get("session_id"), args.get("view_id")),
     "init_progress": lambda args: init_progress(
         args.get("steps", []), args.get("task_title", ""), args.get("session_id"),
         args.get("legacy_linear", False),
     ),
     "init_task_network": lambda args: init_task_network(
-        args.get("task_title", ""), args.get("session_id"), args.get("main_session")
+        args.get("task_title", ""), args.get("session_id"), args.get("main_session"),
+        args.get("tasks"), args.get("atomic_reason"), args.get("request_id")
     ),
     "decompose_task": lambda args: decompose_task(
         args.get("session_id"), args.get("task_id"), args.get("tasks", []),
@@ -1817,7 +2032,7 @@ def handle(message: Any) -> str | None:
                         "io.modelcontextprotocol/ui": {"mimeTypes": [RESOURCE_MIME]}
                     },
                 },
-                "serverInfo": {"name": "task-progress", "version": "0.1.1"},
+                "serverInfo": {"name": "task-progress", "version": "0.1.2"},
             },
         )
 
@@ -1839,24 +2054,42 @@ def handle(message: Any) -> str | None:
                         "description": "显示当前会话的任务网络、层级、依赖、就绪状态、结果证据和历史 epoch；兼容旧版扁平步骤。",
                         "mimeType": RESOURCE_MIME,
                         "_meta": {"ui": {"prefersBorder": True}},
-                    }
+                    },
+                    *[
+                        {
+                            "uri": uri,
+                            "name": "task_progress_inspector_legacy",
+                            "title": "Task Progress 面板（兼容旧会话）",
+                            "description": "兼容历史工具结果中的旧 UI 资源地址；内容使用当前实现。",
+                            "mimeType": RESOURCE_MIME,
+                            "_meta": {"ui": {"prefersBorder": True}},
+                        }
+                        for uri in LEGACY_RESOURCE_URIS
+                    ],
                 ]
             },
         )
 
     if method == "resources/read":
         uri = params.get("uri")
-        if uri != RESOURCE_URI:
+        if uri != RESOURCE_URI and uri not in LEGACY_RESOURCE_URIS:
             return _err(message_id, -32602, f"未知资源 URI：{uri}")
         try:
+            resource_uri = uri
             return _ok(
                 message_id,
                 {
                     "contents": [
                         {
-                            "uri": RESOURCE_URI,
+                            "uri": resource_uri,
                             "mimeType": RESOURCE_MIME,
-                            "_meta": {"ui": {"prefersBorder": True}},
+                            "_meta": {
+                                "ui": {"prefersBorder": True},
+                                "openai/ui": {
+                                    "availableDisplayModes": ["inline", "fullscreen"],
+                                    "preferredDisplayMode": "inline",
+                                },
+                            },
                             "text": _resource_html(),
                         }
                     ]

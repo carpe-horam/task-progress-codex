@@ -7,7 +7,7 @@
 <style>
 :root{color-scheme:dark;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;color:#e6e9ef;background:transparent}
 *{box-sizing:border-box}body{margin:0;overflow-x:hidden;padding:12px}button,summary{-webkit-tap-highlight-color:transparent}button{font:inherit}button:focus-visible,summary:focus-visible{outline:2px solid #89aaff;outline-offset:4px}
-.card{max-width:900px;margin:auto;border:1px solid #303642;border-radius:14px;background:#151920;overflow:hidden;box-shadow:0 6px 24px #0002}.header{padding:22px 24px 18px;border-bottom:1px solid #2b303b}.topline,.titleline,.progressline,.sectionline{display:flex;align-items:center;justify-content:space-between;gap:12px}.eyebrow{display:flex;align-items:center;gap:8px;color:#9aa5b7;font-size:11px;letter-spacing:.12em;text-transform:uppercase}.brandmark{width:13px;height:13px;border:2px solid #8294b2;border-radius:3px;transform:rotate(45deg)}.refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid #394150;border-radius:7px;background:#222833;color:#d5deed;padding:6px 10px;cursor:pointer;font-size:12px;flex-shrink:0}.refresh:hover:enabled{background:#2e3745}.refresh:disabled{opacity:.45;cursor:default}.refresh svg{width:13px;height:13px}.titleline{align-items:flex-start;margin-top:19px}h1{font-size:20px;line-height:1.45;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere;font-weight:620}.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 9px;border:1px solid #404854;border-radius:5px;color:#a9b1c0;background:#252b34;white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}.badge.running{color:#99bcff;background:#21324e;border-color:#34527e}.badge.completed{color:#91ddb6;background:#1b372c;border-color:#2e5a45}.progressline{margin-top:22px;align-items:baseline}.percent{font-size:32px;font-weight:650;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.percent small{font-size:17px;margin-left:3px;color:#8e9bb0}.fraction{font-size:12px;color:#a5afbf;font-variant-numeric:tabular-nums}.track{margin-top:10px;height:7px;background:#2c323d;border-radius:10px;overflow:hidden}.fill{height:100%;width:0;background:#7d9ff7;border-radius:inherit;transition:width .25s ease}.fill.completed{background:#6bc49b}.meta{display:flex;flex-wrap:wrap;gap:10px 24px;margin-top:18px;font-size:11px;color:#818d9f}.meta span{display:inline-flex;gap:7px}.meta time{color:#b1bac8;font-variant-numeric:tabular-nums}.steps-section{padding:18px 24px 8px}.sectionline{font-size:11px;color:#8390a3;margin-bottom:10px}.sectionline h2{font-weight:600;color:#b9c3d1;font-size:12px;letter-spacing:.04em;margin:0}.steps{list-style:none;padding:0;margin:0}.step{position:relative;border-bottom:1px solid #272e39;padding:13px 0}.step:last-child{border-bottom:0}.step summary{list-style:none;cursor:pointer}.step summary::-webkit-details-marker{display:none}.step-main{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:start;gap:10px}.step-icon{display:flex;justify-content:center;align-items:center;width:22px;height:22px;border:1px solid #465060;border-radius:50%;color:#8290a5;font-size:10px;font-variant-numeric:tabular-nums}.step.completed > :is(details,div) > .step-main > .step-icon{color:#4ade80;background:#173b2b;border-color:#388e5b}.step.running > :is(details,div) > .step-main > .step-icon{color:#a4c2ff;background:#223859;border-color:#7299e4;box-shadow:0 0 0 3px #283c5b66}.step-title{padding-top:2px;line-height:1.5;overflow-wrap:anywhere;font-size:13px;color:#b7c1d0}.step.running > :is(details,div) > .step-main > .step-title{color:#e2ebfc}.step.completed > :is(details,div) > .step-main > .step-title{color:#bbc9c2}.step-right{display:flex;align-items:center;gap:8px;padding-top:4px;font-size:10px;color:#78869b;white-space:nowrap}.step.running > :is(details,div) > .step-main > .step-right{color:#9ab9ef}.step.completed > :is(details,div) > .step-main > .step-right{color:#79b598}.chevron{display:inline-block;width:6px;height:6px;border-right:1px solid #8291a7;border-bottom:1px solid #8291a7;transform:rotate(45deg);margin:0 3px 3px 1px}details[open] > summary .chevron{transform:rotate(225deg);margin-top:4px}.note{margin:10px 0 1px 34px;padding:11px 13px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:#a9b8ce}.footer{border-top:1px solid #282f3a;padding:11px 24px;font-size:10px;color:#768297;display:flex;gap:10px;justify-content:space-between;align-items:center}.session{max-width:75%;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,monospace}.empty{padding:37px 24px 40px;text-align:center;color:#94a1b5}.empty-icon{display:inline-flex;border:1px solid #414c5e;border-radius:10px;width:38px;height:38px;align-items:center;justify-content:center;font-size:20px;color:#8c9db6}.empty h2{font-size:15px;font-weight:550;margin:15px 0 7px;color:#c9d3e2}.empty p{font-size:12px;line-height:1.7;margin:0}.error{margin:0;padding:12px 24px;background:#3b2724;border-top:1px solid #67463e;color:#f1b5a3;font-size:12px;line-height:1.6}.hidden{display:none!important}.superseded-notice{margin:0;padding:15px 20px;color:#8f9cb0;font-size:12px;line-height:1.6}.card.superseded>:not(#superseded-notice){display:none!important}
+.card{max-width:900px;margin:auto;border:1px solid #303642;border-radius:14px;background:#151920;overflow:hidden;box-shadow:0 6px 24px #0002}.header{padding:22px 24px 18px;border-bottom:1px solid #2b303b}.topline,.titleline,.progressline,.sectionline{display:flex;align-items:center;justify-content:space-between;gap:12px}.eyebrow{display:flex;align-items:center;gap:8px;color:#9aa5b7;font-size:11px;letter-spacing:.12em;text-transform:uppercase}.brandmark{width:13px;height:13px;border:2px solid #8294b2;border-radius:3px;transform:rotate(45deg)}.refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid #394150;border-radius:7px;background:#222833;color:#d5deed;padding:6px 10px;cursor:pointer;font-size:12px;flex-shrink:0}.refresh:hover:enabled{background:#2e3745}.refresh:disabled{opacity:.45;cursor:default}.refresh svg{width:13px;height:13px}.titleline{align-items:flex-start;margin-top:19px}h1{font-size:20px;line-height:1.45;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere;font-weight:620}.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 9px;border:1px solid #404854;border-radius:5px;color:#a9b1c0;background:#252b34;white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}.badge.running{color:#99bcff;background:#21324e;border-color:#34527e}.badge.completed{color:#91ddb6;background:#1b372c;border-color:#2e5a45}.progressline{margin-top:22px;align-items:baseline}.percent{font-size:32px;font-weight:650;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.percent small{font-size:17px;margin-left:3px;color:#8e9bb0}.fraction{font-size:12px;color:#a5afbf;font-variant-numeric:tabular-nums}.track{margin-top:10px;height:7px;background:#2c323d;border-radius:10px;overflow:hidden}.fill{height:100%;width:0;background:#7d9ff7;border-radius:inherit;transition:width .25s ease}.fill.completed{background:#6bc49b}.meta{display:flex;flex-wrap:wrap;gap:10px 24px;margin-top:18px;font-size:11px;color:#818d9f}.meta span{display:inline-flex;gap:7px}.meta time{color:#b1bac8;font-variant-numeric:tabular-nums}.steps-section{padding:18px 24px 8px}.sectionline{font-size:11px;color:#8390a3;margin-bottom:10px}.sectionline h2{font-weight:600;color:#b9c3d1;font-size:12px;letter-spacing:.04em;margin:0}.steps{list-style:none;padding:0;margin:0}.step{position:relative;border-bottom:1px solid #272e39;padding:13px 0}.step:last-child{border-bottom:0}.step summary{list-style:none;cursor:pointer}.step summary::-webkit-details-marker{display:none}.step-main{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:start;gap:10px}.step-icon{display:flex;justify-content:center;align-items:center;width:22px;height:22px;border:1px solid #465060;border-radius:50%;color:#8290a5;font-size:10px;font-variant-numeric:tabular-nums}.step.completed > :is(details,div) > .step-main > .step-icon{color:#4ade80;background:#173b2b;border-color:#388e5b}.step.running > :is(details,div) > .step-main > .step-icon{color:#a4c2ff;background:#223859;border-color:#7299e4;box-shadow:0 0 0 3px #283c5b66}.step-title{padding-top:2px;line-height:1.5;overflow-wrap:anywhere;font-size:13px;color:#b7c1d0}.step.running > :is(details,div) > .step-main > .step-title{color:#e2ebfc}.step.completed > :is(details,div) > .step-main > .step-title{color:#bbc9c2}.step-right{display:flex;align-items:center;gap:8px;padding-top:4px;font-size:10px;color:#78869b;white-space:nowrap}.step.running > :is(details,div) > .step-main > .step-right{color:#9ab9ef}.step.completed > :is(details,div) > .step-main > .step-right{color:#79b598}.chevron{display:inline-block;width:6px;height:6px;border-right:1px solid #8291a7;border-bottom:1px solid #8291a7;transform:rotate(45deg);margin:0 3px 3px 1px}details[open] > summary .chevron{transform:rotate(225deg);margin-top:4px}.note{margin:10px 0 1px 34px;padding:11px 13px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:#a9b8ce}.footer{border-top:1px solid #282f3a;padding:11px 24px;font-size:10px;color:#768297;display:flex;gap:10px;justify-content:space-between;align-items:center}.session{max-width:75%;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,monospace}.empty{padding:37px 24px 40px;text-align:center;color:#94a1b5}.empty-icon{display:inline-flex;border:1px solid #414c5e;border-radius:10px;width:38px;height:38px;align-items:center;justify-content:center;font-size:20px;color:#8c9db6}.empty h2{font-size:15px;font-weight:550;margin:15px 0 7px;color:#c9d3e2}.empty p{font-size:12px;line-height:1.7;margin:0}.error{margin:0;padding:12px 24px;background:#3b2724;border-top:1px solid #67463e;color:#f1b5a3;font-size:12px;line-height:1.6}.hidden{display:none!important}.superseded-notice{margin:0;padding:15px 20px;color:#8f9cb0;font-size:12px;line-height:1.6}.card.inline-stale>:not(#superseded-notice):not(#compact-view){display:none!important}.card.tab-hidden{display:none!important}
 @media(max-width:480px){body{padding:6px}.header{padding:17px 16px}.steps-section{padding:16px 16px 6px}.footer{padding:11px 16px}.titleline{flex-direction:column;gap:9px}h1{font-size:18px}.meta{gap:8px 15px}.step-main{gap:8px;grid-template-columns:22px minmax(0,1fr) auto}.step-right{gap:5px}.step-title{font-size:12px}.note{margin-left:30px}.percent{font-size:29px}.error{padding:12px 16px}}
 @media(prefers-reduced-motion:reduce){.fill{transition:none}}
 </style>
@@ -109,10 +109,16 @@ h1{font-size:18px;line-height:1.35}
 :root[data-theme="light"] .export-feedback{color:#3c5f90;border-color:#dce3ed}
 :root[data-theme="light"] .export-feedback.error{background:#fff0ed;color:#9d3423}
 :root[data-theme="light"] .auto-refresh-status.failed,:root[data-theme="light"] .auto-refresh-status.failed .auto-refresh-time{color:#8d5416}
+.compact-view{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #303642;border-radius:10px;background:#151920;color:#d6deea;box-shadow:0 4px 14px #0002}.compact-copy{display:grid;gap:3px;min-width:0}.compact-brand{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8f9cb0}.compact-title{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.compact-status{font-size:10px;color:#94a1b5}.compact-open{flex:none;border:1px solid #46546a;border-radius:7px;background:#222b38;color:#dce7f8;padding:6px 9px;cursor:pointer;font-size:11px}.compact-open:hover:enabled{background:#2d3a4c}.compact-open:disabled{opacity:.55;cursor:default}.compact-feedback{font-size:10px;color:#9ab9ef}.card.compact>:not(#compact-view){display:none!important}.card.compact{max-width:560px;margin:0;border:0;background:transparent;box-shadow:none;overflow:visible;padding:0}.card.compact #compact-view{display:flex!important}.card.compact #compact-feedback:not(.hidden){display:block!important}.card.compact #compact-view{flex-wrap:wrap}.card.compact .compact-copy{flex:1 1 180px}.card.compact .compact-feedback{flex:1 0 100%}
 </style>
 </head>
 <body>
 <main class="card" aria-label="任务进度">
+  <div id="compact-view" class="compact-view hidden" aria-label="任务进度入口">
+    <div class="compact-copy"><span class="compact-brand">Task Progress</span><strong id="compact-title" class="compact-title">当前会话任务</strong><span id="compact-status" class="compact-status">进度面板已收起</span></div>
+    <button id="open-progress" class="compact-open" type="button">打开任务进度</button>
+    <span id="compact-feedback" class="compact-feedback hidden" role="status" aria-live="polite"></span>
+  </div>
   <p id="superseded-notice" class="superseded-notice hidden" role="status">此进度卡片已折叠，请查看本会话最新的任务进度。</p>
   <header class="header">
     <div class="topline"><div class="eyebrow"><span class="brandmark" aria-hidden="true"></span>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
@@ -143,8 +149,12 @@ h1{font-size:18px;line-height:1.35}
   let viewRetryDelay = 1000;
   let viewRegistered = false;
   let viewTimer = null;
+  let viewHeartbeatTimer = null;
+  let registeredMode = null;
+  let registeredSourceKey = null;
   let viewCheckBusy = false;
-  let superseded = false;
+  let sourceSuperseded = false;
+  let hiddenByFullscreen = false;
   let disposed = false;
   let bridgeReady = false;
   let busy = false;
@@ -178,10 +188,28 @@ h1{font-size:18px;line-height:1.35}
     if (Object.prototype.hasOwnProperty.call(labels, value)) return { key: value, label: labels[value] };
     return { key: 'pending', label: '待开始' };
   };
-  const canPoll = () => !superseded && !disposed && hasCurrentProgress && bridgeReady && !!sessionId && documentVisible && cardInViewport;
+  function syncPresentation() {
+    const compact = displayMode !== 'fullscreen' && sourceSuperseded;
+    const card = document.querySelector('.card');
+    card.classList.toggle('compact', compact);
+    card.classList.toggle('tab-hidden', displayMode === 'inline' && hiddenByFullscreen);
+    $('compact-view').classList.toggle('hidden', !compact);
+    if (displayMode === 'inline' && hiddenByFullscreen) {
+      if (bridgeReady) notify('ui/notifications/size-changed', { height: 0 });
+      return;
+    }
+    if (!compact) return;
+    setText('compact-title', latestProgress?.task_title || '当前会话任务');
+    setText('compact-status', sourceSuperseded
+      ? '任务状态可能已更新，打开查看最新进度。'
+      : latestProgress ? statusInfo(latestProgress.status).label + ' · ' + (latestProgress.percent ?? 0) + '%'
+        : '打开查看本会话任务进度');
+  }
+  const isInlineStale = () => displayMode === 'inline' && sourceSuperseded;
+  const canPoll = () => !isInlineStale() && !hiddenByFullscreen && !disposed && hasCurrentProgress && bridgeReady && !!sessionId && documentVisible && cardInViewport;
   function syncAutoRefreshStatus() {
     const status = $('auto-refresh-status');
-    status.classList.toggle('hidden', !hasCurrentProgress || superseded);
+    status.classList.toggle('hidden', !hasCurrentProgress || isInlineStale());
     const polling = canPoll();
     status.classList.toggle('paused', !polling);
     status.classList.toggle('failed', refreshFailed);
@@ -206,50 +234,98 @@ h1{font-size:18px;line-height:1.35}
   function stopViewChecks() {
     if (viewTimer !== null) { clearInterval(viewTimer); viewTimer = null; }
   }
+  function stopViewHeartbeat() {
+    if (viewHeartbeatTimer !== null) { clearInterval(viewHeartbeatTimer); viewHeartbeatTimer = null; }
+  }
   function stopViewRetry() {
     if (viewRetryTimer !== null) { clearTimeout(viewRetryTimer); viewRetryTimer = null; }
   }
   function startViewChecks() {
-    if (displayMode !== 'inline' || !viewRegistered || viewTimer !== null || superseded || disposed) return;
-    viewTimer = window.setInterval(() => { void checkLatestView(); }, 5000);
+    if (displayMode !== 'inline' || !viewRegistered || viewTimer !== null || sourceSuperseded || disposed) return;
+    viewTimer = window.setInterval(() => { void checkLatestView(); }, 3000);
+  }
+  function startViewHeartbeat() {
+    if (displayMode !== 'fullscreen' || !viewRegistered || viewHeartbeatTimer !== null || disposed) return;
+    viewHeartbeatTimer = window.setInterval(() => { void registerView(true); }, 10000);
   }
   function collapseSupersededView(reason) {
-    if (superseded || disposed) return;
-    superseded = true;
-    stopPolling(); stopViewChecks(); stopViewRetry();
-    document.querySelector('.card').classList.add('superseded');
+    if (displayMode === 'fullscreen') {
+      viewRegistered = false;
+      registeredMode = null;
+      if (reason === 'missing_progress') {
+        setError('此会话任务已清除。返回会话后可开始新任务。');
+        render(null);
+      } else {
+        setError('正在读取本会话最新任务…');
+        void refreshProgress(true);
+      }
+      return;
+    }
+    if (sourceSuperseded || disposed) return;
+    sourceSuperseded = true;
+    hiddenByFullscreen = false;
+    stopPolling(); stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
+    document.querySelector('.card').classList.add('inline-stale');
     setText('superseded-notice', reason === 'missing_progress' ? '此会话的任务进度已清除，卡片已折叠。' : '此进度卡片已折叠，请查看本会话最新的任务进度。');
-    $('superseded-notice').classList.remove('hidden');
+    $('superseded-notice').classList.toggle('hidden', !isInlineStale());
+    syncPresentation();
     syncButton();
     if (bridgeReady) notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
   }
   async function checkLatestView() {
-    if (displayMode !== 'inline' || !viewRegistered || !bridgeReady || !sessionId || superseded || disposed || viewCheckBusy || !documentVisible) return;
+    if (displayMode !== 'inline' || !viewRegistered || !bridgeReady || !sessionId || sourceSuperseded || disposed || viewCheckBusy || !documentVisible) return;
     viewCheckBusy = true;
     try {
-      const result = await request('tools/call', { name: 'check_ui_view', arguments: { session_id: sessionId, view_id: viewId } });
+      const result = await request('tools/call', { name: 'check_ui_view', arguments: { session_id: sessionId, view_id: viewId, display_mode: displayMode } });
       const state = result?.structuredContent;
       // Collapse only an explicit replacement or removed session; unsupported tools remain optional.
-      if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && ['superseded', 'missing_progress'].includes(state.status) && state.is_latest === false) collapseSupersededView(state.status);
+      if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId) {
+        if (['superseded', 'missing_progress'].includes(state.status) && state.is_latest === false) collapseSupersededView(state.status);
+        else if (state.status === 'hidden_by_fullscreen') {
+          hiddenByFullscreen = true; syncPresentation(); stopPolling(); syncAutoRefreshStatus();
+        } else if (['latest', 'unregistered'].includes(state.status)) {
+          if (hiddenByFullscreen) {
+            hiddenByFullscreen = false; syncPresentation(); syncPolling();
+            if (bridgeReady) notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
+          }
+          if (state.status === 'unregistered') void registerView();
+        }
+      }
     } catch (_) { /* View coordination is optional; progress display remains available. */ }
     finally { viewCheckBusy = false; }
   }
-  async function registerView() {
-    if (displayMode !== 'inline' || !bridgeReady || !sessionId || !viewSource || viewRegistrationStarted || viewRegistered || viewRetryTimer !== null || superseded || disposed) return;
-    // Register once for this iframe. Progress refreshes must never reclaim an older card.
+  async function registerView(force = false) {
+    if (!['inline', 'fullscreen'].includes(displayMode) || !bridgeReady || !sessionId || !viewSource || viewRegistrationStarted || viewRetryTimer !== null || (sourceSuperseded && displayMode === 'inline') || disposed) return;
+    const sourceKey = [viewSource.state_revision, viewSource.view_sequence, viewSource.task_instance_id].join(':');
+    const requestedMode = displayMode;
+    if (!force && viewRegistered && registeredMode === requestedMode && registeredSourceKey === sourceKey) return;
+    // Fullscreen views renew a short lease; inline cards never reclaim newer snapshots.
     viewRegistrationStarted = true;
     try {
-      const result = await request('tools/call', { name: 'register_ui_view', arguments: { session_id: sessionId, view_id: viewId, ...viewSource } });
+      const result = await request('tools/call', { name: 'register_ui_view', arguments: { session_id: sessionId, view_id: viewId, ...viewSource, display_mode: requestedMode } });
       const state = result?.structuredContent;
       if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && ['superseded', 'missing_progress'].includes(state.status)) { collapseSupersededView(state.status); return; }
+      if (!result?.isError && state?.session_id === sessionId && state.view_id === viewId && state.status === 'duplicate_fullscreen') {
+        viewRegistered = false;
+        registeredMode = null;
+        setError('本会话已有完整进度页打开，正在返回会话内视图。');
+        try {
+          if (typeof window.openai?.requestDisplayMode === 'function') await window.openai.requestDisplayMode({ mode: 'inline' });
+          else await request('ui/request-display-mode', { mode: 'inline' });
+        } catch (_) { /* The active page remains usable if the host cannot demote this duplicate. */ }
+        return;
+      }
       if (disposed || result?.isError || state?.session_id !== sessionId || state.view_id !== viewId || state.is_latest !== true) return;
       viewRegistered = true;
+      registeredMode = requestedMode;
+      registeredSourceKey = sourceKey;
       viewRetryDelay = 1000;
-      startViewChecks();
+      if (requestedMode === 'inline') { stopViewHeartbeat(); startViewChecks(); }
+      else { stopViewChecks(); startViewHeartbeat(); }
     } catch (_) { /* Older servers can continue showing and refreshing progress. */ }
     finally {
       viewRegistrationStarted = false;
-      if (!viewRegistered && !superseded && !disposed && displayMode === 'inline') {
+      if (!viewRegistered && !sourceSuperseded && !disposed && displayMode === 'inline') {
         viewRetryTimer = setTimeout(() => { viewRetryTimer = null; void registerView(); }, viewRetryDelay);
         viewRetryDelay = Math.min(viewRetryDelay * 2, 30000);
       }
@@ -258,7 +334,7 @@ h1{font-size:18px;line-height:1.35}
   const setError = text => { setText('error', text); $('error').classList.toggle('hidden', !text); };
   const syncButton = () => {
     // Background polling must not blur a keyboard-focused refresh button.
-    $('refresh').disabled = !bridgeReady || !sessionId || (busy && !silentRefresh) || superseded || disposed;
+    $('refresh').disabled = !bridgeReady || !sessionId || (busy && !silentRefresh) || isInlineStale() || disposed;
     $('refresh').setAttribute('aria-busy', String(busy));
     setText('refresh-label', busy && !silentRefresh ? '刷新中…' : '刷新');
     syncAutoRefreshStatus();
@@ -436,7 +512,8 @@ h1{font-size:18px;line-height:1.35}
             status: statusInfo(attempt.execution_status || 'pending').label,
             outcome: String(attempt.outcome || ''), executor: exportExecutor(attemptAssignment), model: String(attemptAssignment.model || ''),
             metadataEvidence: metadataEvidence(attemptAssignment), metadataCapturedAt: String(attemptAssignment.metadata_provenance?.captured_at || ''),
-            thinking: String(attemptAssignment.reasoning_effort || ''), startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
+            thinking: String(attemptAssignment.reasoning_effort || ''), dispatchText: String(attemptAssignment.dispatch_text || ''),
+            startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
             durationSeconds: exportDuration(attempt.started_at, attempt.finished_at, snapshot.updated_at || snapshot.created_at || ''), summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n'),
             invalidatedBy: String(attempt.invalidated_by || ''), invalidatedAt: String(attempt.invalidated_at || ''), validity: attempt.invalidated_by ? '已失效' : '有效'
           });
@@ -564,13 +641,13 @@ h1{font-size:18px;line-height:1.35}
     const headers = {
       overview:['项目','值'],
       tasks:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','父任务 ID','层级','完整路径','任务名称','节点类型','叶任务','状态','执行状态','结果','依赖任务','当前阻塞','依赖条件','执行者','模型','思维强度','元数据来源','配置档','尝试次数','Attempt ID','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间'],
-      attempts:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','任务名称','类型','尝试次数','Attempt ID','状态','结果','有效性','失效来源','失效时间','执行者','模型','思维强度','元数据来源','开始时间','结束时间','耗时（秒）','结果摘要','证据','归档时间'],
+      attempts:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','任务名称','类型','尝试次数','Attempt ID','状态','结果','有效性','失效来源','失效时间','执行者','模型','思维强度','元数据来源','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间'],
       evidence:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','完整路径','证据来源','序号','证据内容'],
       plans:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','当前计划','计划名称','状态','根任务 ID','节点数','叶任务数','已解决叶任务','已结束叶任务','快照更新时间','关闭时间','修订号','历史记录数','重规划原因','与前轮关系','主会话模型','主会话思维强度','元数据来源','元数据采集时间']
     };
     const tasks=data.tasks, taskByKey=new Map(tasks.map(t=>[t.roundKey+'|'+t.taskId,t]));
     const taskRows=tasks.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.parentId,t.depth,t.pathTitles,t.title,t.type,t.leaf?'是':'否',t.status,t.executionStatus,t.outcome,t.dependencies,t.blockedBy,t.dependencyConditions||'',t.executor,t.model,t.thinking,t.metadataEvidence,t.profile,t.attempt,t.attemptId,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt]);
-    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.archivedAt]);
+    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt]);
     const evidenceRows=[];
     tasks.forEach(t=>(t.evidence||'').split('\n').filter(Boolean).forEach((e,i)=>evidenceRows.push([t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.pathTitles||t.title,'任务结果证据',i+1,e])));
     data.attempts.forEach(t=>(t.evidence||'').split('\n').filter(Boolean).forEach((e,i)=>evidenceRows.push([t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,(taskByKey.get(t.roundKey+'|'+t.taskId)||{}).pathTitles||t.taskTitle,t.kindLabel,i+1,e])));
@@ -796,14 +873,16 @@ h1{font-size:18px;line-height:1.35}
       const renderAttempts = task => {
         const items = attemptsFor(plan.roundKey).filter(attempt => attempt.taskId === task.taskId);
         if (!items.length) return '';
-        return `<details class="rp-subdetails"><summary>${chevron}执行记录 · ${items.length} 次</summary>${[...items].reverse().map(attempt => `<article class="rp-attempt ${attempt.number === task.attempt ? 'current' : ''}"><div class="rp-attempt-head"><strong>第 ${esc(attempt.number || '—')} 次 · ${esc(attempt.kindLabel)}</strong>${tag({status:attempt.status,executionStatus:attempt.status==='执行结束'?'finished':attempt.status==='进行中'?'running':'',outcome:attempt.outcome})}<span class="rp-small">${esc(attempt.validity)}</span></div><div class="rp-meta"><span>${hm(attempt.startedAt)}–${attempt.finishedAt ? hm(attempt.finishedAt) : '快照时刻'}</span><span>${stampDuration(attempt)}</span><span>${esc(attempt.executor)}</span><span>模型：${esc(attempt.model || '未记录')}${attempt.thinking ? ' / '+esc(attempt.thinking) : ''}</span></div><p>${esc(attempt.summary || '暂无执行摘要。')}</p>${attempt.evidence ? `<details class="rp-subdetails"><summary>${chevron}本次证据</summary>${evidenceList(attempt.evidence)}</details>` : ''}</article>`).join('')}</details>`;
+        return `<details class="rp-subdetails"><summary>${chevron}执行记录 · ${items.length} 次</summary>${[...items].reverse().map(attempt => `<article class="rp-attempt ${attempt.number === task.attempt ? 'current' : ''}"><div class="rp-attempt-head"><strong>第 ${esc(attempt.number || '—')} 次 · ${esc(attempt.kindLabel)}</strong>${tag({status:attempt.status,executionStatus:attempt.status==='执行结束'?'finished':attempt.status==='进行中'?'running':'',outcome:attempt.outcome})}<span class="rp-small">${esc(attempt.validity)}</span></div><div class="rp-meta"><span>${hm(attempt.startedAt)}–${attempt.finishedAt ? hm(attempt.finishedAt) : '快照时刻'}</span><span>${stampDuration(attempt)}</span><span>${esc(attempt.executor)}</span><span>模型：${esc(attempt.model || '未记录')}${attempt.thinking ? ' / '+esc(attempt.thinking) : ''}</span></div><p>${esc(attempt.summary || '暂无执行摘要。')}</p>${attempt.dispatchText ? `<details class="rp-subdetails"><summary>${chevron}派发任务文本</summary><p>${esc(attempt.dispatchText)}</p></details>` : ''}${attempt.evidence ? `<details class="rp-subdetails"><summary>${chevron}本次证据</summary>${evidenceList(attempt.evidence)}</details>` : ''}</article>`).join('')}</details>`;
       };
       const renderNode = task => {
         const kids = children.get(task.taskId) || [], descendants = subtree(task), stats = planStatsForNodes(descendants);
         const openByDefault = current && kids.length && (stats.running > 0 || stats.open > 0);
-        const deps = task.dependencies ? task.dependencies.split('、').filter(Boolean).map(id => map.get(id)?.title || id) : [];
-        const blocked = task.blockedBy ? task.blockedBy.split('、').filter(Boolean).map(id => map.get(id)?.title || id) : [];
-        const body = `<div class="rp-node-body">${task.summary ? `<p>${esc(task.summary)}</p>` : '<p class="rp-small">暂无执行摘要。</p>'}${deps.length ? `<p class="rp-small">前置条件：${deps.map((name, i) => esc(name) + (blocked.includes(task.blockedBy.split('、')[i]) ? '（未满足）' : '（已满足）')).join('；')}</p>` : ''}<div class="rp-meta"><span>${esc(task.executor)}</span>${stampDuration(task) ? `<span>${stampDuration(task)}</span>` : ''}<span>模型：${esc(task.model || '未记录')}${task.thinking ? ' / '+esc(task.thinking) : ''}</span>${task.model ? `<span>来源：${esc(task.metadataEvidence || '调用方记录，未获宿主验证')}</span>` : ''}${task.attemptId ? `<span>尝试 ID：${esc(task.attemptId)}</span>` : ''}</div>${task.evidence ? `<details class="rp-subdetails"><summary>${chevron}当前证据</summary>${evidenceList(task.evidence)}</details>` : ''}${task.dispatchText ? `<details class="rp-subdetails"><summary>${chevron}派发说明</summary><p>${esc(task.dispatchText)}</p></details>` : ''}${renderAttempts(task)}<details class="rp-subdetails"><summary>${chevron}定位信息</summary><div class="rp-small">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)}${task.parentId ? '<br>父节点 ID：'+esc(task.parentId) : ''}</div></details></div>`;
+        const dependencyIds = task.dependencies ? task.dependencies.split('、').filter(Boolean) : [];
+        const blockedIds = new Set(task.blockedBy ? task.blockedBy.split('、').filter(Boolean) : []);
+        const deps = dependencyIds.map(id => map.get(id)?.title || id);
+        const blocked = [...blockedIds].map(id => map.get(id)?.title || id);
+        const body = `<div class="rp-node-body">${task.summary ? `<p>${esc(task.summary)}</p>` : '<p class="rp-small">暂无执行摘要。</p>'}${deps.length ? `<p class="rp-small">前置条件：${deps.map((name, i) => esc(name) + (blockedIds.has(dependencyIds[i]) ? '（未满足）' : '（已满足）')).join('；')}</p>` : ''}<div class="rp-meta"><span>${esc(task.executor)}</span>${stampDuration(task) ? `<span>${stampDuration(task)}</span>` : ''}<span>模型：${esc(task.model || '未记录')}${task.thinking ? ' / '+esc(task.thinking) : ''}</span>${task.model ? `<span>来源：${esc(task.metadataEvidence || '调用方记录，未获宿主验证')}</span>` : ''}${task.attemptId ? `<span>尝试 ID：${esc(task.attemptId)}</span>` : ''}</div>${task.evidence ? `<details class="rp-subdetails"><summary>${chevron}当前证据</summary>${evidenceList(task.evidence)}</details>` : ''}${task.dispatchText ? `<details class="rp-subdetails"><summary>${chevron}派发说明</summary><p>${esc(task.dispatchText)}</p></details>` : ''}${renderAttempts(task)}<details class="rp-subdetails"><summary>${chevron}定位信息</summary><div class="rp-small">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)}${task.parentId ? '<br>父节点 ID：'+esc(task.parentId) : ''}</div></details></div>`;
         return `<details class="rp-node ${kids.length ? 'rp-group' : 'rp-leaf'}" id="node-${esc(scope)}-${esc(task.taskId)}" data-node-id="${esc(task.taskId)}" ${openByDefault ? 'open' : ''}><summary class="cursor-interaction">${chevron}<span class="rp-node-title">${esc(task.title)}${kids.length ? `<span class="rp-node-count">${stats.total} 项叶任务 · 已解决 ${stats.resolved}/${stats.total}${stats.open ? ' · '+stats.open+' 项已结束未解决' : ''}${stats.running ? ' · '+stats.running+' 项执行中' : ''}</span>` : ''}</span>${tag(task)}</summary>${kids.length ? `<div class="rp-children">${kids.map(renderNode).join('')}</div>${task.summary || attemptsFor(plan.roundKey).some(a=>a.taskId===task.taskId) ? `<details class="rp-subdetails rp-node-body"><summary>${chevron}分组记录与综合验收</summary>${body}</details>` : ''}` : body}${blocked.length ? `<div class="rp-small">阻塞前置：${blocked.map(esc).join('、')}${task.dependencyConditions ? ' · '+esc(task.dependencyConditions) : ''}</div>` : ''}</details>`;
       };
       const rootNode = map.get(plan.rootId);
@@ -865,7 +944,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     return btoa(binary);
   }
   async function exportCurrentProgress() {
-    if (!latestProgress || superseded || disposed) return;
+    if (!latestProgress || isInlineStale() || disposed) return;
     const feedback = $('export-feedback'); const button = $('export-all');
     feedback.classList.remove('error'); feedback.classList.remove('hidden'); feedback.textContent = '正在生成并交付导出文件…'; button.disabled = true;
     try {
@@ -1161,8 +1240,12 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     $('steps').className = 'steps task-tree';
     reconcileChildren($('steps'), networkTree(nodes, progress.root_id, taskScope(progress) + ':epoch:' + progress.epoch, openDetails, true));
     const meta = document.createDocumentFragment();
+    const planningStatus = progress.planning_status === 'planned' ? '已完成粗规划'
+      : progress.planning_status === 'atomic' ? '单步任务'
+        : '尚未规划';
     const metadata = [
       ['计划', '第 ' + (Number(progress.epoch || 0) + 1) + ' 轮'],
+      ['规划状态', planningStatus],
       ['可执行', (progress.ready_count ?? list(progress.ready_tasks).length) + ' · 进行中 ' + (progress.executing_count ?? nodes.filter(node => node.execution_status === 'running').length) + ' · 阻塞 ' + (progress.blocked_count ?? nodes.filter(node => list(node.blocked_by).length).length)]
     ];
     const mainSession = progress.main_session && typeof progress.main_session === 'object' ? progress.main_session : {};
@@ -1221,7 +1304,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
     latestProgress = hasProgress ? progress : null;
-    $('export-all').classList.toggle('hidden', !hasProgress || superseded || disposed);
+    $('export-all').classList.toggle('hidden', !hasProgress || isInlineStale() || disposed);
     if (!hasProgress) $('export-feedback').classList.add('hidden');
     const steps = Array.isArray(progress?.steps) ? progress.steps : [];
     const network = progress?.schema_version === 2;
@@ -1265,7 +1348,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
   }
   $('export-all').addEventListener('click', exportCurrentProgress);
   function receiveResult(result, fromRefresh = false) {
-    if (superseded || disposed) return;
+    if (isInlineStale() || disposed) return;
     const structured = result?.structuredContent;
     if (!structured || typeof structured !== 'object') return;
     const incomingSession = structured.session_id || structured.progress?.session_id;
@@ -1276,6 +1359,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const incoming = structured.progress;
       const revision = structured.state_revision ?? incoming?.state_revision;
       const ordered = Number.isSafeInteger(revision) && revision >= 0;
+      const previousStateRevision = latestStateRevision;
       if (ordered) {
         if (latestStateRevision !== null && revision < latestStateRevision) return;
       } else {
@@ -1299,10 +1383,14 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
         if (ordered && Number.isSafeInteger(structured.view_sequence) && incoming?.task_instance_id) {
           viewSource = { view_sequence: structured.view_sequence, state_revision: revision, task_instance_id: incoming.task_instance_id };
         }
+      } else if (ordered && (displayMode === 'fullscreen' || !fromRefresh) &&
+                 (previousStateRevision === null || revision > previousStateRevision) &&
+                 Number.isSafeInteger(structured.view_sequence) && incoming?.task_instance_id) {
+        viewSource = { view_sequence: structured.view_sequence, state_revision: revision, task_instance_id: incoming.task_instance_id };
       }
       lastCheckedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       refreshFailed = false;
-      setError(''); render(incoming); void registerView();
+      setError(''); render(incoming); syncPresentation(); void registerView(displayMode === 'fullscreen' && fromRefresh);
     }
   }
   window.addEventListener('message', event => {
@@ -1322,20 +1410,40 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const nextMode = message.params?.displayMode;
       if (['inline', 'fullscreen', 'pip'].includes(nextMode) && nextMode !== displayMode) {
         displayMode = nextMode;
+        if (displayMode === 'fullscreen') {
+          hiddenByFullscreen = false;
+          sourceSuperseded = false;
+          viewRegistered = false;
+          registeredMode = null;
+          stopViewRetry();
+        }
+        const card = document.querySelector('.card');
+        card.classList.toggle('inline-stale', isInlineStale());
+        $('superseded-notice').classList.toggle('hidden', !isInlineStale());
+        syncPresentation();
         if (displayMode === 'inline') {
-          if (viewRegistered) { startViewChecks(); void checkLatestView(); }
-          else void registerView();
-        } else { stopViewChecks(); stopViewRetry(); }
+          if (viewRegistered && registeredMode === 'inline') { startViewChecks(); void checkLatestView(); }
+          else { viewRegistered = false; void refreshProgress(true); }
+        } else {
+          stopViewChecks(); stopViewRetry();
+          syncButton();
+          if (bridgeReady) syncPolling();
+        }
+        if (displayMode === 'fullscreen' && bridgeReady) void refreshProgress(true);
+        syncButton();
+        syncPolling();
+        if (bridgeReady) notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
       }
     }
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      disposed = true; stopPolling(); stopViewChecks(); stopViewRetry();
+      if (sessionId && viewRegistered) void request('tools/call', { name: 'unregister_ui_view', arguments: { session_id: sessionId, view_id: viewId } }).catch(() => {});
+      disposed = true; stopPolling(); stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
       window.parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, '*');
     }
   });
   async function refreshProgress(silent = false) {
-    if (!sessionId || !bridgeReady || busy || superseded || disposed) return;
+    if (!sessionId || !bridgeReady || busy || isInlineStale() || disposed) return;
     busy = true; silentRefresh = silent; syncButton();
     if (!silent) setError('');
     try {
@@ -1349,6 +1457,26 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     finally { busy = false; silentRefresh = false; syncButton(); }
   }
   $('refresh').addEventListener('click', () => { void refreshProgress(false); });
+  $('open-progress').addEventListener('click', async () => {
+    const button = $('open-progress');
+    if (!bridgeReady || disposed || button.disabled) return;
+    button.disabled = true;
+    $('compact-feedback').classList.remove('hidden');
+    setText('compact-feedback', '正在请求打开任务进度…');
+    try {
+      if (typeof window.openai?.requestDisplayMode === 'function') {
+        await window.openai.requestDisplayMode({ mode: 'fullscreen' });
+      } else {
+        await request('ui/request-display-mode', { mode: 'fullscreen' });
+      }
+      // Only host-context-changed confirms the actual presentation mode.
+      if (displayMode !== 'fullscreen') setText('compact-feedback', '已请求宿主打开；若页面未切换，请再次点击。');
+    } catch (error) {
+      setText('compact-feedback', error.message || '无法打开进度面板，请稍后重试。');
+    } finally {
+      button.disabled = false;
+    }
+  });
   document.addEventListener('visibilitychange', () => {
     documentVisible = document.visibilityState === 'visible';
     syncPolling();
@@ -1364,8 +1492,8 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     }, { threshold: 0 }).observe(document.querySelector('.card'));
   }
   render(null);
-  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
-    .then(result => { displayMode = result?.hostContext?.displayMode ?? null; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); })
+  request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.1.2' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' })
+    .then(result => { displayMode = result?.hostContext?.displayMode ?? null; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; document.querySelector('.card').classList.toggle('inline-stale', isInlineStale()); $('superseded-notice').classList.toggle('hidden', !isInlineStale()); syncPresentation(); notify('ui/notifications/initialized', {}); notify('ui/notifications/size-changed', { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); syncButton(); syncPolling(); void registerView(); if (displayMode && displayMode !== 'inline' && sessionId) void refreshProgress(true); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {
     let previousHeight = 0;
