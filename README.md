@@ -2,86 +2,26 @@
 
 简体中文 | [English](README.en.md)
 
-当前版本：**0.2.0** · [发布与安装说明](docs/releases/0.2.0.md) · [更新记录](CHANGELOG.md)
+**让 Codex 的多步骤任务进展一目了然。**
 
-**把 Codex 的多步骤工作变成清楚、可追踪、可复盘的任务网络。**
+Task Progress 是一个 Codex 任务进度插件。它把任务计划、执行状态和结果汇总到一个面板中，方便你查看正在做什么、哪些已完成，以及接下来要做什么。
 
-[![License: MIT](https://img.shields.io/github/license/carpe-horam/task-progress-codex)](LICENSE)
-[![GitHub Pages](https://img.shields.io/website?url=https%3A%2F%2Fcarpe-horam.github.io%2Ftask-progress-codex%2F&label=用户指南)](https://carpe-horam.github.io/task-progress-codex/)
+[交互演示](https://carpe-horam.github.io/task-progress-codex/) · [下载 0.2.0](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.0) · [更新记录](CHANGELOG.md)
 
-Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务、自动跟踪用的 `track-progress` skill，以及仅在用户明确要求时使用的 `cleanup-task-progress-history` skill。它帮助 Codex 把复杂目标拆成有依赖关系的任务，记录执行进度、结果与证据；需要查看时可在 Codex 中打开完整面板。
+![Task Progress 任务面板](docs/assets/task-progress-0.2.0.png)
 
-> [打开交互式宣传手册与功能演示](https://carpe-horam.github.io/task-progress-codex/) · [查看插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
+*使用演示数据的界面预览。*
 
-## 0.2.0：先看进展，需要时再看细节
+## 主要功能
 
-先粗拆目标，按依赖执行；中途的新请求可以排队或独立并行，恢复时接着原任务继续。子智能体提交后由主会话独立验收，执行结束与交付完成分别记录。
-
-新版面板保留任务标题、状态、耗时和执行者，自动计算层级编号；展开任务先看结果摘要，再按需打开执行与验收详情。顶部只显示计划轮次与主会话模型，等待时钟居中显示。
-
-[![Task Progress 0.2.0 当前界面的演示数据预览](docs/assets/task-progress-0.2.0.png)](https://carpe-horam.github.io/task-progress-codex/#demo)
-
-*预览由本版 app.html 在 Chrome 中以合成演示数据渲染；可在[交互手册](https://carpe-horam.github.io/task-progress-codex/#demo)体验，并非真实 Codex 宿主或执行调度的证明。*
-
-## 能做什么
-
-| 能力 | 说明 |
-| --- | --- |
-| **开工前先规划** | 会话启动和每条新指令都会提示先判断粒度；多阶段工作可一次提交 HTN 任务树，未规划的空 root 会被服务端拒绝开工。 |
-| **表达依赖与并行** | 标记任务前置条件。依赖已满足的任务可执行，同一批互不依赖的任务可以并行推进。 |
-| **分工与独立验收** | 复杂工作默认委派，支持串行交接；分别记录计划执行者、派发绑定、子智能体提交与主会话复核，待复核结果不放行依赖。 |
-| **独立请求排队与并行** | 中途收到无关任务时，由主会话判断排队或交给子智能体；独立实例不覆盖当前主任务，完成后继续检查原任务与队列。 |
-| **压缩恢复与计划调整** | 保存目标、原文、约束、验收和恢复位置；主会话可补充或重规划，保留变更理由与既有证据。 |
-| **按会话隔离与保存历史** | 每个 Codex 会话有独立进度；同一会话开始新任务后，旧任务归档到历史。重规划轮次和重试记录也会保留。 |
-| **记录执行者与模型** | 展示主会话或子智能体，以及可获取的模型和思考强度；标注调用方填报与 Codex 核验状态，未知时不猜测。 |
-| **查看结果与耗时** | 汇总任务状态、进度、持续时间、结果摘要与验收证据；详情默认收起，按需展开。 |
-| **自动刷新** | 任务面板每 5 秒刷新一次，也可手动刷新。 |
-| **导出执行记录** | 一键同时导出 Excel 工作簿和可视化 HTML，保存到本机 `Downloads/Task Progress Exports`。 |
-| **适配不同客户端** | 支持 MCP Apps 的客户端可显示交互面板；模型可显式查询进度，再向用户说明结果。宿主决定展示方式。 |
-
-## 工作方式
-
-Task Progress 默认用 HTN（分层任务网络）表达多步骤工作：父任务可以继续拆分，子任务通过依赖关系连接。没有依赖关系的 ready 任务可以并行；有前置条件的任务会等待。Codex hooks 提供非阻断启动提醒；服务端会阻止未规划的空 root 开始执行。简单问答无需任务树，单步任务需记录 `atomic_reason`。
-
-主会话负责规划和决策，Task Progress 持久保存任务细节并引导下一步。当前目标的补充沿用当前实例，简短问答答完后继续原工作；独立请求用 `route_request` 排队或建立并行实例。主任务如实收尾后用 `activate_request` 激活队首，不会因一个插入任务结束而把整会话标成完成。使用 `update_task_context` 保存恢复信息；详见 [请求分流与恢复](plugins/task-progress/skills/track-progress/references/request-routing.md)。
-
-主进度显示按当前协议验收完成的已解决叶任务，待验收和执行结束分别展示。叶任务达到 100% 后仍需根任务综合验收；旧记录缺少验收信息时保持未知。插件不自动启动工作或唤醒闲置聊天。当前 HTML/XLSX 导出仍以所选任务的执行历史为范围，独立请求队列与恢复上下文通过 API 持久读取。
-
-并行任务与主任务在同一个任务网络中显示为同级 root，按登记顺序接在主任务后，各自展开子任务与验收记录。它们仍是隔离实例，同级展示不建立额外父子依赖。只有主会话将并行根综合验收为 resolved 后，才从当前网络收进历史；open、failed、cancelled 保留当前。显式重试会重新激活，并保留旧完成记录。未启动请求留在队列区，顶部百分比只统计主任务。
-
-首屏显示任务标题、状态和耗时，并保留角色、真实绑定 agent、模型与思考强度的简洁行。任务上下文默认折叠，有排队请求时在折叠标题旁显示数量；展开任务先见一份结果摘要；执行、绑定、验收与证据位于默认关闭的「执行与验收详情」中，按需再展开。刷新会保留当前任务中用户选择的开闭状态。
-
-```mermaid
-flowchart LR
-    A[任务目标] --> B[拆分子任务]
-    B --> C[检查依赖与可执行任务]
-    C --> D[执行或派发任务]
-    D --> E[执行者提交结果与证据]
-    E --> R[主会话接受或退回]
-    R --> F{需要重规划？}
-    F -- 是 --> G[保存计划轮次并更新任务网络]
-    G --> C
-    F -- 否 --> H[综合验收并完成]
-```
-
-<details>
-<summary>执行协议、分工和验收细节</summary>
-
-复杂分析、实现、多文件改动、专门验证和评审默认委派给子智能体，即使只能串行执行。依赖链可整体交给同一 agent；共享文件明确归属并串行交接。主会话负责规划、派发、协调、跨任务决策及验收；短小操作或确实不可交接的工作可自执行，并记录具体 `self_execution_reason`（显式原子 root 除外）。
-
-计划执行者保存在 `planned_assignment`，启动不得静默换角色；pending 叶任务通过 `reassign_task` 记录主会话的变更理由。实际派发按 **启动 attempt → 创建子智能体 → `bind_task_agent` 绑定真实返回 ID** 进行。子智能体用 `update_task` 提交结果后显示 `awaiting_review`，主会话再用 `review_task` 接受或退回；待复核结果不会放行任何依赖。接受 open 结果仍是 open，父/root 只有直接子项全部 resolved 且无待复核项时才能综合验收为 resolved，并须记录主会话摘要和证据。
-
-插件保存计划、派发、提交及复核记录并校验状态转换，不会自动创建子智能体。角色、agent ID 和 reviewer 都是调用方声明；HTTP 凭据不认证具体主/子会话身份，instance/attempt ID 也不是权限凭证。插件不能拦截其他工具中的实际工作。旧记录中没有的身份或验收信息保持未记录。详见 [职责协议](docs/responsibility-protocol.md) 与 [完整执行流程](plugins/task-progress/skills/track-progress/SKILL.md)。
-
-长任务也更容易检查：单个任务执行超过 10 分钟后，进度工具会在下一次读取或更新时返回拆分复核提醒，要求 Codex 拆出可独立阶段，或记录不拆分的原因；不会为了拆分而中断正在运行的 Dagu、CI 或命令。
-
-</details>
+- **查看进展**：任务按层级编号，显示状态、执行者和耗时，展开即可查看结果摘要。
+- **跟踪复杂任务**：记录任务拆分、执行顺序与并行工作，计划调整后同步更新。
+- **处理临时插入的请求**：让 Codex 将独立请求排队或并行处理，同时保留原任务的进度。
+- **保存与回顾**：保留任务历史和重试记录，支持导出 Excel 与 HTML 报告。
 
 ## 安装
 
-### 首次安装 0.2.0（macOS）
-
-安装发布标签 `v0.2.0`，不依赖默认分支。需要 Python 3，以及支持插件、Streamable HTTP 和 `http_headers_helper` 的 Codex CLI/客户端。
+以下适用于 macOS，需要支持插件的 Codex 和 Python 3。在终端执行：
 
 ```sh
 codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
@@ -89,146 +29,38 @@ codex plugin add task-progress@task-progress-codex
 python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-完成后重启 Codex。插件安装不会单独启动后台服务，最后一条命令是必需步骤。使用稳定安装的 Python 3；服务会记录该解释器的绝对路径。
+三条命令全部完成后，**重启 Codex**。
 
-### 从旧版本升级到 0.2.0
-
-重新登记来源到固定发布标签，重新安装插件和服务，然后重启 Codex：
-
-```sh
-codex plugin marketplace remove task-progress-codex
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
-codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
-```
-
-这会移除并重新添加 Marketplace 登记。任务数据独立保存在本机缓存中，无需迁移。旧 stdio 会话需重启 Codex 后才释放进程；不要仅刷新 Marketplace 就认为插件和服务已升级。若尚未登记该 Marketplace，直接使用首次安装命令。
-
-### 从本地源码安装
-
-```sh
-git clone --branch v0.2.0 --depth 1 https://github.com/carpe-horam/task-progress-codex.git
-codex plugin marketplace add ./task-progress-codex
-codex plugin add task-progress@task-progress-codex
-python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
-```
-
-安装后重启 Codex。已有同名 Marketplace 时，先按上面的升级方式移除登记，再添加本地来源；更新源码后也须重新安装插件和服务。
-
-### 全局后台服务（macOS）
-
-所有本机 Codex 会话直接连接 `http://127.0.0.1:53421/mcp`，共享 **一个 Python 服务进程**。会话连接和 UI 标签页仍是独立的，任务按 `session_id` 隔离；共享进程不意味着将所有请求串行执行。服务由用户 LaunchAgent `io.task-progress.mcp` 托管，登录后自动启动、异常退出后自动恢复。不会为每个会话额外启动 Python 代理。
-
-安装器将运行文件复制到 `~/Library/Application Support/Task Progress/releases/`，插件缓存更新不会删除正在使用的运行文件。凭据位于 `~/.cache/task-progress/service/http-headers.json`，目录权限为 0700、文件权限为 0600。Codex 通过 `http_headers_helper` 短暂读取凭据；服务只监听本机环回地址，校验 Host 和 Bearer 凭据并拒绝浏览器跨域请求。
-
-从本地仓库管理服务：
-
-```sh
-python3 plugins/task-progress/service_manager.py status --json
-python3 plugins/task-progress/service_manager.py install   # 安装、更新或重新启动已停止的服务
-python3 plugins/task-progress/service_manager.py stop      # 停止当前服务；影响所有使用它的会话
-python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent，保留任务、凭据和运行版本
-```
-
-从旧版 stdio 升级时，已经打开的会话可能继续持有旧进程，需重启 Codex 才能全部释放并切换；安装器不会强制终止这些会话。端口被非本插件服务占用时安装会报错，不会停止未知进程。服务日志在 `~/.cache/task-progress/service/service.{stdout,stderr}.log`。
-
-自动后台管理目前支持 macOS。Linux 可先运行 `service_manager.py prepare`，再运行 `shared_service.py`，并自行配置用户服务；Windows 的后台管理与客户端凭据助手尚未验证。
+已有旧版？查看[升级命令](docs/releases/0.2.0.md#从旧版本升级)。源码安装、服务管理及其他平台说明见[安装文档](docs/installation.md)。
 
 ## 开始使用
 
-安装并启用插件后，会话启动和每条新指令会收到先规划再开始实质工作的提醒。若 Codex 审核并信任插件 hooks，提醒由宿主生命周期 hook 提供；多阶段任务还可在同一次 `init_task_network` 调用中提交粗计划。服务端拒绝未规划的空 root 开工。例如：
+安装后，直接在 Codex 中描述任务，例如：
 
-> 请梳理这个问题，按依赖拆分实现和验证步骤，并持续更新任务进度。
+> 用 Task Progress 帮我规划并实现这个功能，持续更新任务进度，完成后检查结果。
 
-你也可以明确要求 Codex 使用 Task Progress。进度内容默认不附在会话的更新回执里；模型需要时显式查询。主会话首次创建任务并完成粗规划后调用一次 `render_progress`，自动请求进度页；该入口只返回 bootstrap 身份与一次性展示意图，面板独立读取。资源首选 fullscreen，支持该元数据的宿主可在 App 初始化前打开；挂载后按宿主能力消费最新意图并请求切换。普通任务更新、查询、恢复和轮询不重复展示；关闭或拒绝后不会自动重开，用户可点击“打开进度页”或明确要求重开。宿主决定实际展示方式，工具回执不是可见标签页证明。fullscreen 标签页打开后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。任务标题前的 `1`、`1-1`、`2-2-1` 表示当前层级与计划顺序，按同级依赖稳定排序；插入、重排、层级变化与重规划后重新计算。主任务和并行根按面板顺序编号，各自的任务 ID 保持不变；编号不代表并行分支必须串行执行。历史使用对应快照的顺序。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
+也可以在工作过程中告诉 Codex：
 
-默认规则：
+| 想做什么 | 可以这样说 |
+| --- | --- |
+| 查看当前进度 | “打开任务进度。” |
+| 调整计划 | “先完成接口，再做界面，更新任务顺序。” |
+| 插入独立任务 | “把整理文档加入队列，当前任务完成后再做。” |
+| 并行处理 | “让子智能体并行检查文档，主任务继续。” |
 
-- 多步骤任务使用 HTN 任务网络；线性步骤模式仅用于用户明确要求线性流程或恢复旧版任务。
-- 多阶段新任务先提交至少两个有独立结果边界的粗任务；单步任务要记录具体 `atomic_reason`。未规划的空 root 不会进入 ready 列表或开始执行。
-- 同一会话复用 session ID；同一目标的下一阶段继续当前任务或重规划。开始新目标时归档旧任务，尚未完成的旧任务须说明切换原因，运行中或待复核任务不能直接归档。
-- 同一任务需要调整方案时，使用重规划轮次；重试会保留新的执行尝试记录。
-- 重试会使依赖旧结果的下游及相关验收失效，必须重新执行或验收；卡片可展开查看保留的执行记录。
-- 叶任务和顺序步骤必须先启动再标记完成；清空会话后，新任务的写入必须携带 `task_instance_id`，避免迟到请求污染新任务。
-- 导出会标明旧执行记录是否已失效，并区分分组验收与取消/失败收尾。
-- 自动刷新保留键盘焦点、文本选择和阅读位置，显示同步失败及恢复状态；卡片适配窄窗口和宿主明暗主题。
-- 对不确定的模型或思考强度不猜测；未知值会显示为未记录。调用方填写的配置会标注采集时间，并明确显示“未经 Codex 宿主核验”。
+面板会自动刷新。点击任务可展开详情，点击“导出”可保存报告到 `~/Downloads/Task Progress Exports`。
 
-<details>
-<summary>开发者参考：按需查询与分页</summary>
+“待主会话验收”表示结果已提交、仍需检查。任务的实际执行与协调由 Codex 完成，Task Progress 负责记录和展示。任务数据保存在本机。
 
-## 按需查询
+如果面板没有出现，可明确要求“打开任务进度”；交互面板需要客户端支持 MCP Apps。
 
-写操作回执在 `structuredContent` 顶层返回 `session_id`、`task_instance_id`、`root_id`、`epoch` 等身份；启动后的 `attempt_id` 也在顶层，单个目标状态位于 `affected`。回执不包含任务树、摘要、证据或请求正文。并行请求登记后，使用 `request_task_instance_id` 定位新实例。
+## 更多资料
 
-`get_progress` 的视图元数据在 `structuredContent`，数据在 `structuredContent.progress`：
-
-| 需求 | view 与参数 |
-|---|---|
-| 概览与计数（默认） | `overview`；不含完整上下文或节点 |
-| 按层读取子树 | `tree`, `task_id`, `depth=0..8`；广度优先分页，注意 `depth_limited` 和标题截断标志 |
-| 指定当前节点和提交证据 | `tasks`, `task_ids`（1–20 个）；不含追加历史数组 |
-| 节点历史记录 | `records`, `task_id`, `record_kind=attempts/invalidated_results/reassignment_history` |
-| 恢复上下文和分页请求 | `context`；读取 `task_context` 与 `session_work` |
-| 某类历史 | `history`, `history_kind=history/task_history/context_revisions/legacy_history` |
-| 完整目标实例 | 显式 `full`，或兼容 `include_history=true`（不能与其他 view 混用） |
-
-分页使用 `offset`、`limit`（默认 50，上限 200）及返回的 `pagination.has_more/next_offset`。后续页用第一页的 `state_revision` 填入 `expected_state_revision`；版本变化时从第一页重读。恢复先 overview → context → 必要 tree/tasks；验收查询指定节点的 submission/evidence，不能只看回执；结束前读完 context 的请求分页。不要在每次写入后机械地读取全量。
-
-`full` 保留完整目标 JSON 实例及其记录、归档和会话请求登记；其他并行实例只有精简当前快照，其历史须按各自实例 ID 另取。旧 SQLite 仍是有上限的只读摘录，不代表完整数据库。`get_ready_tasks` 仅返回分页的 `structuredContent.ready_tasks`，依赖摘要和证据按 ID 去重位于 `dependency_evidence[id]`，不附整树。
-
-新协议不会追溯缩小旧消息；旧 iframe 需重新打开以加载新版资源。测试中的 UTF-8 字节数不等于 token 数，也不能证明原生 Codex 消息展开耗时。
-
-</details>
-
-## 数据与运行要求
-
-- MCP 服务使用本机认证 HTTP，由同一操作系统用户的会话共享。当前任务保存在 `~/.cache/task-progress/sessions`；旧 `progress-v3.sqlite3` 中的记录作为独立只读历史摘录展示，不覆盖当前状态，不需要迁移，也不会随 GitHub 仓库上传。
-- 普通写入仅返回身份与状态回执；默认查询为 overview，节点、记录、上下文和历史按需读取。面板通过 app-only `get_progress_view` 独立轮询、懒加载记录和导出；模型不主动调用该 App 工具。面板与报告分别显示执行结束、待复核和已解决，执行结束 100% 不代表交付已验收。
-- 需要 Python 3 和支持 Streamable HTTP、`http_headers_helper` 的 Codex 客户端；自动安装后台服务目前面向 macOS。`server.py` 保留 stdio 入口供兼容与隔离测试使用，默认插件连接不再启动它。
-- 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
-- Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。
-- 清除任务会删除当前进度、任务历史和视图登记；只保留不含任务内容的顺序计数器，防止迟到响应恢复已清除内容或替换新任务。
-
-## 开发验证
-
-后端回归使用 Python 标准库：`python3 -m unittest discover -s tests -v`。浏览器回归运行真实前端、隔离服务端与模拟 MCP Apps 宿主，需已有 Playwright 和 Chrome：`node tests/test_app.cjs`。详见 [测试说明](tests/README.md)。
-
-## 项目结构
-
-```text
-.
-├── .agents/plugins/marketplace.json    # Codex Marketplace 清单
-├── docs/index.html                     # GitHub Pages 交互式宣传手册
-└── plugins/task-progress/
-    ├── .codex-plugin/plugin.json       # 插件清单
-    ├── .mcp.json                       # 本机 MCP 服务配置
-    ├── app.html                        # 交互式任务进度界面
-    ├── server.py                       # MCP 服务与本地进度存储
-    ├── shared_service.py               # 全局认证 HTTP 服务
-    ├── service_manager.py              # 用户后台服务安装与管理
-    ├── skills/track-progress/          # 自动规划与跟踪规则
-    └── skills/cleanup-task-progress-history/  # 用户明确要求时清理已归档会话数据
-```
-
-## 常见问题
-
-**插件已添加，但 Codex 里没有显示？** 先重载或重启 Codex，再从 **Plugins Directory** 安装插件。添加 Marketplace 只登记来源，不会自动安装其中的插件。
-
-**为什么没有交互卡片？** 卡片依赖客户端对 MCP Apps 的支持。客户端不支持时，Task Progress 仍会返回纯文本进度摘要。
-
-**插件会替我创建或调度子智能体吗？** 不会。插件表示任务层级、依赖和派发记录；实际创建与协调子智能体由 Codex 主会话完成。
-
-**我的任务进度会上传到仓库吗？** 不会。仓库发布的是插件代码和宣传手册；运行时进度保存在本机用户缓存中。只有你明确导出或自行分享导出文件时，记录才会离开本机。
-
-## 相关链接
-
-- [Task Progress 交互式宣传手册](https://carpe-horam.github.io/task-progress-codex/)
-- [GitHub 仓库与问题反馈](https://github.com/carpe-horam/task-progress-codex)
-- [Task Progress 插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
+- [交互手册与功能演示](https://carpe-horam.github.io/task-progress-codex/)
+- [安装与服务管理](docs/installation.md)
+- [反馈问题](https://github.com/carpe-horam/task-progress-codex/issues)
+- 开发者参考：[执行协议](docs/responsibility-protocol.md) · [测试说明](tests/README.md)
 
 ## 许可证
 
-本项目以 MIT License 发布，详见 [LICENSE](LICENSE)。
-
-展示协议：[OpenAI 资源首选模式](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md#display-modes)、[MCP Apps 宿主能力与实际返回模式](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#display-modes)。新资源使用 v4；旧 v2/v3 保持 inline 首选，避免旧消息被动升级。宿主可能在 App 运行前创建历史或重复 fullscreen 页面；App 只能在挂载后请求退回 inline。原生宿主可见性需单独验收。
+[MIT](LICENSE)
