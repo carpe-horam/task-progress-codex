@@ -1,9 +1,0 @@
-{
-  "embedded_app_matches": true,
-  "guide_sha256": "03d9857aad4fdc9fe1c3cc58fe0955e2eea29b06f23f1737b50a5bee22a147d0",
-  "embedded_app_sha256": "6863468725a94a28850e7a6d7e31896b9497500e8c2c71ad72e68a75764261c5",
-  "install_upgrade_blocks_identical": true,
-  "shell_syntax": "passed",
-  "manifest_version": "0.2.0",
-  "verification_note": "Initial independent extractor assumed one base64 literal and failed; corrected to concatenate published string chunks before decoding, then all assertions passed."
-}

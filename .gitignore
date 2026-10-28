@@ -1,3 +1,6 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# Local audits, runtime snapshots, and generated verification evidence.
+/docs/reviews/

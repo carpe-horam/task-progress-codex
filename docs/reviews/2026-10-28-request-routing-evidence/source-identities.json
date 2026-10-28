@@ -1,9 +1,0 @@
-{
-  "capturedAt": "2026-10-28T03:35:56.343Z",
-  "renderer": "isolated headless Chrome via Playwright",
-  "sources": {
-    "plugins/task-progress/app.html": "51a7e83137314222fc0538dfee74be8685ccd59e419b5e527a3d43777f05f5e7",
-    "plugins/task-progress/server.py": "f32705c3fff85c75d5a7d087e7b11348f68fd20c5c7a9e1b3b6f92637cdc23b3",
-    "tests/test_request_queue_app.cjs": "35c49d6d3c0d15c79365e1d9af2b308de110aefd40e3df50da1ef37e6dabd4a3"
-  }
-}

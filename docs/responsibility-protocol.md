@@ -53,7 +53,7 @@ The main session owns intent classification, planning, edits, re-planning and ac
 - The UI's primary network percentage counts resolved leaves accepted under the current protocol, including explicit main-session completion. Pending review, failures and cancellations are separate. Missing historical acceptance stays unknown; root synthesis is independent of the leaf percentage.
 - Foreground responses expose `parallel_tasks[]` as current network projections from the same captured document and state revision. They omit historical and recursive session bodies. The UI renders these as sibling roots after the foreground, preserving instance-specific keys, children and acceptance states; queued requests are not roots before activation. The headline progress still refers to the foreground. Cancelled requests' unexecuted nodes remain pending in storage and are displayed as unexecuted, never ready.
 
-See [request routing guidance](../plugins/task-progress/skills/track-progress/references/request-routing.md) and the [control proposal](reviews/2026-10-28-plan-execution-control-proposal.md). Current structural edits use decomposition, reassignment and explicit rebuilding; arbitrary edits to an in-flight or accepted node are not introduced here.
+See [request routing guidance](../plugins/task-progress/skills/track-progress/references/request-routing.md). Current structural edits use decomposition, reassignment and explicit rebuilding; arbitrary edits to an in-flight or accepted node are not introduced here.
 
 ## Validation ownership
 
