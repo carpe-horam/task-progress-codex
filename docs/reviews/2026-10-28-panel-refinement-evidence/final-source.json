@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0",
+  "files": {
+    "plugins/task-progress/app.html": "a5c1e7436a155b327859c6870b918e311b6c71cb531944ee7f56648802055c7d",
+    "plugins/task-progress/server.py": "216deb0a69e51862762311b3a9e68a2dbccc9efcb817a20e3057a8aa77d47209",
+    "plugins/task-progress/hooks/task_progress_hook.py": "24c49242444c5691fb1f7ade7fabaa5da5cd35ed5edeb91d970a51a272a5b93f",
+    "plugins/task-progress/skills/track-progress/SKILL.md": "a3fb1ad45bf4d66b154e72ee6f026ce835aa31202e90ff8b9a75a6d0662a2e6c"
+  },
+  "verification": "54 Python checks on unchanged protocol source; source-stage automatic-display/selective/lifecycle browser suites; final UI passed numbering, queue, responsibility, app scripts and 3 width captures. Real Codex visible tabs require separate installed readback."
+}

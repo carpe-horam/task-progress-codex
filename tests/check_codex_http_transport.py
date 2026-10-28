@@ -107,7 +107,8 @@ def client(executable, server_name, overrides, index):
         assert "bootstrap" in render.get("description", "")
         for mutation in ("init_task_network", "update_task", "route_request"):
             assert "回执" in specs[mutation].get("description", "")
-        resource = rpc(3, "mcpServer/resource/read", {"server": server_name, "uri": "ui://task-progress/progress-inspector/v3"})
+        render_meta = render.get("_meta", render.get("meta", {}))
+        resource = rpc(3, "mcpServer/resource/read", {"server": server_name, "uri": render_meta["ui"]["resourceUri"]})
         # App-server returns the MCP resource response directly or in contents.
         assert "__TASK_PROGRESS_VERSION__" not in json.dumps(resource)
         assert "version: '0.2.0'" in json.dumps(resource), list(resource)

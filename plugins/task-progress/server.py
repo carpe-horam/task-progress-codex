@@ -36,8 +36,8 @@ CACHE_DIR = Path.home() / ".cache" / "task-progress"
 SESSION_DIR = CACHE_DIR / "sessions"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
 
-RESOURCE_URI = "ui://task-progress/progress-inspector/v3"
-LEGACY_RESOURCE_URIS = ("ui://task-progress/progress-inspector/v2",)
+RESOURCE_URI = "ui://task-progress/progress-inspector/v4"
+LEGACY_RESOURCE_URIS = ("ui://task-progress/progress-inspector/v2", "ui://task-progress/progress-inspector/v3")
 RESOURCE_MIME = "text/html;profile=mcp-app"
 APP_HTML_PATH = Path(__file__).with_name("app.html")
 LEGACY_DB_PATH = CACHE_DIR / "progress-v3.sqlite3"
@@ -2216,7 +2216,55 @@ def get_progress_view(session_id: str, include_history: bool = False, task_insta
 def render_progress(session_id: str) -> dict[str, Any]:
     # The host must associate this tool's result with the UI template from the
     # tool descriptor so the rendered view receives structuredContent.
-    return _wire_receipt("render_progress", {}, get_progress_view(session_id))
+    result = _wire_receipt("render_progress", {}, get_progress_view(session_id))
+    source = result["structuredContent"]
+    if source.get("task_instance_id"):
+        sid = source["session_id"]
+        with _session_lock(sid):
+            path = _ui_view_file(sid)
+            metadata = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            intent = {"id": str(uuid.uuid4()), "view_sequence": source["view_sequence"],
+                      "task_instance_id": source["task_instance_id"], "consumed": False}
+            # Concurrent render completions must not replace a newer issuance.
+            if intent["view_sequence"] > metadata.get("display_intent", {}).get("view_sequence", -1):
+                metadata["display_intent"] = intent
+                _atomic_json(path, metadata)
+            source["display_intent"] = intent["id"]
+    return result
+
+
+def consume_display_intent(session_id: str, view_id: str, display_intent: str) -> dict[str, Any]:
+    """One app mount may act on the newest render, once, even after restart."""
+    sid = _normalize_session_id(session_id)
+    vid = _normalize_view_id(view_id)
+    with _session_lock(sid):
+        data = _read(sid)
+        path = _ui_view_file(sid)
+        metadata = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        intent = metadata.get("display_intent", {})
+        status = "superseded"
+        if (data and isinstance(display_intent, str) and display_intent == intent.get("id")
+                and intent.get("task_instance_id") == _task_instance_id(data)
+                and vid not in metadata.get("released_views", {})):
+            if intent.get("consumed"):
+                status = "consumed"
+            else:
+                intent["consumed"] = True
+                intent["view_id"] = vid
+                now = time.time()
+                active = any(other != vid and _ui_fullscreen_active(view, now)
+                             for other, view in metadata.get("views", {}).items())
+                pending = metadata.get("display_pending", {})
+                if active or (pending.get("view_id") != vid and pending.get("until", 0) > now):
+                    status = "already_open"
+                else:
+                    status = "granted"
+                    # Reserve the request-to-host interval, without treating it
+                    # as evidence that a fullscreen tab actually exists.
+                    metadata["display_pending"] = {"view_id": vid, "until": now + 20}
+                _atomic_json(path, metadata)
+    return {"content": [], "structuredContent": {"session_id": sid, "view_id": vid,
+            "display_intent": display_intent, "status": status}}
 
 
 
@@ -2399,7 +2447,7 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
             ack.update(request_task_instance_id=request.get("task_instance_id"), request_status=request.get("status"))
     ack["split_review_due_count"] = len(p.get("split_review_due", []))
     ack["next_query"] = {"tool": "get_progress", "view": "overview"}
-    return {"content": [{"type": "text", "text": "已打开进度面板入口。" if name == "render_progress" else "已记录。"}], "structuredContent": ack}
+    return {"content": [{"type": "text", "text": "已请求展示进度；实际模式由宿主决定。" if name == "render_progress" else "已记录。"}], "structuredContent": ack}
 
 
 def _wire_result(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -2524,6 +2572,8 @@ def register_ui_view(
         if vid in current.get("released_views", {}):
             return _ui_view_result(sid, vid, "superseded")
         _prepare_ui_registry(current)
+        if current.get("display_pending", {}).get("view_id") == vid:
+            current.pop("display_pending", None)
         views = current["views"]
         previous = views.get(vid)
         returning_inline = bool(previous and previous.get("display_mode") == "fullscreen"
@@ -2639,6 +2689,8 @@ def unregister_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
         # even if an in-flight initial registration has not arrived yet.
         metadata.setdefault("released_views", {})[vid] = time.time()
         metadata.setdefault("views", {}).pop(vid, None)
+        if metadata.get("display_pending", {}).get("view_id") == vid:
+            metadata.pop("display_pending", None)
         _prepare_ui_registry(metadata)
         _atomic_json(path, metadata)
     return _ui_view_result(sid, vid, "unregistered")
@@ -2867,6 +2919,17 @@ TOOLS = [
         "_meta": _data_tool_meta(),
     },
     {
+        "name": "consume_display_intent",
+        "title": "消费进度展示意图",
+        "description": "仅供 App 消费最新 render 的一次性展示意图；跨挂载去重，现有 fullscreen 租约或待处理请求阻止重复自动打开。只登记请求资格，不证明宿主已创建标签页，不修改任务进度。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(),
+            "view_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "display_intent": {"type": "string"}},
+            "required": ["session_id", "view_id", "display_intent"]},
+        "_meta": {"ui": {"visibility": ["app"]}},
+    },
+    {
         "name": "register_ui_view",
         "title": "登记当前进度视图",
         "description": "仅供 App 登记或续租进度视图；每个挂载使用唯一 view_id，注销后不可复用。每次宿主模式切换递增 mode_generation，续租复用当前世代；较旧世代及同世代不同模式会被拒绝，旧版无世代请求不能覆盖已带世代的登记。inline 保留来源高水位与唯一活动 owner，旧结果不能抢占新卡片；fullscreen 续租不提升 inline 来源顺序。不修改任务进度。",
@@ -2917,7 +2980,7 @@ TOOLS = [
     {
         "name": "init_progress",
         "title": "开始跟踪任务",
-        "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。此工具只写入任务数据，不触发展示；首次展示调用一次 render_progress，完整进度默认显示在会话内。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history。",
+        "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。此工具只写入任务数据，不触发展示；首次展示调用一次 render_progress，宿主优先以 fullscreen 展示。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -2945,7 +3008,7 @@ TOOLS = [
     {
         "name": "init_task_network",
         "title": "初始化任务网络",
-        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
+        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -3095,7 +3158,7 @@ TOOLS = [
     {
         "name": "render_progress",
         "title": "展示任务进度",
-        "description": "打开进度面板入口，仅返回bootstrap身份；App通过get_progress_view主动读取数据。只有用户点击面板入口切换到 fullscreen 后，进度标签页才会打开并暂时隐藏会话内卡片；关闭标签页后会话内卡片恢复。不要把本工具用于普通更新。",
+        "description": "主会话首次粗规划后调用一次，或用户明确重开时调用；仅返回bootstrap身份与一次性展示意图。资源优先fullscreen；App按宿主能力自动请求并独立读取数据。已有标签页复用租约，关闭/拒绝后不自动重试；实际展示由宿主决定。不要用于普通更新、查询、恢复或后台轮询。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -3206,6 +3269,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decision"),
         args.get("summary"), args.get("evidence"), args.get("reviewer"), args.get("task_instance_id"),
     ),
+    "consume_display_intent": lambda args: consume_display_intent(args.get("session_id"), args.get("view_id"), args.get("display_intent")),
     "register_ui_view": lambda args: register_ui_view(
         args.get("session_id"), args.get("view_id"), args.get("view_sequence"),
         args.get("state_revision"), args.get("task_instance_id"), args.get("display_mode", "inline"),
@@ -3370,7 +3434,7 @@ def handle(message: Any) -> str | None:
                                 "ui": {"prefersBorder": True},
                                 "openai/ui": {
                                     "availableDisplayModes": ["inline", "fullscreen"],
-                                    "preferredDisplayMode": "inline",
+                                    "preferredDisplayMode": "fullscreen" if uri == RESOURCE_URI else "inline",
                                 },
                             },
                             "text": _resource_html(),

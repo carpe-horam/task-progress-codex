@@ -1,0 +1,44 @@
+{
+  "verification": "Isolated Python server and Chrome; simulated host; synthetic task data",
+  "metrics": [
+    {
+      "width": 380,
+      "outer": [
+        20,
+        20
+      ],
+      "glyph": [
+        20,
+        20
+      ],
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    {
+      "width": 600,
+      "outer": [
+        20,
+        20
+      ],
+      "glyph": [
+        20,
+        20
+      ],
+      "offsetX": 0,
+      "offsetY": 0
+    },
+    {
+      "width": 1000,
+      "outer": [
+        20,
+        20
+      ],
+      "glyph": [
+        20,
+        20
+      ],
+      "offsetX": 0,
+      "offsetY": 0
+    }
+  ]
+}

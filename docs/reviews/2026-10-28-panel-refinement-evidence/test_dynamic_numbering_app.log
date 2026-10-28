@@ -1,0 +1,11 @@
+{
+  "cases": [
+    "Multi-level numbering, reverse sibling dependencies, independent peer IDs and waiting SVG",
+    "Changed child plan/dependencies renumber without changing task IDs, DOM, expansion, selection or focus",
+    "Older-browser move fallback retains focus/selection; hierarchy changes recompute depth",
+    "Appended prerequisite and inherited group constraint reorder the whole branch",
+    "Cross-branch prerequisite moves the nearest sibling branches",
+    "Interleaving branches retain stable plan order without changing execution state",
+    "Actual replan recomputes current numbering while historical snapshot keeps its own order"
+  ]
+}

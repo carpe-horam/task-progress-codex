@@ -1,0 +1,26 @@
+{
+  "head": "080af79857125a94218f64bb8f85c0c98a1f526c",
+  "files": {
+    "plugins/task-progress/app.html": "68af723c61ad76d0a7863b42693f7b1e0eb86e3f4e5237f69d548640b9f7ef5d",
+    "tests/test_dynamic_numbering_app.cjs": "f50b4fd3fc48dbb9fff6c668a6fd5f5df29a545d7703b37dcd2e917ceb3de2c0",
+    "tests/test_interaction.cjs": "4aff49c9e92e86af0fd54affdab6d2dca4b978105c577f8b609814de6e00d495",
+    "README.md": "9ea8ec43c45437f5aa917a653a907034d42b583c58d2ee2665a4ce515f027742",
+    "README.en.md": "65c56d1df562e9112de1c6b23bc79ae209610a6bf215649c1a68d06c66bcf5a3",
+    "CHANGELOG.md": "38e178793f7c7bd57846b0d8b93cd1ebbf60b4c10d0984942e68e59968691f24",
+    "tests/README.md": "b1ba791da357dc3e14374b926379659a98e0ae04b16ac9a5022ab57305fbea49"
+  },
+  "validation": {
+    "test_dynamic_numbering_app.cjs": {
+      "passed_groups": 7,
+      "log": "/tmp/task-progress-numbering-20261028/test_dynamic_numbering_app.log"
+    },
+    "test_interaction.cjs": {
+      "passed_checks": 15,
+      "log": "/tmp/task-progress-numbering-20261028/test_interaction.log"
+    },
+    "git_diff_check": "pass",
+    "inline_js_syntax": "pass"
+  },
+  "scope": "App-only numbering, no backend mutation/scheduling change; source working tree only, no commit/install",
+  "host": "Real Chrome under simulated MCP Apps parent and isolated Python backend; live reorder input snapshots explicitly synthetic"
+}

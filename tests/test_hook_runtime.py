@@ -94,7 +94,7 @@ class HookRuntimeTests(unittest.TestCase):
                 for instruction in ("identity/status receipts only", "overview first",
                                     "expected_state_revision", "full only when needed",
                                     "queried submission/evidence", "all request pages",
-                                    "Do not query full after every write", "Render only when"):
+                                    "Do not query full after every write", "render_progress once after the first coarse plan"):
                     self.assertIn(instruction, context)
                 self.assertNotIn("get_progress_view", context)
                 self.assertLess(len(context.encode("utf-8")), 2700)

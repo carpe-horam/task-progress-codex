@@ -26,7 +26,7 @@ SELECTIVE_QUERY = (
     "Query on demand: overview first, tree by depth, tasks by ID, records/context/history by page; "
     "full only when needed. Pin expected_state_revision across pages; restart if changed. "
     "Do not query full after every write or copy task trees/history into messages. "
-    "Render only when the user wants a panel or display is needed; App reads its data independently."
+    "Main session: render_progress once after the first coarse plan; render again only on explicit reopen. Never re-render for resume, updates or polling. Subagents do not render. App reads independently."
 )
 
 

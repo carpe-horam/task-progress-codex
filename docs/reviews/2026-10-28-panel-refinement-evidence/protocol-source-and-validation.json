@@ -1,0 +1,63 @@
+{
+  "head": "080af79857125a94218f64bb8f85c0c98a1f526c",
+  "resource_uri": "ui://task-progress/progress-inspector/v4",
+  "legacy_resources_prefer_inline": [
+    "v2",
+    "v3"
+  ],
+  "files": {
+    "CHANGELOG.md": "bd0737ed44d4b61ee0e58302acacd268dd226d028941b72dd82a98d0adb953c1",
+    "README.en.md": "c962975e60a3c049d9a34f93140d29b436fb38aa40144e13d21dfd516eaa473e",
+    "README.md": "e38bd0b80f4a21fbd68c67524e28f73fa415f17a825385a1f1651fd50d9fafe8",
+    "plugins/task-progress/.codex-plugin/plugin.json": "cb4d7f9bd94ce3fa080fbb454d86a029ce4a9feab17e248a7d4fb6553401dedd",
+    "plugins/task-progress/app.html": "8ed8e6253d81c82527a5b75a9fc736eae0ac07f23b175208ffe97c6fe8946a5d",
+    "plugins/task-progress/hooks/task_progress_hook.py": "24c49242444c5691fb1f7ade7fabaa5da5cd35ed5edeb91d970a51a272a5b93f",
+    "plugins/task-progress/server.py": "216deb0a69e51862762311b3a9e68a2dbccc9efcb817a20e3057a8aa77d47209",
+    "plugins/task-progress/skills/track-progress/SKILL.md": "a3fb1ad45bf4d66b154e72ee6f026ce835aa31202e90ff8b9a75a6d0662a2e6c",
+    "tests/README.md": "78261a1a65c9ca00aa12382140cb011fecfbbb6a50161c6f7168ce04f84fb47e",
+    "tests/browser_host.cjs": "f5649e95a9c1c90e6f64da4d96196f819151004ae5afcd2d3e17be2287069b04",
+    "tests/check_codex_http_transport.py": "976c5acf49700b2a57992e1d39535f6868561ff438e50325f0559149b22b3940",
+    "tests/test_hook_runtime.py": "672494c6ba17deb39bbb94393e0956fb1e59d25d8fc2e42f3faba147bf11e3e7",
+    "tests/test_progress_view_modes.py": "cfe49e1ade5ea2fdc3d321404924dacd7b8b0c8b675feb4fda4aa348b3207361",
+    "tests/test_auto_display.py": "2180e13daa8e1c86977f7d7f9a94b98a1f4b0e0bb6a054568073f33c40214fc1",
+    "tests/test_auto_display_app.cjs": "aee733b31b9ed3a638eb217b0b8f923a4e297d084c9abac1202d2df04a6496ae"
+  },
+  "python_suites": {
+    "test_auto_display.log": [
+      "Ran 5 tests in 0.015s",
+      "",
+      "OK"
+    ],
+    "test_hook_runtime.log": [
+      "Ran 7 tests in 3.623s",
+      "",
+      "OK"
+    ],
+    "test_progress_view_modes.log": [
+      "Ran 5 tests in 0.018s",
+      "",
+      "OK"
+    ],
+    "test_selective_query_wire.log": [
+      "Ran 8 tests in 0.142s",
+      "",
+      "OK"
+    ],
+    "test_state_revision_fixes.log": [
+      "Ran 24 tests in 0.157s",
+      "",
+      "OK"
+    ],
+    "test_tool_response_performance.log": [
+      "Ran 5 tests in 0.039s",
+      "",
+      "OK"
+    ]
+  },
+  "browser_suites": [
+    "test_auto_display_app.cjs",
+    "test_selective_view_app.cjs",
+    "test_view_lifecycle.cjs"
+  ],
+  "host_boundary": "Browser tests use real Chrome and isolated backend with a simulated MCP Apps parent; no native Codex tab claim."
+}

@@ -11,13 +11,15 @@
 @media(max-width:480px){body{padding:6px}.header{padding:17px 16px}.steps-section{padding:16px 16px 6px}.footer{padding:11px 16px}.titleline{flex-direction:column;gap:9px}h1{font-size:18px}.meta{gap:8px 15px}.step-main{gap:8px;grid-template-columns:22px minmax(0,1fr) auto}.step-right{gap:5px}.step-title{font-size:12px}.note{margin-left:30px}.percent{font-size:29px}.error{padding:12px 16px}}
 @media(prefers-reduced-motion:reduce){.fill{transition:none}}
 .badge.awaiting_review{color:#e8c58d;background:#3a3020;border-color:#665135}.review-record{border-top:1px solid #394355;padding-top:8px}.responsibility-record{border-left:2px solid #657e9f;padding-left:9px}
+.step-icon > .waiting-clock{display:block;width:20px;height:20px;flex:none}
+.step.awaiting_review > details > .step-main > .step-icon{width:20px;height:20px;border:0;background:transparent}
 </style>
 <style>
 .topline-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.auto-refresh-status{display:inline-flex;align-items:center;gap:5px;color:#8290a3;font-size:10px;white-space:nowrap;font-variant-numeric:tabular-nums}.auto-refresh-dot{width:6px;height:6px;border-radius:50%;background:#79b598;flex:none}.auto-refresh-status.paused .auto-refresh-dot{background:#78869b}.auto-refresh-time{color:#718096}.step-elapsed{white-space:nowrap;font-variant-numeric:tabular-nums;color:#94a4bb}.step-right.has-elapsed{flex-wrap:wrap;justify-content:flex-end;max-width:165px}.step-right.has-elapsed .step-elapsed{flex-basis:100%;text-align:right}
 @media(max-width:480px){.topline-actions{gap:6px}.auto-refresh-time{display:none}.step-right.has-elapsed{max-width:112px}.task-tree .step-right.has-elapsed{max-width:none;justify-content:flex-start}.task-tree .step-right.has-elapsed .step-elapsed{flex-basis:auto;text-align:left}}
 </style>
 <style>
-.badge.ready{color:#a1d7ef;background:#1d3441;border-color:#36566a}.badge.open,.badge.waiting_synthesis{color:#e8c58d;background:#3a3020;border-color:#665135}.badge.failed{color:#f1a9aa;background:#3d252b;border-color:#70414a}.badge.cancelled{color:#a6adbb;background:#2a2d35;border-color:#494e5a}.step.ready > :is(details,div) > .step-main > .step-icon{color:#a1d7ef;border-color:#52768b;background:#20333f}.step.open > :is(details,div) > .step-main > .step-icon,.step.waiting_synthesis > :is(details,div) > .step-main > .step-icon{color:#e8c58d;border-color:#665135;background:#352c20}.step.failed > :is(details,div) > .step-main > .step-icon{color:#f1a9aa;border-color:#70414a;background:#3d252b}.step.cancelled > :is(details,div) > .step-main > .step-icon{color:#a6adbb}.step.blocked > :is(details,div) > .step-main > .step-right{color:#d2b38e}.network-meta{display:flex;flex-wrap:wrap;gap:7px 15px;margin-top:15px;font-size:11px;line-height:1.6;color:#94a4bc}.network-meta strong{font-weight:500;color:#c4d0e1}.task-tree .children{list-style:none;margin:12px 0 0 10px;padding:0 0 0 16px;border-left:1px solid #394355}.task-tree .children>.step:last-child{padding-bottom:0}.task-tree .step-right{flex-wrap:wrap;justify-content:flex-end;white-space:normal;text-align:right;max-width:170px}.task-tree .child-count{color:#8c9bb0}.task-tree .step-id{display:block;font-size:10px;color:#7f8ca0;margin-top:3px;font-family:ui-monospace,SFMono-Regular,monospace}.task-details{margin:10px 0 0 34px;display:grid;gap:9px}.task-details .note{margin:0}.detail-field{font-size:11px;line-height:1.7;color:#a9b8ce;overflow-wrap:anywhere}.detail-label{display:block;color:#7f8fa6;font-size:10px;margin-bottom:2px}.detail-value{white-space:pre-wrap}.detail-list{margin:0;padding-left:17px}.detail-list a{color:#a4c2ff;text-decoration:underline;text-underline-offset:2px}.assignment{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,max(220px,calc(50% - 8px))),1fr));gap:6px 16px;margin:0;font-size:11px;line-height:1.6;color:#b2bfd2;overflow-wrap:anywhere}.assignment-item{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:start;min-width:0}.assignment dt{color:#7f8fa6}.assignment dd{margin:0;min-width:0;white-space:pre-wrap}.compact-detail{min-width:0;white-space:normal}.compact-detail>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:baseline;list-style:none}.compact-detail>summary .detail-label{margin:0}.detail-preview{grid-column:1/-1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}.detail-toggle{font-size:10px;color:#a4c2ff;white-space:nowrap}.compact-detail .when-open,.compact-detail[open]>summary .when-closed,.compact-detail[open]>summary .detail-preview{display:none}.compact-detail[open]>summary .when-open{display:inline}.compact-detail>.detail-value{margin-top:6px}.attempt-value{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.attempt-id{flex:1 1 160px;min-width:0}.attempt-id>summary{grid-template-columns:auto minmax(0,1fr) auto;gap:6px}.attempt-id>summary .detail-preview{grid-column:auto;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,monospace}.attempt-id>.detail-value{font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.dispatch{border:1px solid #303b4c;background:#1a212c;border-radius:6px;padding:9px 11px}.dispatch>summary{color:#9eafd0;font-size:11px;cursor:pointer;list-style:disclosure-closed}.dispatch[open]>summary{list-style:disclosure-open}.dispatch .detail-value{margin-top:8px;font-size:11px;line-height:1.65;overflow-wrap:anywhere;color:#b2bfd2}.history-section{border-top:1px solid #282f3a;padding:15px 24px}.history-section>summary{font-size:12px;color:#b9c3d1;cursor:pointer}.history-list{margin:12px 0 0;padding:0;list-style:none}.history-item{border-top:1px solid #303642;padding:11px 0}.history-item>details>summary{font-size:12px;color:#c4cede;cursor:pointer}.history-meta{margin:9px 0;color:#8c9bb0;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.history-section .steps{margin-top:8px}.network-help{font-size:10px;color:#7e8ca2;line-height:1.6;margin:0 0 9px}
+.badge.ready{color:#a1d7ef;background:#1d3441;border-color:#36566a}.badge.open,.badge.waiting_synthesis{color:#e8c58d;background:#3a3020;border-color:#665135}.badge.failed{color:#f1a9aa;background:#3d252b;border-color:#70414a}.badge.cancelled{color:#a6adbb;background:#2a2d35;border-color:#494e5a}.step.ready > :is(details,div) > .step-main > .step-icon{color:#a1d7ef;border-color:#52768b;background:#20333f}.step.open > :is(details,div) > .step-main > .step-icon,.step.waiting_synthesis > :is(details,div) > .step-main > .step-icon{color:#e8c58d;border-color:#665135;background:#352c20}.step.failed > :is(details,div) > .step-main > .step-icon{color:#f1a9aa;border-color:#70414a;background:#3d252b}.step.cancelled > :is(details,div) > .step-main > .step-icon{color:#a6adbb}.step.blocked > :is(details,div) > .step-main > .step-right{color:#d2b38e}.network-meta{display:flex;flex-wrap:wrap;gap:7px 15px;margin-top:15px;font-size:11px;line-height:1.6;color:#94a4bc}.network-meta strong{font-weight:500;color:#c4d0e1}.task-tree .children{list-style:none;margin:12px 0 0 10px;padding:0 0 0 16px;border-left:1px solid #394355}.task-tree .children>.step:last-child{padding-bottom:0}.task-tree .step-right{flex-wrap:wrap;justify-content:flex-end;white-space:normal;text-align:right;max-width:170px}.task-tree .child-count{color:#8c9bb0}.task-tree .step-id{display:block;font-size:10px;color:#7f8ca0;margin-top:3px;font-family:ui-monospace,SFMono-Regular,monospace}.task-details{margin:10px 0 0 34px;display:grid;gap:9px}.task-details .note{margin:0}.detail-field{font-size:11px;line-height:1.7;color:#a9b8ce;overflow-wrap:anywhere}.detail-label{display:block;color:#7f8fa6;font-size:10px;margin-bottom:2px}.detail-value{white-space:pre-wrap}.detail-list{margin:0;padding-left:17px}.detail-list a{color:#a4c2ff;text-decoration:underline;text-underline-offset:2px}.assignment{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,max(220px,calc(50% - 8px))),1fr));gap:6px 16px;margin:0;font-size:11px;line-height:1.6;color:#b2bfd2;overflow-wrap:anywhere}.assignment-item{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:start;min-width:0}.assignment dt{color:#7f8fa6}.assignment dd{margin:0;min-width:0;white-space:pre-wrap}.compact-detail{min-width:0;white-space:normal}.compact-detail>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:baseline;list-style:none}.compact-detail>summary .detail-label{margin:0}.detail-preview{grid-column:1/-1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}.detail-toggle{font-size:10px;color:#a4c2ff;white-space:nowrap}.compact-detail .when-open,.compact-detail[open]>summary .when-closed,.compact-detail[open]>summary .detail-preview{display:none}.compact-detail[open]>summary .when-open{display:inline}.compact-detail>.detail-value{margin-top:6px}.attempt-value{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}.attempt-id{flex:1 1 160px;min-width:0}.attempt-id>summary{grid-template-columns:auto minmax(0,1fr) auto;gap:6px}.attempt-id>summary .detail-preview{grid-column:auto;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,monospace}.attempt-id>.detail-value{font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.dispatch{border:1px solid #303b4c;background:#1a212c;border-radius:6px;padding:9px 11px}.dispatch>summary{color:#9eafd0;font-size:11px;cursor:pointer;list-style:disclosure-closed}.dispatch[open]>summary{list-style:disclosure-open}.dispatch .detail-value{margin-top:8px;font-size:11px;line-height:1.65;overflow-wrap:anywhere;color:#b2bfd2}.history-section{border-top:1px solid #282f3a;padding:15px 24px}.history-section>summary{font-size:12px;color:#b9c3d1;cursor:pointer}.history-list{margin:12px 0 0;padding:0;list-style:none}.history-item{border-top:1px solid #303642;padding:11px 0}.history-item>details>summary{font-size:12px;color:#c4cede;cursor:pointer}.history-meta{margin:9px 0;color:#8c9bb0;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.history-section .steps{margin-top:8px}.task-number{display:inline-block;margin-right:7px;color:#8f9bad;font-size:11px;font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}:root[data-theme="light"] .task-number{color:#68788f}.network-help{font-size:10px;color:#7e8ca2;line-height:1.6;margin:0 0 9px}
 @media(max-width:480px){.task-tree .children{margin-left:5px;padding-left:10px}.task-tree .step-right{max-width:92px}.task-details{margin-left:30px}.assignment{grid-template-columns:1fr;gap:6px}.assignment-item{grid-template-columns:64px minmax(0,1fr)}.history-section{padding:14px 16px}.task-tree .step-main{grid-template-columns:22px minmax(0,1fr)}.task-tree .step-right{grid-column:2;max-width:none;justify-content:flex-start;padding-top:0;text-align:left}}
 </style>
 <style>
@@ -133,7 +135,7 @@ h1{font-size:18px;line-height:1.35}
     <rect x="12" y="22" width="8" height="8" rx="2.5"/>
     <rect x="23" y="22" width="8" height="8" rx="2.5"/>
   </g>
-</svg>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
+</svg>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh" id="open-progress-panel" type="button">打开进度页</button><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
     <div id="summary" class="hidden">
       <div class="titleline"><h1 id="task-title"></h1><span id="task-status" class="badge"><span class="dot" aria-hidden="true"></span><span id="task-status-label"></span></span></div>
       <div class="progressline"><div class="percent"><span id="percent">0</span><small>%</small></div><span id="fraction" class="fraction"></span></div>
@@ -148,6 +150,7 @@ h1{font-size:18px;line-height:1.35}
   <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
   <details id="legacy-history-section" class="history-section hidden"><summary id="legacy-history-title">SQLite 历史 · 只读</summary><div id="legacy-history-list" class="history-meta"></div></details>
   <p id="export-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
+  <p id="display-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
   <p id="error" class="error hidden" role="alert"></p>
 </main>
 <script>
@@ -158,6 +161,11 @@ h1{font-size:18px;line-height:1.35}
   let sessionId = null;
   const viewId = 'view-' + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
   let displayMode = null;
+  let availableDisplayModes = null;
+  let displayIntent = null;
+  let displayIntentSettled = true;
+  let autoFullscreenBlocked = false;
+  const handledDisplayIntents = new Set();
   let viewRegistrationStarted = false;
   let viewRetryTimer = null;
   let viewRetryDelay = 1000;
@@ -224,6 +232,7 @@ h1{font-size:18px;line-height:1.35}
     if (displayMode === 'inline' && hiddenByFullscreen) {
       return;
     }
+    $('open-progress-panel').classList.toggle('hidden', displayMode === 'fullscreen');
     if (!compact) return;
     setText('compact-title', latestProgress?.task_title || '当前会话任务');
     setText('compact-status', sourceSuperseded
@@ -341,6 +350,7 @@ h1{font-size:18px;line-height:1.35}
   }
   async function registerView(force = false) {
     const source = displayMode === 'inline' ? inlineViewSource || viewSource : viewSource;
+    if (!displayIntentSettled || (displayMode === 'fullscreen' && autoFullscreenBlocked)) return;
     if (!['inline', 'fullscreen'].includes(displayMode) || !bridgeReady || !sessionId || !source || viewRegistrationStarted || viewRetryTimer !== null || disposed) return;
     const sourceKey = [source.state_revision, source.view_sequence, source.task_instance_id].join(':');
     const requestedMode = displayMode;
@@ -364,8 +374,7 @@ h1{font-size:18px;line-height:1.35}
         registeredMode = null;
         setError('本会话已有完整进度页打开，正在返回会话内视图。');
         try {
-          if (typeof window.openai?.requestDisplayMode === 'function') await window.openai.requestDisplayMode({ mode: 'inline' });
-          else await request('ui/request-display-mode', { mode: 'inline' });
+          await requestDisplayMode('inline');
         } catch (_) { /* The active page remains usable if the host cannot demote this duplicate. */ }
         return;
       }
@@ -1201,13 +1210,17 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       ? collapsibleField(label, text, key, openDetails, className, previewLimit)
       : field(label, text, className);
   }
-  function responsibilityDetails(record, planned, prefix, openDetails, omitSubmissionSummary = false) {
+  function responsibilityDetails(record, planned, prefix, openDetails, { omitSubmissionSummary = false, compact = false } = {}) {
     const value = responsibilityFields(record, planned);
     const block = document.createElement('div'); block.className = 'detail-group-content responsibility-record';
-    block.append(field('计划执行者', value.plannedExecutor));
-    if (record.assignment?.execution_mode === 'subagent' || record.dispatch || value.agentName) block.append(field('实际智能体 ID', value.agentName || '未绑定 / 未记录'), field('派发绑定', value.dispatchStatus || '未记录'));
+    if (!compact) {
+      block.append(field('计划执行者', value.plannedExecutor));
+      if (record.assignment?.execution_mode === 'subagent' || record.dispatch || value.agentName) block.append(field('实际智能体 ID', value.agentName || '未绑定 / 未记录'), field('派发绑定', value.dispatchStatus || '未记录'));
+      block.append(field('验收状态', value.reviewLabel));
+    } else if (record.dispatch && value.dispatchStatus !== 'bound') {
+      block.append(field('派发异常', value.dispatchStatus || '未记录'));
+    }
     if (value.selfExecutionReason) block.append(field('主会话自执行原因', value.selfExecutionReason));
-    block.append(field('验收状态', value.reviewLabel));
     if (record.review_status === 'accepted' && record.submission?.outcome === 'open') block.append(field('接受范围', '接受的是结果报告；任务仍未解决。'));
     if (record.submission) {
       block.append(field('执行提交', '执行已结束，不等于验收通过；提交结果：' + (value.submittedOutcome || '未记录')));
@@ -1272,6 +1285,19 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
   // Retain live nodes instead of replacing the tree on each poll. In particular,
   // unchanged text nodes keep browser selections, summaries keep keyboard focus,
   // and existing detail containers keep their scroll position.
+  function moveLiveNode(target, node, before) {
+    // Preserve interaction by node identity (also restore selection on hosts
+    // whose atomic move implementation preserves focus but not ranges),
+    // never by the changing task number or by a position in the task list.
+    const focused = node.contains(document.activeElement) ? document.activeElement : null;
+    const selection = window.getSelection();
+    const selected = selection && (node.contains(selection.anchorNode) || node.contains(selection.focusNode))
+      ? [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset] : null;
+    if (typeof target.moveBefore === 'function') target.moveBefore(node, before);
+    else target.insertBefore(node, before);
+    if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    if (selected && selected[0]?.isConnected && selected[2]?.isConnected) selection.setBaseAndExtent(...selected);
+  }
   function reconcileChildren(target, incoming) {
     const key = node => node.nodeType === Node.ELEMENT_NODE
       ? node.dataset.key || node.dataset.renderKey || (node.tagName === 'LI' ? node.firstElementChild?.dataset.key : '') || '' : '';
@@ -1282,7 +1308,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const match = originals.find(old => !used.has(old) && compatible(old, next));
       if (!match) { target.insertBefore(next, cursor); continue; }
       used.add(match);
-      if (match !== cursor) target.insertBefore(match, cursor);
+      if (match !== cursor) moveLiveNode(target, match, cursor);
       if (match.nodeType === Node.TEXT_NODE) {
         if (match.nodeValue !== next.nodeValue) match.nodeValue = next.nodeValue;
       } else if (match.nodeType === Node.ELEMENT_NODE) {
@@ -1294,7 +1320,77 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     }
     for (const old of originals) if (!used.has(old)) old.remove();
   }
-  function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false, timeContext = null, rootContext = null) {
+  // Order sibling branches by projected dependencies, preserving plan order
+  // among available branches. Cross-branch interleaving can create a projected
+  // cycle even for a valid task DAG: keep that component's original order.
+  function stableDependencyOrder(ids, edges) {
+    if (ids.length < 2 || !edges.length) return ids;
+    const rank = new Map(ids.map((id, index) => [id, index]));
+    const adjacent = new Map(ids.map(id => [id, new Set()]));
+    for (const [before, after] of edges) if (before !== after && rank.has(before) && rank.has(after)) adjacent.get(before).add(after);
+    let sequence = 0;
+    const index = new Map(), low = new Map(), stack = [], active = new Set(), components = [];
+    function visit(id) {
+      index.set(id, sequence); low.set(id, sequence++); stack.push(id); active.add(id);
+      for (const next of adjacent.get(id)) {
+        if (!index.has(next)) { visit(next); low.set(id, Math.min(low.get(id), low.get(next))); }
+        else if (active.has(next)) low.set(id, Math.min(low.get(id), index.get(next)));
+      }
+      if (low.get(id) === index.get(id)) {
+        const members = []; let next;
+        do { next = stack.pop(); active.delete(next); members.push(next); } while (next !== id);
+        components.push(members.sort((a, b) => rank.get(a) - rank.get(b)));
+      }
+    }
+    ids.forEach(id => { if (!index.has(id)) visit(id); });
+    const membership = new Map();
+    components.forEach((members, component) => members.forEach(id => membership.set(id, component)));
+    const outgoing = components.map(() => new Set()), indegree = components.map(() => 0);
+    for (const [id, nextIds] of adjacent) for (const next of nextIds) {
+      const from = membership.get(id), to = membership.get(next);
+      if (from !== to && !outgoing[from].has(to)) { outgoing[from].add(to); indegree[to]++; }
+    }
+    const ready = components.map((_, i) => i).filter(i => indegree[i] === 0), ordered = [];
+    while (ready.length) {
+      ready.sort((a, b) => rank.get(components[a][0]) - rank.get(components[b][0]));
+      const component = ready.shift(); ordered.push(...components[component]);
+      for (const next of outgoing[component]) if (--indegree[next] === 0) ready.push(next);
+    }
+    return ordered;
+  }
+  function orderNetworkChildren(nodes, byId, children) {
+    const parent = new Map(), paths = new Map(), edges = new Map();
+    for (const [id, childIds] of children) for (const child of childIds) if (!parent.has(child)) parent.set(child, id);
+    function ancestry(id) {
+      if (paths.has(id)) return paths.get(id);
+      const path = [], seen = new Set();
+      for (let next = id; next != null && !seen.has(next); next = parent.get(next)) { path.unshift(next); seen.add(next); }
+      paths.set(id, path); return path;
+    }
+    for (const node of nodes) {
+      // A dependency declared on a group orders that whole branch, so its
+      // descendants inherit the order without rescanning ancestor dependencies.
+      // Status never affects ordering (completed prerequisites stay in place).
+      const dependencies = list(node.depends_on).map(String);
+      if (!dependencies.length) continue;
+      const after = ancestry(String(node.id));
+      for (const dependency of dependencies) {
+        if (!byId.has(dependency)) continue;
+        const before = ancestry(dependency); let common = 0;
+        while (common < before.length && common < after.length && before[common] === after[common]) common++;
+        if (!common || common === before.length || common === after.length) continue;
+        const ancestor = after[common - 1];
+        if (!edges.has(ancestor)) edges.set(ancestor, []);
+        edges.get(ancestor).push([before[common], after[common]]);
+      }
+    }
+    for (const [id, childIds] of children) children.set(id, stableDependencyOrder([...new Set(childIds)], edges.get(id) || []));
+  }
+  function taskNumber(value) {
+    const number = document.createElement('span'); number.className = 'task-number';
+    number.textContent = value; return number;
+  }
+  function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false, timeContext = null, rootContext = null, rootStart = 1) {
     const fragment = document.createDocumentFragment();
     const byId = new Map(nodes.map(node => [String(node.id), node]));
     const children = new Map(nodes.map(node => [String(node.id), []]));
@@ -1306,6 +1402,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const parent = children.get(String(node.parent_id));
       if (parent && !parent.includes(String(node.id))) parent.push(String(node.id));
     }
+    orderNetworkChildren(nodes, byId, children);
     const referenced = new Set([...children.values()].flat());
     const seen = new Set();
     const derivedStatuses = new Map();
@@ -1334,8 +1431,8 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       derivedStatuses.set(id, status); return status;
     }
     const reference = id => { const node = byId.get(String(id)); return node ? node.title + ' (' + id + ')' : String(id); };
-    function appendNode(id, target) {
-      if (seen.has(id) || !byId.has(id)) return;
+    function appendNode(id, target, number) {
+      if (seen.has(id) || !byId.has(id)) return false;
       seen.add(id);
       const node = byId.get(id); const childIds = children.get(id).filter(child => !seen.has(child));
       const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
@@ -1345,11 +1442,17 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       details.open = openDetails.has(details.dataset.key) ? openDetails.get(details.dataset.key) : defaultOpen && childIds.length > 0;
       const row = document.createElement('summary'); row.className = 'step-main';
       const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = info.key === 'awaiting_review' ? '◷' : info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : info.key === 'failed' ? '!' : info.key === 'cancelled' ? '×' : '·';
-      const title = document.createElement('span'); title.className = 'step-title'; title.textContent = String(node.title || '未命名任务');
+      if (info.key === 'awaiting_review') {
+        icon.innerHTML = '<svg class="waiting-clock" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="9.5" fill="#3a3020" stroke="#ab8245" stroke-width="1"/><circle cx="10" cy="10" r="6.6"/><path d="M10 5.8V10h3.3"/><circle cx="10" cy="10" r="0.7" fill="currentColor" stroke="none"/></svg>';
+      } else {
+        icon.textContent = info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : info.key === 'failed' ? '!' : info.key === 'cancelled' ? '×' : '·';
+      }
+      const title = document.createElement('span'); title.className = 'step-title';
+      const titleText = document.createElement('span'); titleText.className = 'task-title-text'; titleText.textContent = String(node.title || '未命名任务');
+      title.append(taskNumber(number), titleText);
       if (id === String(rootId) && rootContext) {
         li.dataset.taskInstance = rootContext.progress.task_instance_id || ''; li.dataset.rootRole = rootContext.role;
-        const role=document.createElement('span'); role.className='root-role'; role.textContent=rootContext.role==='main'?'主任务':'并行任务'; title.prepend(role);
+        const role=document.createElement('span'); role.className='root-role'; role.textContent=rootContext.role==='main'?'主任务':'并行任务'; title.insertBefore(role, titleText);
       }
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
@@ -1359,7 +1462,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       if (childIds.length) {
         const count = document.createElement('span'); count.className = 'child-count'; count.textContent = childIds.length + ' 个子任务';
         const arrow = document.createElement('span'); arrow.className = 'chevron'; arrow.setAttribute('aria-hidden', 'true');
-        row.setAttribute('aria-label', String(node.title || '未命名任务') + '，' + childIds.length + ' 个子任务，可展开');
+        row.setAttribute('aria-label', number + ' ' + String(node.title || '未命名任务') + '，' + childIds.length + ' 个子任务，可展开');
         right.append(count, arrow);
       }
       appendElapsed(right, node, timeContext);
@@ -1370,18 +1473,21 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const body = document.createElement('details'); body.className = 'task-details execution-review' + (isRoot ? ' root-metadata' : '');
       body.dataset.key = prefix + ':' + id + (isRoot ? ':root-metadata' : ':execution-review'); body.open = openDetails.get(body.dataset.key) || false;
       const heading=document.createElement('summary'); heading.textContent=isRoot ? '统筹与综合验收详情' : '执行与验收详情'; body.append(heading);
-      appendExecutionSummary(body, assignment, node.execution_status);
       if (id === String(rootId) && rootContext) {
         const p=rootContext.progress, stats=leafProgress(nodes);
         body.append(field('本任务进度', stats.resolved + ' / ' + stats.total + ' 项已解决 / 已验收完成；' + stats.pending + ' 待验收 · ' + stats.running + ' 执行中'));
         body.append(field('本任务规划', p.planning_status==='required'?'尚未规划':'第 '+(Number(p.epoch || 0)+1)+' 轮'));
       }
-      body.append(responsibilityDetails(node, node.planned_assignment, prefix + ':' + id, openDetails, !!resultSummary && printable(resultSummary) === printable(node.submission?.summary)));
+      const responsibility = responsibilityDetails(node, node.planned_assignment, prefix + ':' + id, openDetails, {
+        compact: true, omitSubmissionSummary: !!resultSummary && printable(resultSummary) === printable(node.submission?.summary)
+      });
+      if (responsibility.childElementCount) body.append(responsibility);
       if (node.invalidated_by) body.append(field('需要重新执行或验收', '前置结果因任务 ' + node.invalidated_by + ' 重试而失效，旧记录保留在执行记录中。'));
       const more = document.createElement('details'); more.className = 'detail-group more-details';
       more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
       const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
       const moreContent = document.createElement('div'); moreContent.className = 'detail-group-content';
+      if (Object.keys(assignment).length) moreContent.append(field('配置来源', metadataEvidence(assignment), 'metadata-provenance'));
       if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
       if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束且无待验收提交（包括未解决、失败或取消）' : '前置任务已解决'));
@@ -1413,13 +1519,15 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       body.append(reviewHistory(node, prefix + ':' + id, openDetails, rootContext?.progress));
       if (body.childElementCount) details.append(body);
       if (childIds.length) {
-        const nested = document.createElement('ol'); nested.className = 'children'; childIds.forEach(child => appendNode(child, nested)); details.append(nested);
+        const nested = document.createElement('ol'); nested.className = 'children';
+        childIds.forEach(child => appendNode(child, nested, number + '-' + (nested.childElementCount + 1))); details.append(nested);
       }
-      li.append(details); target.append(li);
+      li.append(details); target.append(li); return true;
     }
-    if (rootId) appendNode(String(rootId), fragment);
-    nodes.filter(node => !referenced.has(String(node.id))).forEach(node => appendNode(String(node.id), fragment));
-    nodes.forEach(node => appendNode(String(node.id), fragment));
+    const appendRoot = id => appendNode(String(id), fragment, String(rootStart + fragment.childElementCount));
+    if (rootId) appendRoot(rootId);
+    nodes.filter(node => !referenced.has(String(node.id))).forEach(node => appendRoot(node.id));
+    nodes.forEach(node => appendRoot(node.id));
     return fragment;
   }
   function linearSteps(steps, prefix, openDetails, timeContext = null) {
@@ -1459,27 +1567,21 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     for (const parallel of shownParallelTasks(progress)) {
       const parallelNodes=nodesFrom(parallel.nodes);
       if (!parallel.details_unavailable && parallelNodes.length) {
-        roots.append(networkTree(parallelNodes, parallel.root_id, taskScope(parallel) + ':epoch:' + parallel.epoch, openDetails, true, null, {role:'parallel',progress:parallel}));
+        roots.append(networkTree(parallelNodes, parallel.root_id, taskScope(parallel) + ':epoch:' + parallel.epoch, openDetails, true, null, {role:'parallel',progress:parallel}, roots.childElementCount + 1));
       } else {
         const item=document.createElement('li'); item.className='step parallel-placeholder'; item.dataset.renderKey=taskScope(parallel)+':placeholder'; item.dataset.taskInstance=parallel.task_instance_id; item.dataset.rootRole='parallel';
         const title=document.createElement('div'); title.className='step-title'; title.textContent=parallel.task_title || '未命名并行任务';
-        const role=document.createElement('span'); role.className='root-role'; role.textContent='并行任务'; title.prepend(role);
+        const role=document.createElement('span'); role.className='root-role'; role.textContent='并行任务'; title.prepend(taskNumber(String(roots.childElementCount + 1)), role);
         const note=document.createElement('div'); note.className='request-detail'; note.textContent='当前快照未包含任务详情，等待刷新；尚未读取子树。'; item.append(title,note); roots.append(item);
       }
     }
     reconcileChildren($('steps'), roots);
     const meta = document.createDocumentFragment();
-    const planningStatus = progress.planning_status === 'planned' ? '已完成粗规划'
-      : progress.planning_status === 'atomic' ? '单步任务'
-        : '尚未规划';
-    const shownStats = leafProgress(nodes);
-    const metadata = [
-      ['主任务计划', '第 ' + (Number(progress.epoch || 0) + 1) + ' 轮'],
-      ['主任务规划状态', planningStatus],
-      ['主任务可执行', (progress.ready_count ?? list(progress.ready_tasks).length) + ' · 进行中 ' + shownStats.running + ' · 待主会话验收 ' + shownStats.pending + ' · 阻塞 ' + (progress.blocked_count ?? nodes.filter(node => list(node.blocked_by).length).length)]
-    ];
     const mainSession = progress.main_session && typeof progress.main_session === 'object' ? progress.main_session : {};
-    metadata.push(['主会话', [mainSession.model || '模型未记录', mainSession.reasoning_effort ? '思考 ' + mainSession.reasoning_effort : '思维强度未记录', metadataEvidence(mainSession)].join(' · ')]);
+    const metadata = [
+      ['任务计划轮次', '第 ' + (Number(progress.epoch || 0) + 1) + ' 轮'],
+      ['主会话模型', typeof mainSession.model === 'string' && mainSession.model.trim() ? mainSession.model.trim() : '未记录']
+    ];
     for (const [label, value] of metadata) { const span = document.createElement('span'); span.dataset.renderKey = label; span.textContent = label + ' '; const strong = document.createElement('strong'); strong.textContent = String(value); span.append(strong); meta.append(span); }
     reconcileChildren($('network-meta'), meta);
     const history = list(progress.history); const count = progress.history_summary?.plan_count ?? history.length; $('history-section').classList.toggle('hidden', !count); setText('history-title', '当前任务的历史计划 · ' + count + ' 轮' + historySuffix(progress));
@@ -1789,7 +1891,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       // neither an acknowledgement nor a render bootstrap is an empty tree.
       const revision = structured.state_revision;
       if (!Number.isSafeInteger(revision) || !incomingSession || (structured.acknowledged !== true && structured.bootstrap !== true)) return;
-      if (latestStateRevision !== null && revision < latestStateRevision) return;
+      if (latestStateRevision !== null && revision < latestStateRevision && structured.bootstrap !== true) return;
       minimumStateRevision = Math.max(minimumStateRevision ?? 0, revision);
       if (structured.bootstrap === true && structured.task_instance_id && Number.isSafeInteger(structured.view_sequence)) {
         const source = {view_sequence:structured.view_sequence,state_revision:revision,task_instance_id:structured.task_instance_id};
@@ -1799,7 +1901,12 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
         sourceSuperseded = false;
         document.querySelector('.card').classList.remove('inline-stale');
         $('superseded-notice').classList.add('hidden');
-        syncPresentation(); void registerView();
+        if (typeof structured.display_intent === 'string' && structured.display_intent !== displayIntent) {
+          displayIntent = structured.display_intent;
+          displayIntentSettled = false;
+          autoFullscreenBlocked = false;
+        }
+        syncPresentation(); void settleDisplayIntent(); void registerView();
       }
       syncButton();
       if (busy) refreshQueued = true;
@@ -1867,6 +1974,40 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       void registerView(displayMode === 'fullscreen' && fromRefresh);
     }
   }
+  function applyHostContext(context = {}) {
+    if (Array.isArray(context.availableDisplayModes)) availableDisplayModes = context.availableDisplayModes;
+    applyTheme(context);
+    const nextMode = context.displayMode;
+    if (['inline', 'fullscreen', 'pip'].includes(nextMode) && nextMode !== displayMode) {
+      viewGeneration++;
+      modeGeneration++;
+      displayMode = nextMode;
+      hiddenByFullscreen = false;
+      viewRegistered = false;
+      registeredMode = null;
+      stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
+      if (displayMode === 'fullscreen') {
+        sourceSuperseded = false;
+      }
+      const card = document.querySelector('.card');
+      card.classList.toggle('inline-stale', isInlineStale());
+      $('superseded-notice').classList.toggle('hidden', !isInlineStale());
+      syncPresentation();
+      if (displayMode === 'inline') {
+        // An inline registration releases this view's fullscreen claim, even
+        // when its original inline source can no longer own the latest card.
+        void registerView(true);
+        void refreshProgress(true);
+      } else {
+        syncButton();
+        if (bridgeReady) syncPolling();
+      }
+      if (displayMode === 'fullscreen' && bridgeReady) void refreshProgress(true);
+      syncButton();
+      syncPolling();
+      reportHeight();
+    }
+  }
   window.addEventListener('message', event => {
     if (event.source !== window.parent || !event.data || event.data.jsonrpc !== '2.0') return;
     const message = event.data;
@@ -1879,39 +2020,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const value = message.params?.arguments?.session_id;
       if (typeof value === 'string' && value) { sessionId = value; syncButton(); void registerView(); }
     }
-    if (message.method === 'ui/notifications/host-context-changed') {
-      applyTheme(message.params || {});
-      const nextMode = message.params?.displayMode;
-      if (['inline', 'fullscreen', 'pip'].includes(nextMode) && nextMode !== displayMode) {
-        viewGeneration++;
-        modeGeneration++;
-        displayMode = nextMode;
-        hiddenByFullscreen = false;
-        viewRegistered = false;
-        registeredMode = null;
-        stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
-        if (displayMode === 'fullscreen') {
-          sourceSuperseded = false;
-        }
-        const card = document.querySelector('.card');
-        card.classList.toggle('inline-stale', isInlineStale());
-        $('superseded-notice').classList.toggle('hidden', !isInlineStale());
-        syncPresentation();
-        if (displayMode === 'inline') {
-          // An inline registration releases this view's fullscreen claim, even
-          // when its original inline source can no longer own the latest card.
-          void registerView(true);
-          void refreshProgress(true);
-        } else {
-          syncButton();
-          if (bridgeReady) syncPolling();
-        }
-        if (displayMode === 'fullscreen' && bridgeReady) void refreshProgress(true);
-        syncButton();
-        syncPolling();
-        reportHeight();
-      }
-    }
+    if (message.method === 'ui/notifications/host-context-changed') applyHostContext(message.params || {});
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
       disposed = true; viewGeneration++;
@@ -1938,26 +2047,79 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     finally { busy = false; silentRefresh = false; syncButton(); if (refreshQueued) { refreshQueued = false; void refreshProgress(true); } }
   }
   $('refresh').addEventListener('click', () => { void refreshProgress(false); });
-  $('open-progress').addEventListener('click', async () => {
-    const button = $('open-progress');
-    if (!bridgeReady || disposed || button.disabled) return;
-    button.disabled = true;
-    $('compact-feedback').classList.remove('hidden');
-    setText('compact-feedback', '正在请求打开任务进度…');
-    try {
-      if (typeof window.openai?.requestDisplayMode === 'function') {
-        await window.openai.requestDisplayMode({ mode: 'fullscreen' });
-      } else {
-        await request('ui/request-display-mode', { mode: 'fullscreen' });
-      }
-      // Only host-context-changed confirms the actual presentation mode.
-      if (displayMode !== 'fullscreen') setText('compact-feedback', '已请求宿主打开；若页面未切换，请再次点击。');
-    } catch (error) {
-      setText('compact-feedback', error.message || '无法打开进度面板，请稍后重试。');
-    } finally {
-      button.disabled = false;
+  function displayFeedback(text) {
+    for (const id of ['compact-feedback', 'display-feedback']) {
+      $(id).classList.toggle('hidden', !text); setText(id, text);
     }
-  });
+  }
+  async function requestDisplayMode(mode) {
+    const generation = modeGeneration;
+    const result = typeof window.openai?.requestDisplayMode === 'function'
+      ? await window.openai.requestDisplayMode({ mode })
+      : await request('ui/request-display-mode', { mode });
+    // The protocol returns the resulting mode, not an acknowledgement. Never
+    // overwrite a newer host notification with a delayed response.
+    if (!disposed && generation === modeGeneration && ['inline', 'fullscreen', 'pip'].includes(result?.mode)) {
+      applyHostContext({ displayMode: result.mode });
+    }
+    return displayMode;
+  }
+  async function settleDisplayIntent() {
+    if (!bridgeReady || !sessionId || !displayIntent || handledDisplayIntents.has(displayIntent) || disposed) return;
+    const intent = displayIntent, generation = modeGeneration;
+    handledDisplayIntents.add(intent);
+    try {
+      const result = await request('tools/call', { name: 'consume_display_intent', arguments: {
+        session_id: sessionId, view_id: viewId, display_intent: intent
+      }});
+      if (disposed || intent !== displayIntent || generation !== modeGeneration) return;
+      const state = result?.structuredContent;
+      const granted = !result?.isError && state?.session_id === sessionId && state.view_id === viewId
+        && state.display_intent === intent && state.status === 'granted';
+      if (!granted) {
+        // A host may initially choose fullscreen before JS can arbitrate mounts.
+        // Demote this duplicate; never renew a fullscreen lease on its behalf.
+        autoFullscreenBlocked = true;
+        if (displayMode === 'fullscreen' && availableDisplayModes?.includes('inline')) await requestDisplayMode('inline');
+        displayFeedback(state?.status === 'already_open' ? '本会话已有进度页或打开请求。' : '此展示请求已处理；可手动打开最新进度。');
+        return;
+      }
+      if (displayMode === 'fullscreen') return;
+      if (!availableDisplayModes?.includes('fullscreen')) {
+        displayFeedback('宿主未提供自动打开进度页的能力；可使用当前面板。');
+        return;
+      }
+      await requestDisplayMode('fullscreen');
+      if (displayMode !== 'fullscreen') displayFeedback('宿主保留了当前展示方式；可手动打开进度页。');
+    } catch (_) {
+      // Failed/unknown consumption must not trigger an automatic host request.
+      displayFeedback('自动打开未完成；可手动打开进度页。');
+    } finally {
+      if (intent === displayIntent) {
+        displayIntentSettled = true;
+        void registerView();
+      }
+    }
+  }
+  async function openProgress() {
+    if (!bridgeReady || disposed) return;
+    const buttons = [$('open-progress'), $('open-progress-panel')];
+    if (buttons.some(button => button.disabled)) return;
+    buttons.forEach(button => { button.disabled = true; });
+    displayFeedback('正在请求打开任务进度…');
+    try {
+      if (availableDisplayModes && !availableDisplayModes.includes('fullscreen')) {
+        displayFeedback('宿主不支持打开进度页；可使用当前面板。'); return;
+      }
+      autoFullscreenBlocked = false;
+      await requestDisplayMode('fullscreen');
+      displayFeedback(displayMode === 'fullscreen' ? '' : '宿主尚未切换展示方式；可稍后再次点击。');
+    } catch (error) {
+      displayFeedback(error.message || '无法打开进度面板，请稍后重试。');
+    } finally { buttons.forEach(button => { button.disabled = false; }); }
+  }
+  $('open-progress').addEventListener('click', openProgress);
+  $('open-progress-panel').addEventListener('click', openProgress);
   document.addEventListener('visibilitychange', () => {
     documentVisible = document.visibilityState === 'visible';
     syncPolling();
@@ -1974,7 +2136,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
   }
   render(null);
   request('ui/initialize', { appInfo: { name: 'task-progress', version: '__TASK_PROGRESS_VERSION__' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' })
-    .then(result => { if (disposed) return; if (displayMode === null) displayMode = result?.hostContext?.displayMode ?? null; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; document.querySelector('.card').classList.toggle('inline-stale', isInlineStale()); $('superseded-notice').classList.toggle('hidden', !isInlineStale()); syncPresentation(); notify('ui/notifications/initialized', {}); reportHeight(); syncButton(); syncPolling(); void registerView(); if (displayMode && displayMode !== 'inline' && sessionId) void refreshProgress(true); })
+    .then(result => { if (disposed) return; if (displayMode === null) displayMode = result?.hostContext?.displayMode ?? null; availableDisplayModes = result?.hostContext?.availableDisplayModes ?? availableDisplayModes; applyTheme(result?.hostContext || {}); hostCapabilities = result?.hostCapabilities ?? {}; bridgeReady = true; document.querySelector('.card').classList.toggle('inline-stale', isInlineStale()); $('superseded-notice').classList.toggle('hidden', !isInlineStale()); syncPresentation(); notify('ui/notifications/initialized', {}); reportHeight(); syncButton(); syncPolling(); void settleDisplayIntent(); void registerView(); if (sessionId) void refreshProgress(true); })
     .catch(error => setError(error.message || '无法连接进度卡片宿主。'));
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(reportHeight).observe(document.body);

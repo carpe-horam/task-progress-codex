@@ -94,7 +94,7 @@ async function main() {
   if (!await card.locator('details[data-key$=":root"]').evaluate(e=>e.open)) await card.locator('details[data-key$=":root"] > summary').click();
   assert.equal(await card.locator('.step-title').count(),3);
   assert.equal(await card.locator('#error').textContent(),'');
-  assert.match(await card.locator('#network-meta').innerText(),/未经 Codex 宿主核验/);
+  assert.deepEqual(await card.locator('#network-meta > span').allTextContents(),['任务计划轮次 第 1 轮','主会话模型 audit-fixture']);
   await card.locator('#refresh').click();
   await card.locator('#refresh:not([disabled])').waitFor();
   assert(await card.locator('details[data-key$=":root"]').getAttribute('open') !== null);
@@ -106,7 +106,8 @@ async function main() {
   const inlineMeta=await card.locator('details[data-key$=":a"] > summary .step-execution-meta').innerText();
   assert.match(inlineMeta,/主会话[\s\S]*audit-fixture[\s\S]*思考 high/);
   assert(!inlineMeta.includes('未由 Codex 核实'));
-  assert.match(await card.locator('details[data-key$=":a"] > .task-details > .step-execution-meta').textContent(),/未由 Codex 核实/);
+  assert.equal(await card.locator('details[data-key$=":a"] > .task-details > .step-execution-meta').count(),0);
+  assert.match(await card.locator('details[data-key$=":a"] > .task-details > .more-details .metadata-provenance').textContent(),/调用方填报，未经 Codex 宿主核验/);
   await page.evaluate(()=>{window.audit.holdRead=true;});
   await card.locator('#refresh').click();
   await page.waitForFunction(()=>window.audit.held.length===1);

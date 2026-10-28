@@ -55,7 +55,7 @@ async function main(){
  const frame=await host.mount(page,'main',r);
  assert.equal(await frame.locator('#percent').textContent(),'0');assert.match(await frame.locator('#fraction').textContent(),/0 \/ 3 项已解决 \/ 已验收完成/);
  assert.match(await frame.locator('#progress-context').textContent(),/2 待验收 · 0 执行中 · 1 未开始/);
- assert.equal(await frame.locator('#steps .awaiting_review > details > summary .step-icon').first().textContent(),'◷');
+ assert.equal(await frame.locator('#steps .awaiting_review > details > summary .step-icon .waiting-clock').first().getAttribute('viewBox'),'0 0 20 20');
  assert.equal(await frame.locator('#steps .step-main .step-result, #steps .step-main .step-responsibility-meta').count(),0);
  const inline=frame.locator('#steps .children > .step > details > summary .step-execution-meta').first();
  assert.equal(await inline.textContent(),'子智能体 · fixture-one · fixture-model · 思考 high');
@@ -81,9 +81,10 @@ async function main(){
  assert.equal(await execution.getAttribute('open'),null);
  await capture(page,'summary-expanded-fields-collapsed');
  await execution.locator(':scope > summary').click();
- assert.match(await execution.innerText(),/未由 Codex 核实/);
+ assert.equal(await execution.locator(':scope > .step-execution-meta').count(),0);
  const responsibility=execution.locator(':scope > .responsibility-record');
- assert.match(await responsibility.innerText(),/计划执行者[\s\S]*子智能体[\s\S]*实际智能体 ID[\s\S]*fixture-one/);
+ assert.match(await responsibility.innerText(),/执行提交[\s\S]*证据/);
+ assert(!(await responsibility.innerText()).match(/计划执行者|实际智能体 ID|派发绑定|验收状态/));
  assert.equal(await responsibility.locator('.detail-label').filter({hasText:'提交摘要'}).count(),0,'same current summary appears only in primary result');
  assert(!(await responsibility.innerText()).includes('这是可按需展开查看的完整产出'));
  await capture(page,'output-and-responsibility-on-demand');
@@ -98,7 +99,7 @@ async function main(){
  await capture(page,'default-compact-task-tree');
  assert.equal(await frame.locator('.root-metadata').getAttribute('open'),null);
  assert.equal(await frame.locator('#steps .children > .step > details > summary .step-id').allTextContents().then(x=>x.join(',')),'one,two,three');
- assert.match(await frame.locator('#network-meta').textContent(),/可执行 0 · 进行中 0 · 待主会话验收 2 · 阻塞 1/);
+ assert.deepEqual(await frame.locator('#network-meta > span').allTextContents(),['任务计划轮次 第 1 轮','主会话模型 未记录']);
  assert.match(await frame.locator('#steps .children > .step').last().textContent(),/依赖阻塞/);
  if(artifacts){fs.mkdirSync(artifacts,{recursive:true});fs.writeFileSync(path.join(artifacts,'zero-accepted-two-pending-snapshot.json'),JSON.stringify(r,null,2));}
  await capture(page,'zero-accepted-two-pending');
@@ -138,7 +139,7 @@ async function main(){
  await capture(requestPage,'focus-after-leaf-open');
  await queuedLeaf.locator(':scope > .task-details > summary').click();
  await queuedLeaf.locator('.responsibility-record details').evaluateAll(elements=>elements.forEach(element=>element.open=true));
- assert.match(await queuedLeaf.innerText(),/这是可按需展开查看的完整产出[\s\S]*计划执行者[\s\S]*fixture-one/);
+ assert.match(await queuedLeaf.innerText(),/fixture-one[\s\S]*这是可按需展开查看的完整产出[\s\S]*执行提交/);
  await capture(requestPage,'focus-after-execution-review-open');
  await queuedLeaf.locator(':scope > .task-details > summary').click();
  await queuedLeaf.locator(':scope > summary').click();

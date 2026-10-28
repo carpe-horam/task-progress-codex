@@ -24,9 +24,9 @@ async function checkApp(r,expected) {
   await detail.locator(':scope > .task-details > summary').click();
   const text=await detail.textContent();
   if(node(r).review_status==='pending') {
-    const rootResponsibility=frame.locator('#steps > .step > details > .task-details > .responsibility-record');
-    assert((await rootResponsibility.textContent()).includes('待综合验收（须先完成子任务复核）'));
-    assert(!(await rootResponsibility.textContent()).includes('无需独立提交复核'));
+    const rootRow=frame.locator('#steps > .step > details > summary');
+    assert((await rootRow.textContent()).includes('待主会话验收'));
+    assert.equal(await frame.locator('#steps > .step > details > .task-details > .responsibility-record').count(),0);
   }
   for (const value of expected) assert(text.includes(value),`App missing ${value}: ${text}`);
   assert.equal(await detail.locator('.review-history').count(),1);
@@ -151,8 +151,8 @@ async function checkPendingBoundaries() {
   const peerAttempt=node(r,'peer').attempt_id;
   r=await host.rpc('bind_task_agent',{...binding(r),task_id:'peer',attempt_id:peerAttempt,agent_name:'boundary-peer'});
   const page=await host.page(),frame=await host.mount(page,'main',r);
-  const meta=await frame.locator('#network-meta').textContent();
-  assert(meta.includes('进行中 1') && meta.includes('待主会话验收 1'),'aggregate exposes simultaneous running and review counts');
+  const meta=await frame.locator('#progress-context').textContent();
+  assert(meta.includes('1 执行中') && meta.includes('1 待验收'),'aggregate exposes simultaneous running and review counts');
   await page.close();
   const mixed=await host.exportReport(r);
   assert.equal(await mixed.report.locator('#rp-state-counts').textContent(),'1 项执行中 · 1 项待主会话验收');
@@ -197,7 +197,7 @@ async function main() {
   const rootApp=await host.page(),rootFrame=await host.mount(rootApp,'main',r);
   const consumer= rootFrame.locator('#steps .step > details').filter({has:rootFrame.locator(':scope > summary .step-id').filter({hasText:/^consumer$/})});
   const selfText=await consumer.locator(':scope > .task-details > .responsibility-record').textContent();
-  assert(selfText.includes('主会话直接执行（无需独立提交复核）'));
+  assert((await consumer.locator(':scope > summary').textContent()).includes('已解决 / 已验收完成'));
   assert(selfText.includes(mainAssignment.self_execution_reason)); assert(!selfText.includes('未绑定'));
   const rootDetail=rootFrame.locator('#steps > .step > details');
   assert((await rootDetail.locator(':scope > .task-details > .review-history').textContent()).includes('ROOT_SYNTHESIS_EVIDENCE'));

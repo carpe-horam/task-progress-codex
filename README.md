@@ -133,7 +133,7 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 
 > 请梳理这个问题，按依赖拆分实现和验证步骤，并持续更新任务进度。
 
-你也可以明确要求 Codex 使用 Task Progress。进度内容默认不附在会话的更新回执里；模型需要时显式查询。用户明确要看面板或需要展示时，主会话调用一次 `render_progress`；该入口只返回 bootstrap 身份，面板独立读取并默认显示在会话内。普通任务更新与查询不自动展示。用户将面板切换到 fullscreen 标签页后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
+你也可以明确要求 Codex 使用 Task Progress。进度内容默认不附在会话的更新回执里；模型需要时显式查询。主会话首次创建任务并完成粗规划后调用一次 `render_progress`，自动请求进度页；该入口只返回 bootstrap 身份与一次性展示意图，面板独立读取。资源首选 fullscreen，支持该元数据的宿主可在 App 初始化前打开；挂载后按宿主能力消费最新意图并请求切换。普通任务更新、查询、恢复和轮询不重复展示；关闭或拒绝后不会自动重开，用户可点击“打开进度页”或明确要求重开。宿主决定实际展示方式，工具回执不是可见标签页证明。fullscreen 标签页打开后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。任务标题前的 `1`、`1-1`、`2-2-1` 表示当前层级与计划顺序，按同级依赖稳定排序；插入、重排、层级变化与重规划后重新计算。主任务和并行根按面板顺序编号，各自的任务 ID 保持不变；编号不代表并行分支必须串行执行。历史使用对应快照的顺序。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
 
 默认规则：
 
@@ -218,3 +218,5 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 ## 许可证
 
 本项目以 MIT License 发布，详见 [LICENSE](LICENSE)。
+
+展示协议：[OpenAI 资源首选模式](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md#display-modes)、[MCP Apps 宿主能力与实际返回模式](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#display-modes)。新资源使用 v4；旧 v2/v3 保持 inline 首选，避免旧消息被动升级。宿主可能在 App 运行前创建历史或重复 fullscreen 页面；App 只能在挂载后请求退回 inline。原生宿主可见性需单独验收。

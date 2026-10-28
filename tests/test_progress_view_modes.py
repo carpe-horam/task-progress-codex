@@ -94,7 +94,7 @@ class ProgressViewModeTests(unittest.TestCase):
             preserved,
         )
 
-    def test_progress_resource_prefers_inline_and_supports_fullscreen(self):
+    def test_progress_resource_prefers_fullscreen_and_supports_inline(self):
         response = json.loads(
             server.handle(
                 {
@@ -108,13 +108,13 @@ class ProgressViewModeTests(unittest.TestCase):
         metadata = response["result"]["contents"][0]["_meta"]["openai/ui"]
 
         self.assertEqual(metadata["availableDisplayModes"], ["inline", "fullscreen"])
-        self.assertEqual(metadata["preferredDisplayMode"], "inline")
+        self.assertEqual(metadata["preferredDisplayMode"], "fullscreen")
 
     def test_versioned_resource_keeps_old_history_uri_renderable(self):
         version = json.loads((PLUGIN_DIR / ".codex-plugin" / "plugin.json").read_text())['version']
         initialized = json.loads(server.handle({"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {}}))
         self.assertEqual(initialized['result']['serverInfo']['version'], version)
-        self.assertEqual(server.RESOURCE_URI, "ui://task-progress/progress-inspector/v3")
+        self.assertEqual(server.RESOURCE_URI, "ui://task-progress/progress-inspector/v4")
         listed = json.loads(server.handle({"jsonrpc": "2.0", "id": 4, "method": "resources/list"}))
         uris = {item['uri'] for item in listed['result']['resources']}
         self.assertEqual(uris, {server.RESOURCE_URI, *server.LEGACY_RESOURCE_URIS})
@@ -126,7 +126,7 @@ class ProgressViewModeTests(unittest.TestCase):
             }))
             content = response['result']['contents'][0]
             self.assertEqual(content['uri'], uri)
-            self.assertEqual(content['_meta']['openai/ui']['preferredDisplayMode'], 'inline')
+            self.assertEqual(content['_meta']['openai/ui']['preferredDisplayMode'], 'fullscreen' if uri == server.RESOURCE_URI else 'inline')
             if current_html is None:
                 current_html = content['text']
             else:

@@ -70,7 +70,7 @@ async function main(){
     for(const d of leaf.querySelectorAll('details'))d.open=true;
     const scroll=leaf.querySelector('.dispatch .detail-value');scroll.scrollTop=160;
     const summary=leaf.querySelector(':scope > summary');summary.focus();
-    const range=document.createRange();range.selectNodeContents(leaf.querySelector('.note .detail-value'));const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    const range=document.createRange();range.selectNodeContents(leaf.querySelector('.leaf-result-summary .detail-value'));const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
     return {focus:document.activeElement.parentElement.dataset.key,selection:selection.toString(),scrollTop:scroll.scrollTop};
   };
   const before=await card.locator('body').evaluate(openAndSelect);

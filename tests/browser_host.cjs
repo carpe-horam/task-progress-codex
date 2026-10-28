@@ -34,7 +34,9 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
   const rawRpc = (name, args) => request('tools/call', {name,arguments:args});
   const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
   // Reading the actual resource also checks manifest-to-app version injection.
-  const resource = await request('resources/read', {uri:'ui://task-progress/progress-inspector/v3'});
+  const descriptors = await request('tools/list', {});
+  const uri = descriptors.tools.find(tool => tool.name === 'render_progress')._meta.ui.resourceUri;
+  const resource = await request('resources/read', {uri});
   const html = resource.contents[0].text;
   const browser = await chromium.launch({channel:process.env.TASK_PROGRESS_BROWSER_CHANNEL || 'chrome',headless:true});
   const errors = [];

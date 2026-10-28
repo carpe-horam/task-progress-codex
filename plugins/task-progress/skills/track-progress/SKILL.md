@@ -43,7 +43,7 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 
 `get_ready_tasks` 是显式分页读取，只返回 `structuredContent.ready_tasks` 与分页元数据，不带整树或 `session_work`。`dependencies` 保留前驱状态、策略和 `inherited_from`；完整依赖摘要/证据按前驱 ID 去重放在 `structuredContent.dependency_evidence[id]`，派发时一并读取和传递。
 
-只有用户明确要看面板或确需展示时调用一次 `render_progress`；它只返回 `bootstrap` 身份，面板自行调用 app-only `get_progress_view`。模型不要主动调用该 App 工具，普通读取和更新也不自动展示。旧消息不会追溯缩小，旧 iframe 需重新打开才能加载新版资源；UTF-8 字节测量不能当作 token 数或原生宿主消息展开耗时。
+主会话首次创建任务并完成粗粒度规划后，立即调用一次 `render_progress` 自动请求进度页；已有打开的进度页随同会话轮询复用。用户明确要求打开/重开时可再次调用。继续、恢复、普通读取和更新不重复展示；用户关闭或宿主拒绝后不自动重开。入口只返回 `bootstrap` 身份与一次性展示意图，面板自行调用 app-only `get_progress_view`，模型不要调用这些 App 工具。资源首选 `fullscreen`；最终是否以标签页打开取决于宿主支持，不能把工具回执当作已打开的证据。旧消息不会追溯缩小，旧 iframe 需重新打开才能加载新版资源；UTF-8 字节测量不能当作 token 数或原生宿主消息展开耗时。
 
 ## 何时使用与模式选择
 
@@ -55,7 +55,7 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 
 若 agent 收到的工作已由主会话的 Task Progress 任务树表示，沿用派发信息中提供的任务节点与尝试标识更新该节点，不另建重复根任务；若 agent 独立承担多阶段工作且没有可更新的父任务节点，则先粗略规划，再初始化、分解并维护自己的任务网络。单步查询或简单操作无需初始化任务树，但仍须先做一句话级别的粗规划。
 
-多步骤新任务默认使用 HTN 任务网络：`init_task_network` → `decompose_task` → `get_ready_tasks` → `update_task`。不得因任务看起来简单、顺序执行或不需要并行而改用线性 API。`init_progress` 对两个及以上步骤默认会被服务端拒绝；只有用户明确要求线性步骤时才可传 `legacy_linear=true`。
+多步骤新任务默认使用 HTN 任务网络：`init_task_network` → `decompose_task`（初始 tasks 已完成粗规划时可省略）→ 主会话首次 `render_progress` → `get_ready_tasks` → `update_task`。不得因任务看起来简单、顺序执行或不需要并行而改用线性 API。`init_progress` 对两个及以上步骤默认会被服务端拒绝；只有用户明确要求线性步骤时才可传 `legacy_linear=true`。
 
 - 任务有子任务分解、依赖、并行、委派或重规划时，继续使用 HTN 任务网络表达结构与状态。
 - 仅当用户明确要求线性步骤，或恢复已有旧版线性任务时，使用 `init_progress` → `update_step`；恢复时先 `get_progress`，再按原数据模式继续，不要求把旧状态迁移成网络。需要按步骤显示执行者、模型和思考强度时，在启动步骤的 `update_step` 调用中附上 `assignment`。
@@ -295,12 +295,13 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 ## 展示、恢复与清理
 
-`init_task_network` 与 `init_progress` 只返回身份与状态小回执，不触发展示。只有用户明确要看面板或需要展示时，主会话调用一次 `render_progress`；面板通过 app-only 读取独立加载完整视图，默认显示在会话内。同一会话的新任务复用原会话 ID；已打开的视图通过轮询读取最新任务。只有用户将面板切换到 fullscreen 标签页时，会话内卡片才隐藏；标签页关闭后卡片恢复。普通状态更新、读取和后台轮询不得调用展示入口。恢复任务时按需要先 `get_progress` 读取状态。子智能体若在主会话任务树中执行，只更新获派节点，不调用展示入口，不另开主会话面板。纯文本客户端没有交互面板时，按需显式查询并简洁汇报。不要手工拼接假进度，或把任务卡片描述成日志面板。
+`init_task_network` 与 `init_progress` 只返回身份与状态小回执，不触发展示。主会话首次创建任务并完成粗规划后调用一次 `render_progress`，自动请求进度页；用户明确要求重开时再调用。面板通过 app-only 读取独立加载视图，资源首选 fullscreen，让支持该元数据的宿主在 JavaScript 初始化前选择展示模式；挂载后只消费最新的一次性意图并按宿主能力请求切换。同一会话的新任务复用原会话 ID；已打开的视图通过轮询读取最新任务。fullscreen 标签页打开时会话内卡片隐藏，关闭后恢复；消费过的意图不会因轮询、重挂载或继续任务而再次请求打开。普通状态更新、读取和后台轮询不得调用展示入口。恢复任务时按需要先 `get_progress` 读取状态。子智能体若在主会话任务树中执行，只更新获派节点，不调用展示入口，不另开主会话面板。纯文本客户端没有交互面板时，按需显式查询并简洁汇报。不要手工拼接假进度，或把任务卡片描述成日志面板。
 
 - `session_id` 是 Codex 会话的数据边界；所有读取、更新、渲染、重规划和清理操作显式传入它。本会话内多个任务复用同一个 ID，以 `task_instance_id` 区分任务实例。
 - 每个 Codex 会话使用自己生成并保存的 ID，不能把其他会话的 ID 复制为本会话身份。用户授权的跨会话审查可以读取明确关联的 ID，但不转移任务所有权。其他会话的任务不得阻止本会话初始化。
 - 恢复先调用 overview，再用 context 读取 `task_context` 和分页的 `session_work`，按需读取 tree/tasks；继续原任务或按队列显式激活，不用初始化恢复。若已知 ID 的本会话数据不存在，说明实际情况，确需开始新任务时仍使用该会话 ID 初始化；首次没有已知 ID 时让初始化工具生成并保存。
 - `init_task_network` 的同一次初始化重试可复用稳定的 `request_id`；首次省略 `session_id` 时使用全局唯一键（建议 UUID），收到会话 ID 后可带该 ID 重试。同一任务重规划后重试返回当前计划；绑定任务已归档或清除时旧键会被拒绝，不能用它恢复旧任务或覆盖当前任务。清理任务内容仍保留请求哈希和身份墓碑，以防迟到请求重建已清除任务。
+- 自动展示使用公开的 [OpenAI 资源展示模式](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md#display-modes) 与 [MCP Apps 模式请求](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#display-modes)。宿主未挂载或不支持时保留手动入口；请求成功不等于可见标签页。历史会话没有公开标记，宿主在 JavaScript 前创建的重复页只能在挂载后请求退回 inline，无法保证不短暂出现。旧版无意图结果不自动请求切换。
 - fullscreen 标签页每 10 秒续租；关闭时释放登记，宿主未发 teardown 时租约 35 秒后过期。会话内卡片在标签页打开期间隐藏，关闭后恢复；普通更新只改数据，不应为了刷新卡片重复调用 `render_progress`。不要用清理进度来关闭或重开面板。
 - 任务数据按插件 `session_id` 隔离。当前公开 MCP Apps 上下文未定义“当前会话是历史/归档会话”的状态标志，因此不要声称插件能主动隐藏已经保存的历史会话卡片；若宿主后续提供该标志，应再增加历史会话抑制。
 - `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。

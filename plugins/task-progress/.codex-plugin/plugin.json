@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Task Progress",
     "shortDescription": "开工前规划并跟踪多阶段任务",
-    "longDescription": "Codex hooks 提醒先规划再执行；需宿主信任才生效。服务端校验 HTN 规划、计划分工、派发绑定、提交与独立验收，保存轮次、尝试和证据。写操作仅返回身份状态小回执；get_progress 默认 overview，优先按层 tree、指定 tasks 及分页 records/context/history 查询，明确需要时 full。恢复先查概览与上下文，验收查询指定 submission/evidence，结束前检查全部请求。普通更新和查询不自动展示；用户需要面板时 render_progress 仅返回 bootstrap，App 独立读取，fullscreen 打开时隐藏内嵌卡片、关闭后恢复。子智能体仅更新获派节点；角色元数据为调用方填报。旧消息不追溯缩小，旧 iframe 需重开。",
+    "longDescription": "Codex hooks 提醒先规划再执行；需宿主信任才生效。服务端校验 HTN 规划、计划分工、派发绑定、提交与独立验收，保存轮次、尝试和证据。写操作仅返回身份状态小回执；get_progress 默认 overview，优先按层 tree、指定 tasks 及分页 records/context/history 查询，明确需要时 full。恢复先查概览与上下文，验收查询指定 submission/evidence，结束前检查全部请求。主会话首次粗规划后 render_progress 自动请求进度页，返回 bootstrap 与一次性展示意图；普通更新、查询、恢复和轮询不重复展示，关闭后仅显式重开。资源首选 fullscreen，实际展示由宿主决定，App 独立读取，fullscreen 打开时隐藏内嵌卡片、关闭后恢复。子智能体仅更新获派节点；角色元数据为调用方填报。旧消息不追溯缩小，旧 iframe 需重开。",
     "developerName": "machengling",
     "category": "Productivity",
     "composerIcon": "./assets/task-progress-icon.svg",
