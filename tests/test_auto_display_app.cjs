@@ -139,6 +139,12 @@ async function main() {
       assert.equal(await count(id),id==='unsupported'?0:1);
     }
     cases.push('unsupported, declined, rejected and ack-only responses retain inline and do not retry');
+    const delayed = page.frameLocator('#ack');
+    await delayed.locator('#display-feedback:not(.hidden)').waitFor();
+    await notify('ack','ui/notifications/host-context-changed',{displayMode:'fullscreen'});
+    await delayed.locator('#display-feedback.hidden').waitFor({state:'attached'});
+    assert.equal(await count('ack'),1);
+    cases.push('delayed fullscreen confirmation clears earlier inline fallback feedback');
     const declinedSid = await page.evaluate(()=>audit.config.declined.bootstrap.structuredContent.session_id);
     await page.evaluate(()=>{ audit.config.declined.decline = false; });
     const reopened = await rpc('render_progress',{session_id:declinedSid});

@@ -20,4 +20,6 @@
 
 保持版本 0.2.0。代码提交后的稳定 marketplace 快照、安装缓存、运行目录及原生 transport 核验记录保存在本机 `Task Progress/install-records/<commit前12位>/`；实际标签页检查单独记录。原生 Codex App 自动化访问被安全策略禁止，本轮只使用允许的 MCP Apps 标签页 DOM 接口，不绕过该限制。
 
+8f5b7b5 安装后通过两路原生 app-server 客户端检查，发现 24 个工具；源码、缓存与运行文件相符，原有任务文档未改变。用户关闭旧页并重新加载插件后，MCP Apps 标签页列表从空变为新页 2，主会话未点击打开按钮；DOM 已显示动态编号和两项顶部字段，最新展示意图已消费并登记为 fullscreen。该回读发现宿主延迟通知后旧 fallback 提示仍存在，随后补一行清理并通过 10 组自动展示回归。最终清单将这处补修与此前 UI 截图的源码身份分别保留；实际记录见 [原生回读](2026-10-28-panel-refinement-evidence/native-visible-before-feedback-fix.json)。
+
 宿主可能在 JavaScript 初始化前创建 fullscreen 页面；重复或历史页面只能挂载后请求退回 inline，不能保证无瞬时出现。已挂载的旧资源不热替换，关闭后重新打开才会加载新版。公开协议没有跨视图 focus/reuse 和历史聊天状态接口。参考 [OpenAI 展示模式](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md#display-modes) 与 [MCP Apps 模式协议](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#display-modes)。

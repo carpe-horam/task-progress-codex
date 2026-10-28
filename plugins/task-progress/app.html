@@ -1988,6 +1988,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
       if (displayMode === 'fullscreen') {
         sourceSuperseded = false;
+        displayFeedback('');
       }
       const card = document.querySelector('.card');
       card.classList.toggle('inline-stale', isInlineStale());
