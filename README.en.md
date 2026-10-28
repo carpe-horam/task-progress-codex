@@ -23,6 +23,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, t
 | --- | --- |
 | **Plan before substantive work** | Session startup and each new prompt receive a planning reminder. Multi-stage work can submit its initial HTN tree in one call, and the server rejects an unplanned empty root from starting. |
 | **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
+| **Delegation and separate acceptance** | Delegate complex work, including sequential handoffs. Preserve planned roles, dispatch bindings, subagent submissions, and main-session reviews separately; pending review blocks dependencies. |
 | **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
 | **Execution and model records** | See the executor and any available model/effort values, with caller-reported and Codex verification status; unknown values are not guessed. |
 | **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
@@ -39,14 +40,19 @@ flowchart LR
     A[Task goal] --> B[Decompose into subtasks]
     B --> C[Check dependencies and ready tasks]
     C --> D[Execute or delegate tasks]
-    D --> E[Record results and evidence]
-    E --> F{Replan?}
+    D --> E[Executor submits results and evidence]
+    E --> R[Main session accepts or rejects]
+    R --> F{Replan?}
     F -- Yes --> G[Save planning round and update task network]
     G --> C
     F -- No --> H[Review and complete]
 ```
 
-The plugin stores the task network, dispatch details, status, results, and evidence. The Codex main session performs the work, creates and coordinates subagents, and reviews their results. Recording a subagent task does not mean the plugin created the subagent.
+Complex analysis, implementation, multi-file changes, specialist validation, and review default to subagents even when execution must be sequential. Give a dependency chain to one agent, or assign file owners and serialize their work. The main session plans, dispatches, coordinates, makes cross-task decisions, and accepts results. Short operations or work that genuinely cannot be handed off may run in the main session with a specific `self_execution_reason` (except an explicitly atomic root).
+
+`planned_assignment` preserves the planned executor; starting an attempt cannot silently change its role. Use `reassign_task` with the main session's reason to change a pending leaf. Dispatch follows **start attempt → spawn subagent → bind the returned ID with `bind_task_agent`**. A subagent submits through `update_task`, producing `awaiting_review`; the main session separately accepts or rejects it through `review_task`. Pending review blocks every dependency policy. Accepting an open result leaves it open. Group/root acceptance requires all direct children resolved, no pending reviews, and a main-session summary with evidence.
+
+The plugin stores plans, dispatches, submissions and reviews and validates workflow transitions. It does not create subagents. Roles, agent IDs, and reviewers are caller-reported; HTTP credentials do not authenticate a particular main session or subagent, and instance/attempt IDs are not authorization credentials. The plugin cannot intercept work through other tools. Missing role or acceptance information in legacy records stays unrecorded. See the [responsibility protocol](docs/responsibility-protocol.md) and [execution workflow](plugins/task-progress/skills/track-progress/SKILL.md).
 
 For long-running work, the skill asks Codex to consider breaking down any individual task that runs for more than 10 minutes. It only creates smaller, independently verifiable tasks when that would improve execution or progress visibility.
 

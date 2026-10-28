@@ -69,7 +69,9 @@ def client(executable, server_name, overrides, index):
         entry = entries[0]
         tools = entry.get("tools", {})
         names = list(tools) if isinstance(tools, dict) else [tool["name"] for tool in tools]
-        assert any(name.endswith("get_progress") for name in names), {"server": entry.get("name"), "tool_count": len(names), "error": entry.get("error")}
+        required = {"get_progress", "reassign_task", "bind_task_agent", "review_task"}
+        missing = [name for name in required if not any(discovered.endswith(name) for discovered in names)]
+        assert not missing, {"server": entry.get("name"), "tool_count": len(names), "missing": missing, "error": entry.get("error")}
         resource = rpc(3, "mcpServer/resource/read", {"server": server_name, "uri": "ui://task-progress/progress-inspector/v3"})
         # App-server returns the MCP resource response directly or in contents.
         assert "__TASK_PROGRESS_VERSION__" not in json.dumps(resource)

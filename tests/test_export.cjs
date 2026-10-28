@@ -15,7 +15,7 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
 python.stderr.on('data',b=>process.stderr.write(b));
 readline.createInterface({input:python.stdout}).on('line',line=>{const r=JSON.parse(line),p=pending.get(r.id);if(!p)return;pending.delete(r.id);clearTimeout(p.timer);r.error?p.reject(new Error(r.error.message)):p.resolve(r.result);});
 function rpc(name,args){const id=++seq;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(name+' timeout')),5000);pending.set(id,{resolve,reject,timer});python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
-const assignment={execution_mode:'main_session',model:'fixture',reasoning_effort:'high'};
+const assignment={execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation',model:'fixture',reasoning_effort:'high'};
 async function exportSnapshot(snapshot){
  const page=await browser.newPage({viewport:{width:1000,height:900}});page.setDefaultTimeout(5000);await page.exposeFunction('auditRpc',rpc);
  await page.setContent('<iframe id="app" style="width:950px;height:850px"></iframe>');

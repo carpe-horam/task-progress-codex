@@ -37,13 +37,16 @@ class TaskStartupContractTests(unittest.TestCase):
 
     def test_initial_task_tree_is_ready_as_one_atomic_init(self):
         tasks = [
-            {"id": "inspect", "title": "Inspect", "assignment": {"execution_mode": "main_session"}},
-            {"id": "implement", "title": "Implement", "assignment": {"execution_mode": "main_session"}},
+            {"id": "inspect", "title": "Inspect", "assignment": {"execution_mode": "subagent", "complexity": "complex"}},
+            {"id": "implement", "title": "Implement", "depends_on": ["inspect"],
+             "assignment": {"execution_mode": "subagent", "complexity": "complex"}},
         ]
         result = server.init_task_network("Multi-stage work", tasks=tasks, request_id="request-1")
         progress = result["structuredContent"]["progress"]
         self.assertEqual(progress["planning_status"], "planned")
-        self.assertEqual(progress["ready_tasks"], ["inspect", "implement"])
+        self.assertEqual(progress["ready_tasks"], ["inspect"])
+        implement = next(node for node in progress["nodes"] if node["id"] == "implement")
+        self.assertEqual(implement["planned_assignment"]["execution_mode"], "subagent")
 
     def test_legacy_two_call_initialization_unlocks_only_after_decomposition(self):
         result = server.init_task_network("Two-call plan")

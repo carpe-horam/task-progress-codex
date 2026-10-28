@@ -1,0 +1,393 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "主会话验收决定已独立记录；原始执行提交保持不变。"
+    }
+  ],
+  "structuredContent": {
+    "progress": {
+      "schema_version": 2,
+      "state_revision": 9,
+      "session_id": "b293b3cc-d65f-4d69-8150-2a59fac387e1",
+      "task_instance_id": "8cd247d1-eeb3-4a77-bbf8-be302ce0dcd2",
+      "task_history": [],
+      "task_title": "Responsibility acceptance and retry",
+      "main_session": null,
+      "planning_status": "planned",
+      "planning_note": "",
+      "status": "pending",
+      "root_status": "blocked",
+      "completed": 1,
+      "total": 2,
+      "percent": 50,
+      "resolved_leaf_count": 0,
+      "open_leaf_count": 1,
+      "failed_leaf_count": 0,
+      "ready_count": 0,
+      "executing_count": 0,
+      "pending_review_count": 0,
+      "split_review_due": [],
+      "blocked_count": 1,
+      "epoch": 0,
+      "revision": 8,
+      "root_id": "root",
+      "created_at": "2026-10-28T09:04:08+08:00",
+      "updated_at": "2026-10-28T09:04:10+08:00",
+      "nodes": [
+        {
+          "id": "root",
+          "title": "Responsibility acceptance and retry",
+          "parent_id": null,
+          "children": [
+            "worker",
+            "consumer"
+          ],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "pending",
+          "outcome": null,
+          "summary": "",
+          "evidence": [],
+          "assignment": {},
+          "planned_assignment": {
+            "execution_mode": "main_session"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": null,
+          "submission": null,
+          "review": null,
+          "review_status": null,
+          "profile": null,
+          "attempt": 0,
+          "attempt_id": null,
+          "attempts": [],
+          "started_at": null,
+          "finished_at": null,
+          "responsibility_legacy": false,
+          "status": "blocked",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "worker",
+          "title": "Complex worker",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "finished",
+          "outcome": "open",
+          "summary": "WORKER_SUBMISSION_SUMMARY",
+          "evidence": [
+            "WORKER_SUBMISSION_EVIDENCE"
+          ],
+          "assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Implement the isolated fixture and report its evidence.",
+            "model": "fixture-model",
+            "execution_mode": "subagent",
+            "complexity": "complex",
+            "reasoning_effort": "high",
+            "fork_turns": "none",
+            "metadata_provenance": {
+              "source": "mcp_tool_input",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "mcp_tool_input",
+              "reasoning_effort_source": "mcp_tool_input",
+              "captured_at": "2026-10-28T09:04:10+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "planned_assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Implement the isolated fixture and report its evidence.",
+            "model": "fixture-model",
+            "execution_mode": "subagent",
+            "complexity": "complex",
+            "reasoning_effort": "high",
+            "fork_turns": "none"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": {
+            "status": "bound",
+            "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+            "agent_name": "fixture-agent-actual-42",
+            "bound_at": "2026-10-28T09:04:10+08:00",
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Implement the isolated fixture and report its evidence.",
+            "verification": "not_verified_by_codex_host",
+            "source": "mcp_tool_input"
+          },
+          "submission": {
+            "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+            "outcome": "open",
+            "summary": "WORKER_SUBMISSION_SUMMARY",
+            "evidence": [
+              "WORKER_SUBMISSION_EVIDENCE"
+            ],
+            "submitted_at": "2026-10-28T09:04:10+08:00"
+          },
+          "review": {
+            "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+            "decision": "accept",
+            "summary": "MAIN_REVIEW_accept",
+            "evidence": [
+              "MAIN_REVIEW_EVIDENCE_accept"
+            ],
+            "reviewer": {
+              "self_execution_reason": "Short isolated fixture operation and main-session acceptance",
+              "execution_mode": "main_session",
+              "metadata_provenance": {
+                "source": "unknown",
+                "verification": "not_verified_by_codex_host",
+                "model_source": "unknown",
+                "reasoning_effort_source": "unknown",
+                "captured_at": "2026-10-28T09:04:10+08:00",
+                "scope": "submission_review"
+              }
+            },
+            "reviewed_at": "2026-10-28T09:04:10+08:00"
+          },
+          "review_status": "accepted",
+          "profile": null,
+          "attempt": 2,
+          "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "e0fdb76e-4ec6-4355-8f14-2e627310d4d9",
+              "kind": "execution",
+              "execution_status": "finished",
+              "outcome": "open",
+              "summary": "WORKER_SUBMISSION_SUMMARY",
+              "evidence": [
+                "WORKER_SUBMISSION_EVIDENCE"
+              ],
+              "started_at": "2026-10-28T09:04:08+08:00",
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "complexity": "complex",
+                "reasoning_effort": "high",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T09:04:08+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "complexity": "complex",
+                "reasoning_effort": "high",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "e0fdb76e-4ec6-4355-8f14-2e627310d4d9",
+                "agent_name": "fixture-agent-actual-42",
+                "bound_at": "2026-10-28T09:04:08+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "finished_at": "2026-10-28T09:04:08+08:00",
+              "submission": {
+                "attempt_id": "e0fdb76e-4ec6-4355-8f14-2e627310d4d9",
+                "outcome": "resolved",
+                "summary": "WORKER_SUBMISSION_SUMMARY",
+                "evidence": [
+                  "WORKER_SUBMISSION_EVIDENCE"
+                ],
+                "submitted_at": "2026-10-28T09:04:08+08:00"
+              },
+              "review": {
+                "attempt_id": "e0fdb76e-4ec6-4355-8f14-2e627310d4d9",
+                "decision": "reject",
+                "summary": "MAIN_REVIEW_reject",
+                "evidence": [
+                  "MAIN_REVIEW_EVIDENCE_reject"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Short isolated fixture operation and main-session acceptance",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T09:04:09+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T09:04:09+08:00"
+              },
+              "review_status": "rejected"
+            },
+            {
+              "attempt": 2,
+              "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+              "kind": "execution",
+              "execution_status": "finished",
+              "outcome": "open",
+              "summary": "WORKER_SUBMISSION_SUMMARY",
+              "evidence": [
+                "WORKER_SUBMISSION_EVIDENCE"
+              ],
+              "started_at": "2026-10-28T09:04:10+08:00",
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "complexity": "complex",
+                "reasoning_effort": "high",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T09:04:10+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "complexity": "complex",
+                "reasoning_effort": "high",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+                "agent_name": "fixture-agent-actual-42",
+                "bound_at": "2026-10-28T09:04:10+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Implement the isolated fixture and report its evidence.",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "finished_at": "2026-10-28T09:04:10+08:00",
+              "submission": {
+                "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+                "outcome": "open",
+                "summary": "WORKER_SUBMISSION_SUMMARY",
+                "evidence": [
+                  "WORKER_SUBMISSION_EVIDENCE"
+                ],
+                "submitted_at": "2026-10-28T09:04:10+08:00"
+              },
+              "review": {
+                "attempt_id": "4390cc0e-9db8-46e2-a4d0-5ed1366efa84",
+                "decision": "accept",
+                "summary": "MAIN_REVIEW_accept",
+                "evidence": [
+                  "MAIN_REVIEW_EVIDENCE_accept"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Short isolated fixture operation and main-session acceptance",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T09:04:10+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T09:04:10+08:00"
+              },
+              "review_status": "accepted"
+            }
+          ],
+          "started_at": "2026-10-28T09:04:10+08:00",
+          "finished_at": "2026-10-28T09:04:10+08:00",
+          "responsibility_legacy": false,
+          "status": "open",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "consumer",
+          "title": "Main integration",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [
+            "worker"
+          ],
+          "dependency_policy": "resolved",
+          "execution_status": "pending",
+          "outcome": null,
+          "summary": "",
+          "evidence": [],
+          "assignment": {},
+          "planned_assignment": {
+            "self_execution_reason": "Short isolated fixture operation and main-session acceptance",
+            "execution_mode": "main_session"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": null,
+          "submission": null,
+          "review": null,
+          "review_status": null,
+          "profile": null,
+          "attempt": 0,
+          "attempt_id": null,
+          "attempts": [],
+          "started_at": null,
+          "finished_at": null,
+          "responsibility_legacy": false,
+          "status": "blocked",
+          "ready": false,
+          "blocked_by": [
+            "worker"
+          ],
+          "dependencies": [
+            {
+              "id": "worker",
+              "title": "Complex worker",
+              "execution_status": "finished",
+              "outcome": "open",
+              "summary": "WORKER_SUBMISSION_SUMMARY",
+              "evidence": [
+                "WORKER_SUBMISSION_EVIDENCE"
+              ],
+              "dependency_policy": "resolved",
+              "inherited_from": null
+            }
+          ]
+        }
+      ],
+      "ready_tasks": [],
+      "next_actions": [
+        "检查阻塞依赖和未解决结果；显式重试或重规划，不能启动空的 ready 列表。"
+      ],
+      "history": []
+    },
+    "session_id": "b293b3cc-d65f-4d69-8150-2a59fac387e1",
+    "state_revision": 9,
+    "view_sequence": 9
+  }
+}

@@ -53,24 +53,25 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 - **切换主会话焦点时收束旧尝试。**主会话是单一执行者；开始处理另一个 `main_session` 叶任务前，先判断当前运行中的主会话节点是否仍有真实工作在继续。若只是暂时搁置、准备稍后回来，或主会话已经转去推进兄弟任务，就结束当前 attempt 并标记 `finished/open`，摘要写清已完成部分、剩余工作和恢复条件；恢复时用 `retry=true` 创建新 attempt。只有命令、Dagu/CI 或其他可独立继续的实际工作仍在运行时，才保留 `running`，并在摘要中记录运行 ID、等待结果和下一检查点。不能仅因计划稍后续做，就让主会话节点一直显示 `running`。子智能体的确切执行仍在后台时可保持其节点运行，并注明执行者和等待对象。
 - **等待期间如实留痕。**Dagu、CI、构建或子智能体仍在运行时，节点保持 `running`；摘要记录当前运行 ID、已完成阶段和正在等待的结果。收到有意义的新阶段或终态后再更新，等待中不要反复写没有变化的摘要，也不能把“已排队/仍运行”记成完成。
 - **继续执行前重新锚定。**长时间等待返回、上下文压缩/恢复、用户补充要求后若原目标仍继续时，先 `get_progress` 读取当前任务实例和活动节点，再继续或调整计划。不要因此另建重复根任务；若用户明确开启新目标才调用初始化归档旧任务。
-- **每个执行者只更新自己的节点。**主会话负责同步派发、集成、验收及根节点；子智能体只报告并更新明确分配给它的节点。主会话收到结果后复核证据，再结束该 attempt；未解决、失败或被阻塞时应如实保留 `open`/`failed`/`cancelled`，不能为让卡片变绿而误标完成。
+- **执行提交与接受结果分开。**子智能体只更新获派节点并提交结果；`finished` 上报进入 `awaiting_review`，主会话复核证据后另用 `review_task` 接受或退回。主会话负责派发、协调、验收及根节点。未解决、失败或被阻塞时如实保留 `open`/`failed`/`cancelled`。
 - **汇报简洁但账本完整。**对用户只在关键变化时说明进展，避免重复播报；任务卡片则应保留足以恢复工作的当前动作、阻塞、验证状态和证据路径。
 
 ## 协作原则
 
 ### 主会话与子智能体的职责边界
 
-- **主会话是任务负责人和集成者。**主会话掌握用户目标，负责计划与拆分、选择执行者、创建/等待子智能体、协调依赖和共享工作区、处理跨任务决策、集成结果、运行最终验收、更新根任务并向用户汇报。分组节点的综合验收始终由主会话完成。
-- **子智能体是受委派的执行者。**每个子智能体只负责派发文本中一个边界明确、可独立汇报的叶任务；它可在授权范围内调查、实现或验证，但不接管总计划、不替主会话做跨任务/产品决策、不验收父任务，也不直接更新其他任务节点。完成后向主会话报告改动文件、验证命令及结果、证据和未解决风险，由主会话复核后记录为 resolved/open。
-- **先做执行者分配，再开始工作。**`assignment.execution_mode` 表示该叶任务本次由谁执行（`main_session` 或 `subagent`），不表示谁拥有整个任务。主会话即使自己执行某个叶任务，仍负责根任务统筹；父分组节点不要因为由主会话验收，就把子任务也标成 `main_session`。
-- **默认委派可并行的独立工作。**拆分时至少评估一次是否有两个或更多已 ready、边界清楚、文件归属不冲突的工作项。符合时默认派给一个或多个子智能体并行执行；只有存在强依赖、共享文件冲突、必须连续使用主会话上下文、子任务太小不值得派发，或环境没有可用委派工具时，才留给主会话执行，并在任务摘要中简述原因。依赖链较长但属于同一交付边界时，可把整条链交给同一个子智能体，避免逐个微任务反复交接。
+- **主会话是任务负责人和验收者。**主会话负责目标、计划与拆分、选择和派发执行者、协调依赖与文件归属、跨任务决策、接受或退回结果、综合验收与用户汇报。集成责任包括判断接口和冲突处理方案；复杂集成实现和专门验证仍默认委派。分组/root 的综合验收只能声明 `assignment.execution_mode=main_session`，并提供非空摘要与可复核证据。
+- **子智能体是受委派的执行者。**它可在明确派发范围内深入分析、实现、多文件改动、专门验证或评审，更新获派叶节点并提交结果与证据；不得重分配全局计划、接受自己的结果、验收父/root 或更新兄弟节点。完成报告写明改动文件、验证命令与结果、证据及剩余风险，由主会话单独复核。恢复或 fork 不转移父任务所有权；只沿用明确交接的节点，不另建重复主 root。
+- **先做执行者分配，再开始工作。**`planned_assignment` 保留计划分工，`assignment` 记录当前 attempt；启动不能静默更换 `execution_mode`。pending 叶节点改变分工用 `reassign_task`，由主会话声明 reviewer 并记录具体 reason；运行中先协调停止，已结束任务要改变计划则显式重规划。
+- **复杂工作默认委派，与能否并行无关。**开工规划时按工作性质和验证范围判断：复杂分析、实现、多文件改动、专门验证、独立评审默认由子智能体执行，只有一个 ready 节点或只能串行也适用。依赖链可整体交给同一 agent；共享文件指定单一 owner 并串行交接，不能以“有依赖”“文件冲突”“需要集成/上下文”作为主会话包办的通用理由。多个独立 ready 节点可并行派发。
+- **主会话自执行是明确例外。**短小低风险操作、协调决策与验收可自执行；确实不可交接的复杂工作要记录具体限制（如环境没有可用委派工具及哪些能力无法交接）。在计划和启动的 assignment 中填写非空 `self_execution_reason`，可用 `complexity=simple|complex` 记录判断；已显式记录 `atomic_reason` 的原子 root 除外。失败或修改优先反馈给原 agent；主会话接管必须走显式分工变更，不能以重试偷偷改角色。不要用泛化原因或等执行十分钟后才决定是否委派。
 - **显式记录每个子任务的预期执行者。**调用 `decompose_task` 时，每个子任务都必须提供 `assignment.execution_mode`；明确委派的叶节点设为 `subagent`，由主会话直接执行的叶节点设为 `main_session`。分组节点设为 `main_session`，表示主会话负责该组的协调与综合验收；其子节点仍可分别分配给子智能体。这里记录的是节点的计划执行者，不转移根任务的总负责人职责。准备实际启动时再在 `update_task` 中记录本次 attempt 的派发工具、完整任务文本、模型和思维强度。
 
 开始前明确目标、交付物、约束和验收条件，将工作拆成可检查任务，标明父子关系、依赖、执行者和可并行项。有依赖的任务按顺序推进；独立任务按上述规则分派。主会话负责拆分、派发、协调、集成、验收和维护进度。
 
 每批创建子智能体前，先展示表格，包含：工具标识与中文名称、实际派发的完整任务文本、`fork_turns`、模型和思考强度。统一设置 `fork_turns="none"`，按难度与风险选择当前可用的模型及思考强度。派发文本必须自包含，写清背景、目标、约束、必要路径和验收条件；不要依赖主会话上下文。并行修改须先明确文件归属，并优先复用已有工作区，避免相互覆盖。
 
-插件保存任务与派发记录、计算可执行状态并展示进度；实际创建、联系和等待子智能体由主会话调用环境提供的协作工具完成。记录 assignment 不代表已派发。只在关键状态变化时更新用户可见进度，避免重复播报。
+插件保存任务与派发记录、校验计划角色及状态转换；实际创建、联系和等待子智能体由主会话调用协作工具完成。记录 assignment 不代表已派发。`execution_mode`、reviewer、agent ID 都是调用方声明，HTTP Bearer 仅证明持有服务凭据，不能认证主/子会话身份。attempt/instance ID 防止迟到更新，不是角色授权凭证；插件不能拦截其他工具中的实际工作，也不能保证调用者遵守获派文件边界。旧记录的未认证身份或未记录验收保持未知，不回填虚构接受记录。
 
 每个执行尝试启动时，必须在 `assignment` 中记录 `execution_mode`（`main_session` 或 `subagent`）。当前 MCP server 不会自动识别 Codex 的活动 thread/turn，也没有宿主认证的元数据通道。调用方填写的模型或思维强度会标明“未经 Codex 宿主核验”。主会话值未知时省略未知字段并继续任务，不猜测、不阻塞；子智能体记录本次派发调用明确指定的配置，这代表派发配置，不代表后端执行回执。
 
@@ -79,7 +80,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 1. **优先使用当前 thread/turn 的宿主元数据。**只有 Codex 明确提供且绑定当前会话的值，才可称为宿主提供。`codex_thread_id` / `codex_turn_id` 也必须来自宿主，不能从其他会话或历史记录代填。当前插件尚未接入这条通道。
 2. **区分会话设置、本轮请求和后端执行回执。**当前插件可保存的是调用方报告值，不能验证它是否等于 Codex 活动设置或后端实际执行值。不要把配置文件默认值或子智能体派发值描述成主会话实际运行值。
 3. **不从配置或模型目录推断活动值。**配置文件只能说明默认/项目配置，模型目录只能说明可选模型；除非 Codex 宿主确认它就是当前 thread/turn 的有效值，否则不填入活动设置字段。
-4. **允许部分值未知。**初始化时可传单独已知的字段，例如 `main_session: {"model":"<宿主明确提供的模型>"}`；未知字段省略。两项都未知时可省略整个对象。主会话启动任务时只需 `execution_mode: "main_session"`，不因缺少可选元数据阻塞工作。
+4. **允许部分值未知。**初始化时可传单独已知字段，例如 `main_session: {"model":"<宿主明确提供的模型>"}`；未知字段省略。两项都未知时可省略整个对象。主会话启动叶任务仍需 `execution_mode: "main_session"` 与具体 `self_execution_reason`（原子 root 例外），不因缺少可选模型元数据阻塞工作。
 5. **每次 attempt 单独记录。**不要从初始化快照复制模型/思维强度到后续 attempt。值若未在本轮获得，记录未知；切换后新 attempt 使用新获得的值，不回写旧记录。
 
 正确的初始化形态（仅在两个值都已核实时传入；尖括号内容必须替换为本会话实值）：
@@ -103,16 +104,18 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 本会话已有 ID 时，调用 `init_task_network` 并传入 `session_id` 与 `task_title`，保存响应的 `session_id`、`task_instance_id`、`epoch` 和 `root_id`。只附加当前上下文明确提供的 `main_session` 字段；未知字段省略，不要用配置猜测。首次初始化尚无 `session_id` 时可省略该参数；后续开始新任务复用同一 ID，并保存新返回的 `task_instance_id`。用返回的根 ID 分解；以下以首轮 `root` 为例：
 
+<!-- delegation-example:plan -->
 ```json
 {
   "session_id": "<本会话 ID>",
   "task_instance_id": "<当前任务实例 ID>",
   "task_id": "root",
   "tasks": [
-    {"id":"inspect","title":"确认根因","assignment":{"execution_mode":"subagent"}},
+    {"id":"inspect","title":"深入调查并确认根因","assignment":{"execution_mode":"subagent","complexity":"complex"}},
     {"id":"assets","title":"整理独立素材","assignment":{"execution_mode":"subagent"}},
-    {"id":"fix","title":"实施并集成修复","depends_on":["inspect"],"assignment":{"execution_mode":"main_session"}},
-    {"id":"accept","title":"验收结果","depends_on":["fix","assets"],"assignment":{"execution_mode":"main_session"}}
+    {"id":"fix","title":"实施修复及跨文件集成","depends_on":["inspect"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
+    {"id":"verify","title":"专门回归验证","depends_on":["fix"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
+    {"id":"accept","title":"判断交付是否满足目标","depends_on":["verify","assets"],"assignment":{"execution_mode":"main_session","complexity":"simple","self_execution_reason":"主会话汇总已复核证据并做最终交付决策"}}
   ]
 }
 ```
@@ -121,16 +124,19 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 分解 `running` 节点时，先协调旧执行者停止或移交工作，再在 `decompose_task` 中传入它的当前 `attempt_id`。插件会将该尝试以 `cancelled` 归档，保留配置、摘要、证据和时间；节点转为等待子任务的分组，原 `attempt_id` 不再有效。插件不会实际停止子智能体或进程。若分解被拒绝，原尝试保持不变。不要先把节点设为终态再调用分解，因为终态节点不能追加子任务。
 
-`depends_on` 描述前驱。默认 `dependency_policy="resolved"`，仅当前驱 `execution_status="finished"` 且 `outcome="resolved"` 才放行。显式设置 `dependency_policy="finished"` 时，前驱结束即可放行，包括 `finished/open`、`failed` 和 `cancelled`；仅在下游能够处理未解决结果时使用。主会话须将前驱的摘要和证据传给下游，不能把放行当作问题已解决。
+`depends_on` 描述前驱。默认 `dependency_policy="resolved"`，仅前驱已接受且 `outcome="resolved"`（或主会话直接完成）才放行。子智能体提交后尚待 review 时，包括显式 `dependency_policy="finished"` 的下游也必须等待。`finished` 策略允许已复核的 `finished/open`、`failed`、`cancelled`，仅在下游能处理未解决结果时使用；主会话传递前驱摘要和证据，不能把放行当作已解决。
 
 分组节点的依赖约束也适用于其全部后代，并沿用声明该依赖的节点的 `dependency_policy`；子节点自己的策略不能放宽祖先约束。ready 任务的 `dependencies` 包含继承的前驱结果与 `inherited_from`。不得让子任务依赖其祖先，或创建跨分组的完成等待环。
 
 ### 2. 获取 ready 任务并实际派发
 
-每次调用实际的 `collaboration.spawn_agent` 前，先调用 `decompose_task` 将该子智能体的任务挂到对应父任务下；在子任务对象中写入 `execution_mode="subagent"`。然后调用 `get_ready_tasks({"session_id":"<本会话 ID>"})`，只从返回的 ready 叶任务中派发。同批独立任务默认并行；尚未 ready 的任务不能启动。若评估后决定不委派可并行工作，在主会话任务摘要中写明原因。Task Progress 只保存树和 assignment，不会自动创建或调用子智能体。
+实际调用 `collaboration.spawn_agent` 前，先将任务挂到父节点、分配 `subagent`，再调用 `get_ready_tasks`；只启动 ready 叶节点。复杂工作即使只能串行仍委派，同一依赖链可顺序交给同一 agent；共享文件明确 owner 并串行交接。Task Progress 不会自动创建子智能体。
 
-派发前按协作原则展示表格。先用 `update_task` 开始对应子任务并记录派发信息、保存 `attempt_id`，再调用实际协作工具；这样派发失败也能在对应树节点如实记录。每次新 attempt 的 assignment 是不可变快照；同一 attempt 后续更新不要传入不同 assignment。重试时必须传入新的完整 assignment，插件会用它替换旧 attempt 的字段。示例：
+**顺序是 start → spawn → bind。**派发前展示协作表格，先用 `update_task` 开始 attempt，保存返回的 `attempt_id`，再调用真实协作工具。新 subagent attempt 要有非空 `tool_identifier`、完整 `dispatch_text`、模型及思考强度。agent ID 尚未返回时省略 `agent_name`，不得填虚构占位 ID；不可变 assignment 与可补充的 dispatch 绑定分开保存。
 
+调用 `update_task`（启动示例）：
+
+<!-- delegation-example:start -->
 ```json
 {
   "session_id":"<本会话 ID>",
@@ -139,26 +145,54 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
   "execution_status":"running",
   "assignment":{
     "execution_mode":"subagent",
+    "complexity":"complex",
     "tool_identifier":"collaboration.spawn_agent",
     "tool_name":"创建子智能体",
-    "dispatch_text":"背景：……；目标：……；约束：……；路径：……；验收条件：……",
+    "dispatch_text":"背景：既有问题需要深入调查；目标：确认根因并提供证据；约束：只读获派模块，不改兄弟节点或父计划；路径：派发时列明相关模块；验收：报告根因、证据及剩余风险，并向获派节点提交结果。",
     "fork_turns":"none",
     "model":"<实际模型>",
     "reasoning_effort":"medium",
-    "agent_name":"<实际返回的子智能体标识>",
     "batch":"batch-1"
   }
 }
 ```
 
-主会话直接执行时至少标记 `"assignment":{"execution_mode":"main_session"}`。仅附加当前上下文明确提供的模型、思维强度、thread ID 和 turn ID；插件会标记这些入参未经 Codex 宿主核验。未知时不要填占位符。
+将 task/instance/attempt ID 和范围交给真实 `collaboration.spawn_agent`；返回实际 ID 后调用 `bind_task_agent`：
 
-保存响应中该节点的新 `attempt_id`。执行中的后续更新和结束上报必须传入这个 ID。派发失败也应如实记录失败与证据，不得把记录成功视为实际执行成功。
+<!-- delegation-example:bind -->
+```json
+{
+  "session_id":"<本会话 ID>",
+  "task_instance_id":"<当前任务实例 ID>",
+  "task_id":"inspect",
+  "attempt_id":"<当前尝试 ID>",
+  "agent_name":"<实际返回的子智能体标识>"
+}
+```
 
-### 3. 验收与记录结果
+绑定相同 ID 可安全重试，不同 ID 或过期 attempt 会被拒绝；已知实际 agent ID 的 follow-up 可在启动时绑定。新 attempt 未绑定前不能提交 finished；spawn 失败则用当前 attempt 上报 `failed`/`cancelled` 并记录原因，不能伪造 ID 或重开虚假 attempt 来补字段。旧 in-flight 无绑定记录可兼容收尾，但显示 legacy/unbound，提交后仍须复核。
 
-主会话验收子智能体返回内容，再调用 `update_task`：
+主会话直接执行叶任务时在计划和启动中给出 `self_execution_reason`，例如 `{"execution_mode":"main_session","complexity":"simple","self_execution_reason":"仅需调整一处已确认文案，交接成本高于该短小操作"}`。模型等未知字段省略。每个 attempt 的 assignment 不可变，后续更新不以改写 assignment 来补绑定或接管。
 
+改变 pending 叶任务分工，调用 `reassign_task`，例如：
+
+<!-- delegation-example:reassign -->
+```json
+{
+  "session_id":"<本会话 ID>",
+  "task_instance_id":"<当前任务实例 ID>",
+  "task_id":"assets",
+  "assignment":{"execution_mode":"main_session","complexity":"simple","self_execution_reason":"素材已整理完毕，仅需主会话确认一个本地路径，交接成本高于该短小操作"},
+  "reason":"范围缩小为确认一个本地路径，由主会话显式接管短小操作",
+  "reviewer":{"execution_mode":"main_session"}
+}
+```
+
+### 3. 提交、复核与综合验收
+
+子智能体用 `update_task` 提交其获派叶节点的结果（主会话也可代转原始报告，但不能省略独立复核）：
+
+<!-- delegation-example:submit -->
 ```json
 {
   "session_id":"<本会话 ID>",
@@ -167,24 +201,42 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
   "attempt_id":"<当前尝试 ID>",
   "execution_status":"finished",
   "outcome":"resolved",
-  "summary":"已确认根因，满足本任务验收条件。",
+  "summary":"已确认根因，提交报告供主会话复核。",
   "evidence":["<文件路径、报告或可复核的结果链接>"]
 }
 ```
 
-`pending` 仅是新节点的初始状态，`update_task` 不接受 `pending`。更新时 `execution_status` 可为 `running`、`finished`、`failed`、`cancelled`。只有 `finished` 使用且必须明确给出 `outcome`：`resolved` 表示验收通过，`open` 表示执行结束但问题仍未解决。失败或取消时同样记录 `summary` 和 `evidence`。不要仅因智能体结束或命令退出就标为 resolved。
+此调用保存原始 `submission`，节点为 `execution_status=finished`、`outcome=null`、`review_status=pending`，显示 `awaiting_review`。执行结束计数可以增加，已解决计数和依赖不得提前放行。不能用通用 `update_task` 覆盖待验收提交、直接接受或跳过 review 重试。
 
-结果更新后再次 `get_ready_tasks` 推进后继。`finished` 策略放行的未解决前驱会在响应中携带摘要和证据；将这些内容纳入实际派发文本。
+主会话对照范围、文件、验证及风险复核后调用 `review_task`：
 
-分组任务由子任务执行，不能直接标 running。其直接子任务都结束后，主会话才可提交父任务的综合验收结果；逐层验收到根任务。叶任务结束百分比达到 100% 只表示执行已结束，仍须检查 open、failed、cancelled 和根任务验收结果。
+<!-- delegation-example:review -->
+```json
+{
+  "session_id":"<本会话 ID>",
+  "task_instance_id":"<当前任务实例 ID>",
+  "task_id":"inspect",
+  "attempt_id":"<当前尝试 ID>",
+  "decision":"accept",
+  "summary":"已复核报告与证据，接受本次调查结果。",
+  "evidence":["<主会话复核的证据或验证结果>"],
+  "reviewer":{"execution_mode":"main_session"}
+}
+```
 
-父任务综合验收须附上本次主会话的 `assignment` 并标记 `execution_mode`；模型/思维强度未知时允许省略。服务端为验收建立独立的 `kind="synthesis"` attempt，并保存调用方报告与采集时间；无需先设为 running。取消或失败收尾会记录为 `kind="group_termination"`，不代表综合验收通过。叶任务必须先启动并创建执行尝试，再报告 `finished/resolved`。没有当前运行尝试的父任务，不要传先前已失效的 `attempt_id`。
+`decision=accept` 采用提交的原始 outcome，不能把 open 升级成 resolved；`reject` 保存退回理由和证据，节点为 `finished/open`，将具体修改反馈给原 agent，再依计划重试或重规划。两种决策都须非空 summary/evidence，绑定当前待复核 attempt；旧 attempt 或冲突的重复复核被拒绝。review 另存，不能覆盖执行配置、submission 或派发回执。
 
-前置任务失败、取消或结束但未解决时，先结束/取消实际无法继续的子任务。分组的直接子任务全部结束后，可提交 `finished/open`，同时提供完整 assignment 和说明原因的 summary；前置依赖也必须已经结束。若主动终止分组，可在直接子任务全部结束后提交 `cancelled` 或 `failed`，同样必须提供完整 assignment 与非空 summary。`finished/resolved` 仍要求前置依赖满足。分组状态更新不会停止外部执行者，须先实际协调停止。
+继续执行时对照 `next_actions` 和实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
+
+`pending` 是新节点初始状态，`update_task` 不接受 pending。叶任务必须先启动再完成；只有 `finished` 须传 `outcome=resolved|open`。主会话自执行叶任务可直接结束，但要保留自执行原因。失败/取消也记录 summary/evidence。结果复核后再次 `get_ready_tasks`，将未解决前驱的证据传给能够处理它的后继。
+
+分组/root 不直接 running，只能由主会话综合验收。所有直接子任务必须已解决且无待复核项，才可提交 `finished/resolved`；需要非空 summary/evidence 和 `assignment.execution_mode=main_session`，模型未知可省略。服务端另建 `kind=synthesis` attempt；叶节点结束百分比 100% 不代表整体完成。
+
+存在 open/failed/cancelled 子结果时，先处理、重试或重规划；也可在子任务均结束后如实以 `finished/open`、`failed` 或 `cancelled` 收尾，并说明证据和剩余工作，不能把未解决子结果静默视为 resolved。取消/失败保存 `kind=group_termination`，不会停止外部执行者，须先协调停止。没有运行 attempt 的分组不传旧的 attempt ID。旧的已完成/已归档记录保持可读，不虚构历史验收。
 
 ### 4. 重试与新一轮规划
 
-- 重试已结束叶任务：`update_task` 传 `execution_status="running", retry=true`，保存新的 `attempt_id`；旧尝试的迟到上报不能覆盖当前尝试。
+- 重试已结束叶任务：先处理待复核提交，再用 `update_task` 传 `execution_status="running", retry=true` 及新的完整 assignment，执行角色须与保留的计划一致，保存新 `attempt_id` 并完成新的派发绑定；旧 submission/review 留在历史，当前 review 清空。旧尝试的迟到上报不能覆盖当前尝试。
 - 每次重试都重新检查自身及祖先的依赖。如果有运行中的直接或传递下游仍依赖本次重试将使其失效的结果，先协调结束这些尝试，不能让旧下游与新上游并行。成功重试会使已结束的消费者（含依赖分组的后代）及其祖先验收失效，保留历史结果和 attempts，并恢复为 pending、标记 invalidated_by。再次读取 ready 列表，按依赖顺序重新执行或验收；旧 attempt_id 不再能更新这些节点。这里的状态失效不表示已实际派发重跑。
 - 需要调整任务网络：先核实并结束所有 running 尝试，再调用 `rebuild_task_network({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","reason":"<重规划原因>"})`。
 - 重建会将当前计划轮次保存到当前任务的 `history`，递增 `epoch` 并返回新的 `root_id`；`task_instance_id` 不变，这仍是同一个任务。必须使用实际返回的 `root_id`，不要推算其名称。用当前任务实例尚未使用过的任务 ID 重新分解；同一 `task_instance_id` 的重规划轮次不能复用节点 ID。不要继续使用旧轮次的 root/task ID。
@@ -221,7 +273,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 - fullscreen 标签页每 10 秒续租；关闭时释放登记，宿主未发 teardown 时租约 35 秒后过期。会话内卡片在标签页打开期间隐藏，关闭后恢复；普通更新只改数据，不应为了刷新卡片重复调用 `render_progress`。不要用清理进度来关闭或重开面板。
 - 任务数据按插件 `session_id` 隔离。当前公开 MCP Apps 上下文未定义“当前会话是历史/归档会话”的状态标志，因此不要声称插件能主动隐藏已经保存的历史会话卡片；若宿主后续提供该标志，应再增加历史会话抑制。
 - `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。
-- 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度；清空后首次及后续新任务的写操作都必须传当前 `task_instance_id`，以拒绝清空前不带实例 ID 的迟到请求。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。
+- 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`bind_task_agent`、`review_task`、`reassign_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度；清空后首次及后续新任务的写操作都必须传当前 `task_instance_id`，以拒绝清空前不带实例 ID 的迟到请求。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。
 - 完成后读取并确认最终状态，在最终回复说明结果及未解决项。任务完成、开始新任务或关闭视图都不触发清理；未归档 Codex 会话的当前任务、历史、计划与证据必须保留。如需继续新任务，直接用同一 `session_id` 初始化。
 - `clear_progress` 仅用于已归档 Codex 会话的全量数据清理。当前插件没有 Codex 归档事件或归档状态与插件 `session_id` 的可信映射，不能自行确认某个会话已归档，也不会自动响应归档。仅有插件 ID、任务完成状态、`task_history` 或用户提出删除请求，都不构成已归档依据。用户明确要求清理时，按 [cleanup-task-progress-history](../cleanup-task-progress-history/SKILL.md) 核对用户或宿主提供的明确归档依据、目标插件 ID、保留期限与删除范围；归档状态或对应关系无法确认就不调用清理工具。
 - `clear_progress({"session_id":"<已确认归档会话的插件 ID>"})` 会清除该 ID 下的当前任务与 `task_history`，不支持仅删除某个历史任务。不要迁移或删除旧版全局状态，也不要扩大到其他未明确指定且未确认归档的会话。

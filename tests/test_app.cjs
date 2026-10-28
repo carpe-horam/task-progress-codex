@@ -29,7 +29,7 @@ function rpc(name, args) {
   const id = ++seq;
   return new Promise((resolve,reject) => { pending.set(id,{resolve,reject}); python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n'); });
 }
-const fixtureAssignment = {execution_mode:'main_session',model:'audit-fixture',reasoning_effort:'high'};
+const fixtureAssignment = {execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation',model:'audit-fixture',reasoning_effort:'high'};
 const record = (name,category,observed) => results.push({case:name,category,observed});
 
 async function main() {
@@ -88,7 +88,7 @@ async function main() {
 
   let initial=await rpc('init_task_network',{task_title:'浏览器隔离检查',main_session:{model:'audit-fixture',reasoning_effort:'high'}});
   const sid=initial.structuredContent.session_id;
-  initial=await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'处理 <script>文本 & 中文 😀',assignment:{execution_mode:'main_session'}},{id:'b',title:'验证',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
+  initial=await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'处理 <script>文本 & 中文 😀',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}},{id:'b',title:'验证',depends_on:['a'],assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}}]});
   const card=await mount('current',initial,'fullscreen');
   if (!await card.locator('details[data-key$=":root"]').evaluate(e=>e.open)) await card.locator('details[data-key$=":root"] > summary').click();
   assert.equal(await card.locator('.step-title').count(),3);
@@ -142,16 +142,16 @@ async function main() {
 
   const bAttempt=bRunning.structuredContent.progress.nodes.find(n=>n.id==='b').attempt_id;
   await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'finished',outcome:'resolved',attempt_id:bAttempt});
-  await rpc('update_task',{session_id:sid,task_id:'root',execution_status:'finished',outcome:'resolved',assignment:fixtureAssignment});
+  await rpc('update_task',{session_id:sid,task_id:'root',execution_status:'finished',outcome:'resolved',summary:'Browser fixture children verified',evidence:['isolated-browser-fixture'],assignment:fixtureAssignment});
   await rpc('rebuild_task_network',{session_id:sid,reason:'Fixture second plan'});
-  await rpc('decompose_task',{session_id:sid,task_id:'root-e1',tasks:[{id:'c',title:'第二轮任务',assignment:{execution_mode:'main_session'}}]});
+  await rpc('decompose_task',{session_id:sid,task_id:'root-e1',tasks:[{id:'c',title:'第二轮任务',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}}]});
   let cRunning=await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'running',assignment:{...fixtureAssignment,dispatch_text:'First attempt line 1\nFirst attempt line 2'}});
   let cAttempt=cRunning.structuredContent.progress.nodes.find(n=>n.id==='c').attempt_id;
   await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'failed',attempt_id:cAttempt,summary:'Fixture failure'});
   cRunning=await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'running',retry:true,assignment:fixtureAssignment});
   cAttempt=cRunning.structuredContent.progress.nodes.find(n=>n.id==='c').attempt_id;
   await rpc('update_task',{session_id:sid,task_id:'c',execution_status:'finished',outcome:'resolved',attempt_id:cAttempt});
-  await rpc('update_task',{session_id:sid,task_id:'root-e1',execution_status:'finished',outcome:'resolved',assignment:fixtureAssignment});
+  await rpc('update_task',{session_id:sid,task_id:'root-e1',execution_status:'finished',outcome:'resolved',summary:'Browser fixture children verified',evidence:['isolated-browser-fixture'],assignment:fixtureAssignment});
 
   // Cross-task late notifications cannot restore an archived task.
   const next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
@@ -205,8 +205,8 @@ async function main() {
   // Raw plan history must retain inherited dependencies in the UI and exports.
   const inheritedInit=await rpc('init_task_network',{task_title:'继承依赖检查'});
   const inheritedSid=inheritedInit.structuredContent.session_id;
-  await rpc('decompose_task',{session_id:inheritedSid,task_id:'root',tasks:[{id:'a',title:'前置 A',assignment:{execution_mode:'main_session'}},{id:'g',title:'分组 G',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
-  const inheritedSnapshot=await rpc('decompose_task',{session_id:inheritedSid,task_id:'g',tasks:[{id:'h',title:'继承依赖 H',assignment:{execution_mode:'main_session'}}]});
+  await rpc('decompose_task',{session_id:inheritedSid,task_id:'root',tasks:[{id:'a',title:'前置 A',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}},{id:'g',title:'分组 G',depends_on:['a'],assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}}]});
+  const inheritedSnapshot=await rpc('decompose_task',{session_id:inheritedSid,task_id:'g',tasks:[{id:'h',title:'继承依赖 H',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}}]});
   const inheritedCard=await mount('inherited',inheritedSnapshot,'fullscreen');
   const replan=await rpc('rebuild_task_network',{session_id:inheritedSid,reason:'Validate raw history'});
   await notify('inherited',replan);

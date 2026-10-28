@@ -23,7 +23,7 @@ class HookRuntimeTests(unittest.TestCase):
         self.empty_path.mkdir()
         self.hooks = json.loads((self.plugin / "hooks" / "hooks.json").read_text())["hooks"]
 
-    def invoke(self, event, runtime_variable):
+    def invoke(self, event, runtime_variable, source="startup"):
         env = dict(os.environ)
         env.update({"PATH": str(self.empty_path), "PLUGIN_ROOT": str(self.plugin),
                     "CODEX_MCP_PYTHON_PATH": "", "CODEX_PYTHON_PATH": ""})
@@ -31,7 +31,7 @@ class HookRuntimeTests(unittest.TestCase):
         command = self.hooks[event][0]["hooks"][0]["command"]
         return subprocess.run(
             ["/bin/sh", "-c", command],
-            input=json.dumps({"hook_event_name": event, "source": "startup"}),
+            input=json.dumps({"hook_event_name": event, "source": source}),
             env=env, text=True, capture_output=True, timeout=2,
         )
 
@@ -48,6 +48,29 @@ class HookRuntimeTests(unittest.TestCase):
         result = self.invoke("SessionStart", "CODEX_PYTHON_PATH")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("additionalContext", json.loads(result.stdout)["hookSpecificOutput"])
+
+    def test_all_entry_points_remind_sequential_delegation_and_separate_review(self):
+        for event, source in (("SessionStart", "startup"), ("SessionStart", "resume"),
+                              ("SessionStart", "compact"),
+                              ("SessionStart", "fork"), ("UserPromptSubmit", "startup")):
+            with self.subTest(event=event, source=source):
+                result = self.invoke(event, "CODEX_MCP_PYTHON_PATH", source)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+                self.assertIn("even when sequential", context)
+                self.assertIn("self_execution_reason", context)
+                self.assertIn("Start the attempt, spawn, then bind", context)
+                self.assertIn("main session reviews it separately", context)
+
+    def test_resume_and_fork_preserve_explicit_node_ownership(self):
+        resumed = self.invoke("SessionStart", "CODEX_MCP_PYTHON_PATH", "resume")
+        resume_context = json.loads(resumed.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("get_progress", resume_context)
+        self.assertIn("does not transfer parent ownership", resume_context)
+        forked = self.invoke("SessionStart", "CODEX_MCP_PYTHON_PATH", "fork")
+        fork_context = json.loads(forked.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Do not assume the parent's task ownership", fork_context)
+        self.assertIn("Do not accept your own submission", fork_context)
 
     def test_malformed_hook_input_still_fails_open_through_launcher(self):
         env = {**os.environ, "PATH": str(self.empty_path), "PLUGIN_ROOT": str(self.plugin),

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {createHost}=require('./browser_host.cjs');
-const assignment={execution_mode:'main_session'};
+const assignment={execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let host;
 const artifacts=process.env.TASK_PROGRESS_BROWSER_ARTIFACTS;

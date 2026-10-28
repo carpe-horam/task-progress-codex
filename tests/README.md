@@ -15,6 +15,7 @@ node tests/test_export.cjs
 node tests/test_view_mode_regressions.cjs
 node tests/test_app_audit_regressions.cjs
 node tests/test_shared_service_app.cjs
+node tests/test_responsibility_app.cjs
 ```
 
 Make `playwright` available through normal Node module resolution or set `NODE_PATH` to an existing package directory. `TASK_PROGRESS_BROWSER_CHANNEL` can select another already-installed Playwright channel; it defaults to `chrome`. No dependency or browser is installed by the tests.
@@ -30,3 +31,5 @@ The simulated host captures export-save requests; the backend save function is t
 `test_shared_service.py` uses a real isolated HTTP daemon to verify concurrent clients, identical JSON-RPC IDs, session isolation, initialization idempotency, authentication, duplicate-daemon exclusion, and graceful/crash restart persistence. `test_service_manager.py` uses temporary homes, real loopback health fixtures, and a fake launchctl runner to test install/upgrade rollback and ownership checks without modifying the user's service. `test_shared_service_app.cjs` connects the real browser UI through HTTP, exercises two chats and fullscreen restoration, and confirms every response comes from one daemon. Set `TASK_PROGRESS_BROWSER_ARTIFACTS` to retain its screenshot and result. The browser host is simulated; native Codex transport acceptance is recorded separately in the review evidence.
 
 For native transport acceptance, run `python3 -B tests/check_codex_http_transport.py --codex /absolute/path/to/codex`. It starts two disposable app-server clients and an isolated HTTP daemon, discovers tools, and reads the UI resource without creating chats or sending model turns. Add `--installed` to verify the installed plugin's transport and existing shared service, or `--output result.json` to save the credential-free result.
+
+Responsibility regressions cover planned executors, explicit reassignment, post-spawn agent binding, result submission, separate main-session acceptance/rejection, dependency gates, and retry invalidation. `test_delegation_policy.py` runs the skill's published JSON examples against isolated backend state, including sequential complex work delegated to subagents. `test_responsibility_app.cjs` verifies the actual app and offline exports distinguish pending review, rejected work, accepted-but-open reports, resolved results, and legacy records without inventing acceptance history. These checks validate workflow declarations and transitions; they do not authenticate Codex callers or control work performed through other tools.

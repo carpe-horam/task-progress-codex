@@ -49,7 +49,7 @@ async function main() {
   await host.mode(pageA,'tab','inline');
   await frameA.locator('.card:not(.tab-hidden):not(.inline-stale)').waitFor({state:'attached'});
   const args={session_id:b.structuredContent.session_id,task_instance_id:b.structuredContent.progress.task_instance_id,task_id:'root'};
-  const running=await host.rpc('update_task',{...args,execution_status:'running',assignment:{execution_mode:'main_session'}});
+  const running=await host.rpc('update_task',{...args,execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}});
   await host.rpc('update_task',{...args,execution_status:'finished',outcome:'resolved',attempt_id:running.structuredContent.progress.nodes[0].attempt_id,summary:'SESSION_B_ONLY_RESULT'});
   await frameB.getByText('SESSION_B_ONLY_RESULT',{exact:true}).first().waitFor({state:'attached',timeout:12000});
   await frameB.locator('#steps details > summary.step-main').first().click();

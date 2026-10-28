@@ -1,0 +1,17 @@
+{
+  "host": "isolated simulated MCP Apps parent; not Codex desktop",
+  "cases": [
+    {
+      "name": "stale_fullscreen_result_recovers_latest_data_and_visible_controls",
+      "result": "pass"
+    },
+    {
+      "name": "second_fullscreen_lease_is_demoted_to_inline",
+      "result": "pass"
+    },
+    {
+      "name": "fullscreen_progress_update_close_restores_inline",
+      "result": "pass"
+    }
+  ]
+}

@@ -20,11 +20,18 @@ with zipfile.ZipFile(Path(sys.argv[1])) as archive:
     attempt_sheet = next(rows for rows in sheets if {"任务 ID", "尝试次数", "模型", "类型", "有效性"}.issubset(rows[0]))
     evidence_sheet = next(rows for rows in sheets if {"证据来源", "证据内容", "序号"}.issubset(rows[0]))
     # Current root + 2 historical plans; root synthesis attempts are included.
-    assert [len(rows) for rows in (task_sheet, attempt_sheet, evidence_sheet)] == [7, 7, 3]
+    assert [len(rows) for rows in (task_sheet, attempt_sheet, evidence_sheet)] == [7, 7, 9]
     task_columns = {name: index for index, name in enumerate(task_sheet[0])}
-    assert len({row[task_columns["结果摘要"]] for row in task_sheet[1:]}) == 2
+    assert len({row[task_columns["结果摘要"]] for row in task_sheet[1:]}) == 3
     assert any(row[task_columns["证据"]] == "https://example.invalid/audit" for row in task_sheet[1:])
     attempt_columns = {name: index for index, name in enumerate(attempt_sheet[0])}
+    # The two historical root syntheses now carry required, explicit evidence.
+    synthesized = [row for row in task_sheet[1:]
+                   if row[task_columns["结果摘要"]] == "Browser fixture children verified"]
+    assert len(synthesized) == 2
+    assert all(row[task_columns["证据"]] == "isolated-browser-fixture" for row in synthesized)
+    # Each synthesis appears as task result, execution attempt, and main review.
+    assert sum("isolated-browser-fixture" in row for row in evidence_sheet[1:]) == 6
     c_attempts = {r[attempt_columns["尝试次数"]] for r in attempt_sheet[1:] if r[attempt_columns["任务 ID"]] == "c"}
     assert {"1", "2"}.issubset(c_attempts)
     assert any(r[attempt_columns["任务 ID"]] == "c" and r[attempt_columns["尝试次数"]] == "1"

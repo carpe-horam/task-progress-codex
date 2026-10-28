@@ -22,7 +22,7 @@ readline.createInterface({input:python.stdout}).on('line', line => {
   if(r.error||r.result?.isError)waiter.reject(new Error(JSON.stringify(r.error||r.result.content)));else waiter.resolve(r.result);
 });
 function rpc(name,args){const id=++sequence;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Backend timeout: '+name)),5000);pending.set(id,{resolve,reject,timer});python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
-const assignment={execution_mode:'main_session',model:'audit-fixture',reasoning_effort:'high'};
+const assignment={execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation',model:'audit-fixture',reasoning_effort:'high'};
 const add=(name,observed)=>results.push({case:name,observed});
 async function main(){
   browser=await chromium.launch({channel:process.env.TASK_PROGRESS_BROWSER_CHANNEL || 'chrome',headless:true});
@@ -58,7 +58,7 @@ async function main(){
   }
   const initial=await rpc('init_task_network',{task_title:'交互检查：任务执行与结果追溯',main_session:{model:'audit-fixture',reasoning_effort:'high'}});
   const sid=initial.structuredContent.session_id;
-  await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'读取长任务说明并复制结果',assignment:{execution_mode:'main_session'}},{id:'b',title:'检查报告',depends_on:['a'],assignment:{execution_mode:'main_session'}}]});
+  await rpc('decompose_task',{session_id:sid,task_id:'root',tasks:[{id:'a',title:'读取长任务说明并复制结果',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}},{id:'b',title:'检查报告',depends_on:['a'],assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}}]});
   let r=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:{...assignment,dispatch_text:Array.from({length:70},(_,i)=>'第 '+i+' 行：需要保留阅读位置的长任务说明。').join('\n')}});
   const aid=r.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   r=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',attempt_id:aid,summary:'供用户复制的稳定结果文本，自动刷新时内容没有发生变化。'});

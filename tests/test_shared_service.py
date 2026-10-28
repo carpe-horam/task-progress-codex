@@ -118,6 +118,43 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(len({r["session_id"] for r in results}), 1)
         self.assertEqual(len({r["progress"]["task_instance_id"] for r in results}), 1)
 
+    def test_http_tools_dispatch_submit_review_and_main_only_synthesis(self):
+        main = {"execution_mode": "main_session", "self_execution_reason": "Coordinator checks one integration decision"}
+        sub = {"execution_mode": "subagent", "model": "fixture", "reasoning_effort": "high",
+               "tool_identifier": "collaboration.spawn_agent", "dispatch_text": "Run isolated fixture and return evidence"}
+        init = self.rpc("init_task_network", {"task_title": "HTTP responsibility contract", "tasks": [
+            {"id": "worker", "title": "Delegated operation", "assignment": sub},
+            {"id": "coord", "title": "Coordinator operation", "assignment": main}]})
+        base = {"session_id": init["session_id"], "task_instance_id": init["progress"]["task_instance_id"]}
+        self.rpc("reassign_task", {**base, "task_id": "coord", "assignment": main,
+                                   "reason": "Confirm bounded integration responsibility", "reviewer": main})
+        started = self.rpc("update_task", {**base, "task_id": "worker", "execution_status": "running", "assignment": sub})
+        aid = next(node["attempt_id"] for node in started["progress"]["nodes"] if node["id"] == "worker")
+        self.rpc("bind_task_agent", {**base, "task_id": "worker", "attempt_id": aid, "agent_name": "http-fixture-agent"})
+        submitted = self.rpc("update_task", {**base, "task_id": "worker", "attempt_id": aid,
+            "execution_status": "finished", "outcome": "resolved", "summary": "Worker output", "evidence": ["fixture://worker"]})
+        node = next(node for node in submitted["progress"]["nodes"] if node["id"] == "worker")
+        self.assertEqual(node["review_status"], "pending")
+        review = {**base, "task_id": "worker", "attempt_id": aid, "decision": "accept",
+                  "summary": "Checked independently", "evidence": ["fixture://review"], "reviewer": sub}
+        status, _, result = self.http(payload={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "review_task", "arguments": review}})
+        self.assertEqual(status, 200)
+        self.assertTrue(result["result"]["isError"])
+        self.rpc("review_task", {**review, "reviewer": main})
+        started = self.rpc("update_task", {**base, "task_id": "coord", "execution_status": "running", "assignment": main})
+        coord_aid = next(node["attempt_id"] for node in started["progress"]["nodes"] if node["id"] == "coord")
+        self.rpc("update_task", {**base, "task_id": "coord", "attempt_id": coord_aid,
+                                 "execution_status": "finished", "outcome": "resolved"})
+        synthesis = {**base, "task_id": "root", "execution_status": "finished", "outcome": "resolved",
+                     "assignment": sub, "summary": "Synthesis", "evidence": ["fixture://all"]}
+        status, _, result = self.http(payload={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "update_task", "arguments": synthesis}})
+        self.assertEqual(status, 200)
+        self.assertTrue(result["result"]["isError"])
+        finished = self.rpc("update_task", {**synthesis, "assignment": main})
+        self.assertEqual(finished["progress"]["status"], "completed")
+
     def test_streamable_handshake_notifications_and_resource_version(self):
         status, headers, message = self.http(payload={"jsonrpc": "2.0", "id": "init", "method": "initialize",
             "params": {"protocolVersion": "2025-11-25"}})

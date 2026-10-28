@@ -117,7 +117,7 @@ async function main() {
     await inline.locator('#task-title').filter({hasText:'Close restores inline'}).waitFor();
     const full = await mount('full-close',current,'fullscreen');
     await inline.locator('.card.tab-hidden').waitFor({state:'attached'});
-    await rpc('update_task',{session_id:sid3,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session'}});
+    await rpc('update_task',{session_id:sid3,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}});
     await page.waitForFunction(async sid => {
       const value=await window.readViewRegistry(sid);
       return Object.values(value.views||{}).some(view=>view.display_mode==='fullscreen'&&view.state_revision>1);

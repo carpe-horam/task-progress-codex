@@ -298,6 +298,13 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
         "summary": "",
         "evidence": [],
         "assignment": {},
+        "planned_assignment": {},
+        "responsibility_version": 1,
+        "reassignment_history": [],
+        "dispatch": None,
+        "submission": None,
+        "review": None,
+        "review_status": None,
         "profile": None,
         "attempt": 0,
         "attempt_id": None,
@@ -356,7 +363,7 @@ def _new_network(
     while root_id in (reserved_ids or set()):
         suffix += 1
         root_id = f"{base_id}-{suffix}"
-    return {
+    network = {
         "schema_version": 2,
         "session_id": session_id,
         "task_instance_id": str(uuid.uuid4()),
@@ -373,6 +380,8 @@ def _new_network(
         "created_at": now,
         "updated_at": now,
     }
+    network["nodes"][root_id]["planned_assignment"] = {"execution_mode": "main_session"}
+    return network
 
 
 def _validate_node_id(value: Any) -> str:
@@ -398,7 +407,7 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ProgressError("assignment 必须是对象。")
     assignment: dict[str, Any] = {}
-    string_fields = ("tool_identifier", "tool_name", "dispatch_text", "agent_name", "model", "batch", "codex_thread_id", "codex_turn_id")
+    string_fields = ("tool_identifier", "tool_name", "dispatch_text", "agent_name", "model", "batch", "codex_thread_id", "codex_turn_id", "self_execution_reason")
     for key in string_fields:
         field_value = value.get(key)
         if field_value is not None:
@@ -410,6 +419,11 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
         if execution_mode not in EXECUTION_MODES:
             raise ProgressError(f"execution_mode 必须是 {EXECUTION_MODES} 之一。")
         assignment["execution_mode"] = execution_mode
+    complexity = value.get("complexity")
+    if complexity is not None:
+        if complexity not in ("simple", "complex"):
+            raise ProgressError("assignment.complexity 必须是 simple 或 complex。")
+        assignment["complexity"] = complexity
     profile = value.get("profile")
     if profile is not None:
         if profile not in PROFILES:
@@ -429,7 +443,7 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
     return assignment
 
 
-def _require_execution_metadata(assignment: dict[str, Any] | None) -> None:
+def _require_execution_metadata(assignment: dict[str, Any] | None, *, dispatch_required: bool = False) -> None:
     if assignment is None or not assignment.get("execution_mode"):
         raise ProgressError("启动任务必须提供 assignment.execution_mode。")
     if assignment.get("execution_mode") == "main_session":
@@ -439,6 +453,42 @@ def _require_execution_metadata(assignment: dict[str, Any] | None) -> None:
     missing = [key for key in ("model", "reasoning_effort") if not assignment.get(key)]
     if missing:
         raise ProgressError(f"启动子智能体任务时 assignment 必须包含派发配置：{', '.join(missing)}。")
+    if dispatch_required:
+        missing = [key for key in ("tool_identifier", "dispatch_text")
+                   if not isinstance(assignment.get(key), str) or not assignment[key].strip()]
+        if missing:
+            raise ProgressError("启动子智能体任务必须记录派发工具和自包含文本：" + ", ".join(missing) + "。")
+
+
+def _require_self_execution_reason(assignment: dict[str, Any], *, atomic_reason: str = "") -> None:
+    if assignment.get("execution_mode") != "main_session":
+        return
+    reason = assignment.get("self_execution_reason", "").strip() or atomic_reason.strip()
+    if not reason:
+        raise ProgressError("主会话执行叶任务必须记录 assignment.self_execution_reason；复杂工作默认委派子智能体。")
+    if assignment.get("complexity") == "complex" and reason.rstrip("。.!！ ") in {
+        "有依赖", "需要集成", "需要上下文", "集成", "上下文", "复杂任务", "main_session",
+    }:
+        raise ProgressError("复杂任务由主会话执行须提供具体例外原因，不能仅填写有依赖、需要集成或需要上下文。")
+
+
+def _reviewer(value: Any, *, scope: str) -> dict[str, Any]:
+    reviewer = _normalize_assignment(value)
+    if reviewer.get("execution_mode") != "main_session":
+        raise ProgressError("此动作必须由 reviewer.execution_mode=main_session 声明主会话责任；该声明未经宿主核验。")
+    return _stamp_assignment(reviewer, scope=scope)
+
+
+def _require_result_evidence(summary: Any, evidence: Any) -> None:
+    if not isinstance(summary, str) or not summary.strip():
+        raise ProgressError("验收必须记录非空 summary。")
+    if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
+        raise ProgressError("验收必须记录至少一条非空 evidence。")
+
+
+def _assert_no_pending_reviews(data: dict[str, Any] | None, action: str) -> None:
+    if data and any(node.get("review_status") == "pending" for node in data.get("nodes", {}).values()):
+        raise ProgressError(f"存在待验收 submission，不能{action}；请先由主会话 review_task 接受或退回，原始上报会保留。")
 
 
 def _stamp_assignment(assignment: dict[str, Any], *, scope: str) -> dict[str, Any]:
@@ -563,7 +613,11 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         assignment = _normalize_assignment(item.get("assignment"))
         if not assignment.get("execution_mode"):
             raise ProgressError(f"任务 {node_id} 必须指定 assignment.execution_mode。")
-        node["assignment"] = assignment
+        # A plan does not claim that an execution attempt has already started.
+        node["assignment"] = {}
+        node["planned_assignment"] = deepcopy(assignment)
+        if assignment.get("complexity") == "complex":
+            _require_self_execution_reason(assignment)
         new_nodes.append((node_id, node))
     for node_id, node in new_nodes:
         nodes[node_id] = node
@@ -577,6 +631,8 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
 
 
 def _node_is_terminal(node: dict[str, Any]) -> bool:
+    if node.get("review_status") == "pending":
+        return False
     status = node.get("execution_status")
     return status in TERMINAL_EXECUTION_STATUSES and (
         status != "finished" or node.get("outcome") in OUTCOMES
@@ -585,6 +641,8 @@ def _node_is_terminal(node: dict[str, Any]) -> bool:
 
 def _dependency_satisfied(data: dict[str, Any], node: dict[str, Any], dependency_id: str) -> bool:
     dependency = data["nodes"][dependency_id]
+    if dependency.get("review_status") == "pending":
+        return False
     policy = node.get("dependency_policy", "resolved")
     if policy == "finished":
         return _node_is_terminal(dependency)
@@ -628,6 +686,8 @@ def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
 
 
 def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
+    if node.get("review_status") == "pending":
+        return "awaiting_review"
     if node.get("execution_status") == "finished" and node.get("outcome"):
         return node["outcome"]
     status = node.get("execution_status")
@@ -637,6 +697,8 @@ def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
         return status
     if node.get("children"):
         child_statuses = [_display_node_status(data, data["nodes"][child_id]) for child_id in node["children"]]
+        if "awaiting_review" in child_statuses:
+            return "awaiting_review"
         if any(value == "executing" for value in child_statuses):
             return "executing"
         if all(value in ("resolved", "open", "failed", "cancelled") for value in child_statuses):
@@ -654,7 +716,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     nodes = data["nodes"]
     leaves = [node for node in nodes.values() if not node.get("children")]
     ready_nodes = [node for node in leaves if _node_is_ready(data, node)]
-    terminal_leaves = [node for node in leaves if _node_is_terminal(node)]
+    terminal_leaves = [node for node in leaves if _node_is_terminal(node) or node.get("review_status") == "pending"]
+    pending_reviews = [node for node in leaves if node.get("review_status") == "pending"]
     resolved_leaves = [node for node in leaves if node.get("outcome") == "resolved"]
     open_leaves = [node for node in leaves if node.get("outcome") == "open"]
     failed_leaves = [node for node in leaves if node.get("execution_status") == "failed"]
@@ -687,6 +750,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         overall_status = "failed"
     elif root.get("execution_status") == "cancelled":
         overall_status = "cancelled"
+    elif pending_reviews:
+        overall_status = "awaiting_review"
     elif running_leaves or ready_nodes:
         overall_status = "in_progress"
     elif total and completed == total:
@@ -713,6 +778,15 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             })
         enriched_nodes.append({
             **node,
+            "planned_assignment": node.get("planned_assignment"),
+            "responsibility_legacy": node.get("responsibility_version") != 1,
+            "review_status": node.get("review_status") or ("legacy_unrecorded" if node.get("responsibility_version") != 1 else None),
+            "dispatch": node.get("dispatch") or ({
+                "status": "pending", "attempt_id": node.get("attempt_id"), "agent_name": None,
+                "bound_at": None, "legacy": True, "source": "legacy_unrecorded",
+                "verification": "not_verified_by_codex_host",
+            } if node.get("responsibility_version") != 1 and node.get("execution_status") == "running"
+                  and node.get("assignment", {}).get("execution_mode") == "subagent" else None),
             "status": _display_node_status(data, node),
             "ready": _node_is_ready(data, node),
             "blocked_by": unmet,
@@ -738,6 +812,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "failed_leaf_count": len(failed_leaves),
         "ready_count": len(ready_nodes),
         "executing_count": len(running_leaves),
+        "pending_review_count": len(pending_reviews),
         "split_review_due": split_review_due,
         "blocked_count": len(blocked_leaves),
         "epoch": data.get("epoch", 0),
@@ -765,9 +840,35 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
     status = data.get("planning_status") or _legacy_planning_status(data)
     if status == "required":
         return ["decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason"]
-    if status == "planned":
-        return ["get_ready_tasks，然后启动返回的 ready 叶任务"]
-    return ["启动原子任务 root"]
+    nodes = data["nodes"]
+    root = nodes[data["root_id"]]
+    if _node_is_terminal(root):
+        return ["任务已完成：报告验收结果。" if root.get("outcome") == "resolved" else "报告未解决或已终止结果；需要继续时显式重试或重规划。"]
+    actions = []
+    for node in nodes.values():
+        node_id = node["id"]
+        if node.get("review_status") == "pending":
+            actions.append(f"主会话 review_task({node_id})：接受或退回已提交结果，保留独立验收证据。")
+        elif node.get("execution_status") == "running":
+            if node.get("assignment", {}).get("execution_mode") == "subagent" and not (node.get("dispatch") or {}).get("agent_name"):
+                actions.append(f"bind_task_agent({node_id})：绑定实际派发返回的 agent_name；旧执行可补录后提交复核。")
+            else:
+                actions.append(f"等待任务 {node_id} 的当前执行结果；继续用当前 attempt_id 更新。")
+        elif (node.get("children") and node.get("execution_status") == "pending"
+              and all(_node_is_terminal(nodes[child]) for child in node["children"])
+              and (_dependencies_satisfied(data, node) or all(_node_is_terminal(nodes[dependency_id])
+                   for _, dependency_id in _dependency_constraints(data, node)))):
+            actions.append(f"主会话综合验收 {node_id}：update_task(finished)，填写 summary/evidence；有未解决子结果只能 open/终止。")
+        elif _node_is_ready(data, node):
+            planned = node.get("planned_assignment") or {}
+            role = planned.get("execution_mode")
+            if role is None:
+                actions.append(f"主会话 reassign_task({node_id})：旧节点缺少独立计划，请确认执行者和恢复原因。")
+            elif role == "subagent":
+                actions.append(f"主会话派发 {node_id}：update_task(running) 后实际 spawn，再 bind_task_agent。")
+            else:
+                actions.append(f"主会话执行 {node_id}：update_task(running)，记录具体 self_execution_reason。")
+    return actions or ["检查阻塞依赖和未解决结果；显式重试或重规划，不能启动空的 ready 列表。"]
 
 
 def init_task_network(
@@ -831,6 +932,7 @@ def init_task_network(
                     raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
                 data = previous
             else:
+                _assert_no_pending_reviews(previous, "替换任务")
                 data = _new_network(sid, normalized_title, main_session=normalized_main)
                 if binding:
                     data["task_instance_id"] = binding["task_instance_id"]
@@ -907,7 +1009,7 @@ def decompose_task(
 
 
 def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
-    _require_execution_metadata(assignment)
+    _require_execution_metadata(assignment, dispatch_required=kind == "execution")
     assignment = _stamp_assignment(assignment or {}, scope="attempt_start")
     node.pop("invalidated_by", None)
     node["attempt"] = int(node.get("attempt", 0)) + 1
@@ -918,23 +1020,39 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
     node["outcome"] = None
     node["summary"] = ""
     node["evidence"] = []
+    node["responsibility_version"] = 1
+    node["submission"] = None
+    node["review"] = None
+    node["review_status"] = None
+    node["dispatch"] = None
+    if assignment.get("execution_mode") == "subagent":
+        agent_name = assignment.get("agent_name", "").strip()
+        node["dispatch"] = {
+            "status": "bound" if agent_name else "pending", "attempt_id": node["attempt_id"],
+            "agent_name": agent_name or None, "bound_at": _now() if agent_name else None,
+            "tool_identifier": assignment.get("tool_identifier"), "dispatch_text": assignment.get("dispatch_text"),
+            "verification": "not_verified_by_codex_host", "source": "mcp_tool_input",
+        }
     node.setdefault("attempts", []).append({
         "attempt": node["attempt"], "attempt_id": node["attempt_id"], "kind": kind,
         "execution_status": "running", "outcome": None, "summary": "", "evidence": [],
         "started_at": node["started_at"], "assignment": dict(node["assignment"]),
+        "planned_assignment": deepcopy(node.get("planned_assignment")),
+        "responsibility_version": 1, "dispatch": deepcopy(node["dispatch"]),
     })
 
 
 def _record_attempt_result(node: dict[str, Any]) -> None:
     if node.get("attempts") and node.get("attempt_id"):
         node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
-            "execution_status", "outcome", "summary", "evidence", "finished_at"
+            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status"
         )})
 
 
 def _reset_execution(node: dict[str, Any]) -> None:
     node.update(execution_status="pending", outcome=None, summary="", evidence=[],
-                assignment={}, attempt_id=None, started_at=None, finished_at=None)
+                assignment={}, attempt_id=None, started_at=None, finished_at=None,
+                dispatch=None, submission=None, review=None, review_status=None)
 
 
 def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> None:
@@ -957,6 +1075,8 @@ def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> N
         if invalidated == previous:
             break
     for invalid_id in invalidated - {node["id"]}:
+        if nodes[invalid_id].get("review_status") == "pending":
+            raise ProgressError(f"任务 {invalid_id} 尚有待验收 submission；请先 review_task 再重试前驱。")
         if nodes[invalid_id]["execution_status"] == "running":
             raise ProgressError(f"任务 {invalid_id} 仍在使用该结果；请先结束相关执行尝试再重试。")
     for invalid_id in invalidated - {node["id"]}:
@@ -967,7 +1087,8 @@ def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> N
         invalidated_at = _now()
         target.setdefault("invalidated_results", []).append({
             **{key: deepcopy(target.get(key)) for key in (
-                "attempt_id", "execution_status", "outcome", "assignment", "summary", "evidence", "started_at", "finished_at"
+                "attempt_id", "execution_status", "outcome", "assignment", "summary", "evidence", "started_at", "finished_at",
+                "dispatch", "submission", "review", "review_status"
             )},
             "invalidated_by": node["id"], "invalidated_at": invalidated_at,
         })
@@ -1019,6 +1140,8 @@ def update_task(
         if node is None:
             raise ProgressError(f"当前 epoch 中不存在任务 {node_id}；旧 epoch 的结果不会覆盖新计划。")
         previous_status = node["execution_status"]
+        if node.get("review_status") == "pending":
+            raise ProgressError("此 attempt 的结果正在等待主会话验收；请使用 review_task，不可覆盖、重试或绕过 submission。")
         if attempt_id is not None and attempt_id != node.get("attempt_id"):
             raise ProgressError("attempt_id 不匹配；迟到或旧尝试结果已拒绝。")
         if previous_status == "running":
@@ -1042,6 +1165,17 @@ def update_task(
                 raise ProgressError("该任务尚未 ready；请先完成依赖，或显式设置 dependency_policy=finished。")
             if previous_status != "running":
                 _require_execution_metadata(normalized_assignment)
+                planned = node.get("planned_assignment") or {}
+                if not planned.get("execution_mode"):
+                    raise ProgressError("旧节点缺少独立 planned_assignment；pending 叶请先 reassign_task 确认计划，已结束节点请显式重规划。")
+                if normalized_assignment.get("execution_mode") != planned["execution_mode"]:
+                    raise ProgressError("attempt execution_mode 与 planned_assignment 不一致；pending 叶请先由主会话 reassign_task 并记录原因。")
+                effective = {**normalized_assignment,
+                             "complexity": planned.get("complexity", normalized_assignment.get("complexity"))}
+                atomic_reason = data.get("planning_note", "") if (
+                    node_id == data.get("root_id") and data.get("planning_status") == "atomic"
+                ) else ""
+                _require_self_execution_reason(effective, atomic_reason=atomic_reason)
                 if previous_status in TERMINAL_EXECUTION_STATUSES:
                     _reopen_ancestors_for_retry(data, node)
                 _begin_attempt(node, normalized_assignment)
@@ -1053,11 +1187,21 @@ def update_task(
         ):
             raise ProgressError("依赖尚未满足的任务不能直接结束；先完成前驱或改用 dependency_policy=finished。")
         if (previous_status == "pending" and execution_status == "finished"
-                and outcome == "resolved" and not node.get("children")):
-            raise ProgressError("叶任务必须先进入 running 并创建执行尝试，才能标记为 finished/resolved。")
+                and not node.get("children")):
+            raise ProgressError("叶任务必须先进入 running 并创建执行尝试，才能标记为 finished（resolved 或 open）；子智能体结果随后须经主会话 review_task。")
         if execution_status in TERMINAL_EXECUTION_STATUSES and node.get("children"):
+            if not normalized_assignment or normalized_assignment.get("execution_mode") != "main_session":
+                raise ProgressError("父/root 的综合验收必须由 assignment.execution_mode=main_session 声明主会话负责。")
+            if not summary.strip():
+                raise ProgressError("父/root 的综合验收必须记录非空 summary。")
             if not all(_node_is_terminal(data["nodes"][child_id]) for child_id in node["children"]):
                 raise ProgressError("父任务必须等所有直接子任务结束后再综合验收。")
+            if execution_status == "finished" and outcome == "resolved":
+                _require_result_evidence(summary, evidence)
+                if not all(data["nodes"][child_id].get("execution_status") == "finished"
+                           and data["nodes"][child_id].get("outcome") == "resolved"
+                           for child_id in node["children"]):
+                    raise ProgressError("父/root 不能 resolved：所有直接子结果必须已验收且 resolved；未解决结果只能 open/终止或重试。")
             if execution_status == "finished" and not _dependencies_satisfied(data, node):
                 if outcome != "open" or not all(
                     _node_is_terminal(data["nodes"][dep_id]) for _, dep_id in _dependency_constraints(data, node)
@@ -1078,11 +1222,129 @@ def update_task(
             node["evidence"] = evidence
         if execution_status in TERMINAL_EXECUTION_STATUSES:
             node["finished_at"] = _now()
+        if (execution_status == "finished" and not node.get("children")
+                and node.get("assignment", {}).get("execution_mode") == "subagent"):
+            dispatch = node.get("dispatch") or {}
+            if node.get("responsibility_version") == 1 and dispatch.get("status") != "bound":
+                raise ProgressError("子智能体完成上报前必须 bind_task_agent 绑定实际返回的 agent_name；派发失败可 failed/cancelled 收尾。")
+            if node.get("responsibility_version") != 1 and not node.get("dispatch"):
+                if not node.get("attempt_id"):
+                    node["attempt_id"] = str(uuid.uuid4())
+                    node["attempt"] = int(node.get("attempt", 0)) + 1
+                    node.setdefault("attempts", []).append({
+                        "attempt": node["attempt"], "attempt_id": node["attempt_id"],
+                        "kind": "execution", "assignment": deepcopy(node["assignment"]),
+                        "planned_assignment": None, "legacy": True,
+                        "started_at": node.get("started_at"),
+                    })
+                node["dispatch"] = {"status": "pending", "attempt_id": node.get("attempt_id"),
+                    "agent_name": None, "bound_at": None, "legacy": True,
+                    "verification": "not_verified_by_codex_host", "source": "legacy_unrecorded"}
+            node["submission"] = {"attempt_id": node.get("attempt_id"), "outcome": outcome,
+                "summary": summary, "evidence": list(evidence), "submitted_at": _now()}
+            node["outcome"] = None
+            node["review_status"] = "pending"
+            node["review"] = None
         _record_attempt_result(node)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid)
+
+
+def _current_task(sid: str, task_id: str, task_instance_id: str | None):
+    _validate_node_id(task_id)
+    data = _read(sid)
+    if data is None or data.get("schema_version") != 2:
+        raise ProgressError("该会话没有 HTN 任务网络。")
+    _validate_task_instance(data, task_instance_id)
+    node = data["nodes"].get(task_id)
+    if node is None:
+        raise ProgressError("当前任务实例/epoch 中不存在此节点。")
+    return data, node
+
+
+def reassign_task(session_id: str, task_id: str, assignment: dict[str, Any], reason: str,
+                  reviewer: dict[str, Any], task_instance_id: str | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    if not isinstance(reason, str) or not reason.strip():
+        raise ProgressError("显式改派必须记录非空 reason。")
+    planned = _normalize_assignment(assignment)
+    if not planned.get("execution_mode"):
+        raise ProgressError("改派必须指定 assignment.execution_mode。")
+    if planned.get("complexity") == "complex":
+        _require_self_execution_reason(planned)
+    actor = _reviewer(reviewer, scope="task_reassignment")
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        if node.get("children") or node.get("execution_status") != "pending" or node.get("attempt_id"):
+            raise ProgressError("reassign_task 仅适用于 pending 叶节点；不能转移正在执行/已结束的 attempt，请显式重规划。")
+        planned = _stamp_assignment(planned, scope="planned_reassignment")
+        node.setdefault("reassignment_history", []).append({
+            "previous_assignment": deepcopy(node.get("planned_assignment")),
+            "assignment": deepcopy(planned), "reason": reason.strip(), "reviewer": actor, "reassigned_at": _now(),
+        })
+        node["planned_assignment"] = planned
+        node["assignment"] = {}
+        node["responsibility_version"] = 1
+        data["revision"] = int(data.get("revision", 0)) + 1
+        _write(sid, data)
+    progress = _progress_payload(data)
+    return _tool_result("已显式更新计划分工；这不代表实际执行或身份认证。", progress, sid)
+
+
+def bind_task_agent(session_id: str, task_id: str, attempt_id: str, agent_name: str,
+                    task_instance_id: str | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    if not isinstance(agent_name, str) or not agent_name.strip():
+        raise ProgressError("agent_name 必须是实际派发返回的非空标识，不能预填未知值。")
+    agent_name = agent_name.strip()
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        if not isinstance(attempt_id, str) or not attempt_id or attempt_id != node.get("attempt_id"):
+            raise ProgressError("attempt_id 不匹配，不能绑定旧执行或尚无标识的旧 attempt。")
+        if node.get("children") or node.get("execution_status") != "running" or node.get("assignment", {}).get("execution_mode") != "subagent":
+            raise ProgressError("只能绑定当前 running 的 subagent 叶 attempt。")
+        dispatch = node.get("dispatch") or {"status": "pending", "attempt_id": attempt_id,
+                                             "legacy": node.get("responsibility_version") != 1}
+        if dispatch.get("status") == "bound":
+            if dispatch.get("agent_name") != agent_name:
+                raise ProgressError("此 attempt 已绑定不同 agent_name；不能二次转移执行归属。")
+        else:
+            node["dispatch"] = {**dispatch, "status": "bound", "agent_name": agent_name,
+                                "bound_at": _now(), "source": "mcp_tool_input", "verification": "not_verified_by_codex_host"}
+            _record_attempt_result(node)
+            data["revision"] = int(data.get("revision", 0)) + 1
+            _write(sid, data)
+    progress = _progress_payload(data)
+    return _tool_result("已记录派发返回标识；调用方填报，未经 Codex 宿主核验。", progress, sid)
+
+
+def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, summary: str,
+                evidence: list[str], reviewer: dict[str, Any], task_instance_id: str | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    if decision not in ("accept", "reject"):
+        raise ProgressError("decision 必须是 accept 或 reject。")
+    _require_result_evidence(summary, evidence)
+    actor = _reviewer(reviewer, scope="submission_review")
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        submission = node.get("submission") or {}
+        if not isinstance(attempt_id, str) or not attempt_id or attempt_id != node.get("attempt_id") or attempt_id != submission.get("attempt_id"):
+            raise ProgressError("attempt_id 不匹配，不能验收旧执行结果。")
+        if node.get("children") or node.get("assignment", {}).get("execution_mode") != "subagent":
+            raise ProgressError("review_task 仅接受 subagent 叶结果；父/root 必须使用主会话 synthesis。")
+        if node.get("review_status") != "pending" or node.get("execution_status") != "finished":
+            raise ProgressError("当前没有 pending submission，不能重复或冲突验收。")
+        node["review"] = {"attempt_id": attempt_id, "decision": decision, "summary": summary.strip(),
+                          "evidence": list(evidence), "reviewer": actor, "reviewed_at": _now()}
+        node["review_status"] = "accepted" if decision == "accept" else "rejected"
+        node["outcome"] = submission["outcome"] if decision == "accept" else "open"
+        _record_attempt_result(node)
+        data["revision"] = int(data.get("revision", 0)) + 1
+        _write(sid, data)
+    progress = _progress_payload(data)
+    return _tool_result("主会话验收决定已独立记录；原始执行提交保持不变。", progress, sid)
 
 
 def get_ready_tasks(session_id: str) -> dict[str, Any]:
@@ -1095,9 +1357,11 @@ def get_ready_tasks(session_id: str) -> dict[str, Any]:
     if progress.get("planning_status") == "required":
         lines = ["当前没有 ready 任务：规划尚未完成。", *progress.get("next_actions", [])]
     else:
-        lines = [f"当前 ready 叶任务：{len(ready)} 个"]
+        lines = [f"当前 ready 叶任务：{len(ready)} 个", *progress.get("next_actions", [])]
     for node in ready:
-        lines.append(f"- [{node['id']}] {node['title']}（依赖策略：{node['dependency_policy']}）")
+        role = (node.get("planned_assignment") or {}).get("execution_mode")
+        action = "待派发子智能体" if role == "subagent" else "主会话自执行" if role == "main_session" else "未记录执行者，先 reassign_task"
+        lines.append(f"- [{node['id']}] {node['title']}（计划执行者：{action}；依赖策略：{node['dependency_policy']}）")
         for dependency in node.get("dependencies", []):
             if dependency.get("outcome") == "open" or dependency.get("execution_status") in ("failed", "cancelled"):
                 detail = dependency.get("summary") or "无摘要"
@@ -1122,6 +1386,7 @@ def rebuild_task_network(
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
+        _assert_no_pending_reviews(data, "重规划")
         if any(node.get("execution_status") == "running" for node in data["nodes"].values()):
             raise ProgressError("仍有任务处于 running，核实或结束这些尝试后再重建网络。")
         data["history"].append({
@@ -1159,6 +1424,8 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
         ]
         if progress.get("planning_status") == "required":
             lines.append("下一步：先提交粗粒度任务拆分；确为单步工作时，初始化时记录 atomic_reason。")
+        else:
+            lines.extend(f"下一步：{action}" for action in progress.get("next_actions", []))
         if progress.get("planning_note"):
             lines.append(f"单步原因：{progress['planning_note']}")
         for task in progress.get("split_review_due", []):
@@ -1184,6 +1451,12 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
             lines.append(f"{prefix}- [{node['id']}] {node['title']} — {node['status']}")
             if node.get("depends_on"):
                 lines.append(f"{prefix}  依赖：{', '.join(node['depends_on'])}（{node['dependency_policy']}）")
+            planned = node.get("planned_assignment") or {}
+            if planned:
+                role = "子智能体" if planned.get("execution_mode") == "subagent" else "主会话"
+                lines.append(f"{prefix}  计划执行者：{role}")
+            elif node.get("responsibility_legacy"):
+                lines.append(f"{prefix}  旧记录：独立计划/主会话接受信息未记录，未补造验收。")
             assignment = node.get("assignment", {})
             if assignment:
                 execution_mode = assignment.get("execution_mode")
@@ -1198,6 +1471,18 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
                 provenance = assignment.get("metadata_provenance", {})
                 verification = "调用方填报，未经 Codex 宿主核验" if provenance.get("verification") == "not_verified_by_codex_host" else "来源未标注"
                 lines.append(f"{prefix}  执行：{executor}；model={assignment.get('model') or '未记录'}；reasoning={assignment.get('reasoning_effort') or '未记录'}；{verification}")
+                if assignment.get("self_execution_reason"):
+                    lines.append(f"{prefix}  主会话自执行原因：{assignment['self_execution_reason']}")
+            dispatch = node.get("dispatch") or {}
+            if dispatch:
+                lines.append(f"{prefix}  派发绑定：{dispatch.get('status')}；agent={dispatch.get('agent_name') or '未记录'}；未经宿主核验")
+            submission = node.get("submission") or {}
+            if submission:
+                lines.append(f"{prefix}  执行上报：{submission.get('outcome')}；主会话验收={node.get('review_status')}；{submission.get('summary', '')}")
+            review = node.get("review") or {}
+            if review:
+                lines.append(f"{prefix}  主会话验收：{review.get('decision')}；{review.get('summary', '')}")
+                lines.extend(f"{prefix}  验收证据：{item}" for item in review.get("evidence", []))
             if node.get("summary"):
                 lines.append(f"{prefix}  结果：{node['summary']}")
             for evidence in node.get("evidence", []):
@@ -1259,6 +1544,7 @@ def init_progress(
         )
     with _session_lock(sid):
         previous = _read(sid)
+        _assert_no_pending_reviews(previous, "转换为线性任务")
         now = _now()
         data = {
             "schema_version": 1,
@@ -1656,6 +1942,7 @@ def unregister_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
 def clear_progress(session_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
+        _assert_no_pending_reviews(_read(sid), "清除任务")
         # Persist the binding requirement first: even if deletion fails halfway,
         # a later stale write without an instance ID can never bind to new data.
         order = _read_order(sid)
@@ -1784,9 +2071,11 @@ def _display_tool_meta() -> dict[str, Any]:
 def _assignment_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "description": "execution_mode 表示本次 attempt 的实际执行者，不表示父任务负责人：主会话负责总计划、协调、集成和父级验收；子智能体只执行明确派发的子任务并向主会话报告。主会话只需 execution_mode；model/reasoning_effort 拿不到可信来源时可省略。子智能体须提供本次派发配置。所有 MCP 入参标记为调用方填报、未经 Codex 宿主核验。Task Progress 不会自动读取 Codex 当前 thread/turn。",
+        "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。子智能体启动须 model/reasoning_effort/tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
         "properties": {
             "execution_mode": {"type": "string", "enum": list(EXECUTION_MODES), "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"},
+            "self_execution_reason": {"type": "string", "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"},
+            "complexity": {"type": "string", "enum": ["simple", "complex"], "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"},
             "tool_identifier": {"type": "string", "description": "派发工具标识"},
             "tool_name": {"type": "string", "description": "工具中文名称"},
             "dispatch_text": {"type": "string", "description": "完整、自包含的派发任务文本"},
@@ -1830,6 +2119,38 @@ def _task_schema() -> dict[str, Any]:
 
 
 TOOLS = [
+    {
+        "name": "reassign_task", "title": "显式调整计划执行者",
+        "description": "仅改派 pending 叶任务，保留 planned_assignment 和改派历史。需主会话 reviewer 与具体 reason；不能转移 running/已结束 attempt，结束后改派须显式重规划。声明未经宿主核验。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_id": {"type": "string"},
+            "assignment": _assignment_schema(), "reason": {"type": "string", "minLength": 1},
+            "reviewer": _assignment_schema(), "task_instance_id": _task_instance_property(),
+        }, "required": ["session_id", "task_id", "assignment", "reason", "reviewer"]},
+        "_meta": _data_tool_meta(),
+    },
+    {
+        "name": "bind_task_agent", "title": "绑定实际派发返回标识",
+        "description": "将 spawn 返回的 agent_name 单次绑定到当前 running subagent 叶 attempt；相同绑定幂等，不同标识/旧 attempt 拒绝。不改变不可变执行配置；回执为调用方填报，非宿主认证。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_id": {"type": "string"},
+            "attempt_id": {"type": "string"}, "agent_name": {"type": "string", "minLength": 1},
+            "task_instance_id": _task_instance_property(),
+        }, "required": ["session_id", "task_id", "attempt_id", "agent_name"]},
+        "_meta": _data_tool_meta(),
+    },
+    {
+        "name": "review_task", "title": "主会话接受或退回子任务结果",
+        "description": "仅验收当前 pending 的 subagent 叶 submission，需主会话 reviewer、summary 与非空 evidence。accept 保留提交的 resolved/open，reject 为 open；原上报和独立验收分别留存。旧/重复验收拒绝；父/root 使用 synthesis。角色未经宿主认证。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_id": {"type": "string"},
+            "attempt_id": {"type": "string"}, "decision": {"type": "string", "enum": ["accept", "reject"]},
+            "summary": {"type": "string", "minLength": 1},
+            "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "reviewer": _assignment_schema(), "task_instance_id": _task_instance_property(),
+        }, "required": ["session_id", "task_id", "attempt_id", "decision", "summary", "evidence", "reviewer"]},
+        "_meta": _data_tool_meta(),
+    },
     {
         "name": "register_ui_view",
         "title": "登记当前进度视图",
@@ -1955,7 +2276,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "持续维护任务状态、结果与证据；在开始/派发、阶段结果、长命令或门禁阶段变化、阻塞、重规划和收尾时更新，不要只在开始时建计划或只在普通消息中汇报。运行中命令/子智能体保持 running 并记录可恢复的阶段摘要，禁止把排队或等待标成完成。超过 10 分钟的运行中节点会在返回结果中附 split_review_due；必须先评估拆分可独立阶段，或在摘要记录具体的不拆原因，再继续常规工作/等待。叶任务须先 running 并创建 attempt 才能 finished/resolved；启动时须提供 execution_mode（本次执行者，不等同父任务负责人）。主会话负责总计划、协调、集成和父级验收；子智能体只执行派发范围。主会话的 model/reasoning_effort 可省略；子智能体须提供本次派发配置。插件会标记元数据为调用方填报、未经 Codex 宿主核验。运行中更新须匹配 attempt_id。重试会使直接/传递消费者及祖先旧验收失效，须重新执行或验收；有运行中消费者时拒绝重试。分组直接子任务全部结束后可 cancelled/failed（须 summary），或在前置已结束但未解决时 finished/open（须 summary）；resolved 仍要求依赖满足。会话存在 task_history 或清空过进度时必须传当前 task_instance_id。",
+        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟先复核拆分；等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -2089,6 +2410,18 @@ TOOLS = [
 
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "reassign_task": lambda args: reassign_task(
+        args.get("session_id"), args.get("task_id"), args.get("assignment"), args.get("reason"),
+        args.get("reviewer"), args.get("task_instance_id"),
+    ),
+    "bind_task_agent": lambda args: bind_task_agent(
+        args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("agent_name"),
+        args.get("task_instance_id"),
+    ),
+    "review_task": lambda args: review_task(
+        args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decision"),
+        args.get("summary"), args.get("evidence"), args.get("reviewer"), args.get("task_instance_id"),
+    ),
     "register_ui_view": lambda args: register_ui_view(
         args.get("session_id"), args.get("view_id"), args.get("view_sequence"),
         args.get("state_revision"), args.get("task_instance_id"), args.get("display_mode", "inline"),

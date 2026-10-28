@@ -1,0 +1,63 @@
+{
+  "record": {
+    "assignment": {
+      "execution_mode": "main_session"
+    },
+    "execution_status": "finished",
+    "outcome": "resolved",
+    "children": []
+  },
+  "result": {
+    "plannedExecutor": "计划执行者未记录",
+    "agentName": "",
+    "dispatchStatus": "",
+    "selfExecutionReason": "",
+    "responsibilityCurrent": false,
+    "reviewNotRequired": false,
+    "reviewStatus": "",
+    "reviewLabel": "验收未记录",
+    "submittedOutcome": "",
+    "submissionSummary": "",
+    "submissionEvidence": "",
+    "submittedAt": "",
+    "reviewDecision": "",
+    "reviewSummary": "",
+    "reviewEvidence": "",
+    "reviewer": "",
+    "reviewerName": "",
+    "reviewedAt": ""
+  }
+}
+{
+  "record": {
+    "assignment": {
+      "execution_mode": "main_session"
+    },
+    "execution_status": "finished",
+    "outcome": "resolved",
+    "children": [
+      "a"
+    ],
+    "attempts": []
+  },
+  "result": {
+    "plannedExecutor": "计划执行者未记录",
+    "agentName": "",
+    "dispatchStatus": "",
+    "selfExecutionReason": "",
+    "responsibilityCurrent": false,
+    "reviewNotRequired": false,
+    "reviewStatus": "",
+    "reviewLabel": "验收未记录",
+    "submittedOutcome": "",
+    "submissionSummary": "",
+    "submissionEvidence": "",
+    "submittedAt": "",
+    "reviewDecision": "",
+    "reviewSummary": "",
+    "reviewEvidence": "",
+    "reviewer": "",
+    "reviewerName": "",
+    "reviewedAt": ""
+  }
+}

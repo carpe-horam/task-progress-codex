@@ -12,7 +12,7 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "task-progress"
 spec = importlib.util.spec_from_file_location("progress_server", PLUGIN / "server.py")
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
-ASSIGNMENT = {"execution_mode": "main_session", "model": "test-fixture", "reasoning_effort": "high"}
+ASSIGNMENT = {"execution_mode": "main_session", "model": "test-fixture", "reasoning_effort": "high", "self_execution_reason": "Fixture verifies a bounded coordinator operation"}
 
 
 class ProgressTests(unittest.TestCase):
@@ -61,6 +61,10 @@ class ProgressTests(unittest.TestCase):
         return self.node(node_id)["attempt_id"]
 
     def finish(self, node_id, outcome="resolved", **kwargs):
+        if self.node(node_id).get("children"):
+            kwargs.setdefault("summary", "Coordinator checked all child results")
+            if outcome == "resolved":
+                kwargs.setdefault("evidence", ["fixture://checked-child-results"])
         return server.update_task(self.sid, node_id, "finished", outcome=outcome,
                                   attempt_id=self.node(node_id)["attempt_id"], assignment=ASSIGNMENT, **kwargs)
 
@@ -77,7 +81,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(self.node("child")["blocked_by"], ["a"])
         self.assertRejectedUnchanged(lambda: self.start("child"))
         server.update_task(self.sid, "child", "cancelled")
-        self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open"))
+        self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open", summary=""))
         self.start("a"); self.finish("a", summary="Upstream result", evidence=["fixture://a"])
         self.finish("g", outcome="open")
 
@@ -235,7 +239,7 @@ class ProgressTests(unittest.TestCase):
         server.update_task(self.sid, "a", "failed", attempt_id=aid)
         server.update_task(self.sid, "child", "cancelled")
         self.assertRejectedUnchanged(lambda: self.finish("g"))
-        self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open"))
+        self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open", summary=""))
         self.finish("g", outcome="open", summary="Required input failed")
         self.finish("root", outcome="open", summary="Cannot complete")
         self.assertEqual(self.progress()["status"], "open")
@@ -550,7 +554,7 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 14)
+        self.assertEqual(len(replies[1]["tools"]), 17)
         manifest_version = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
         self.assertEqual(replies[0]["serverInfo"]["version"], manifest_version)
         self.assertEqual(replies[2]["contents"][0]["text"], server._resource_html())
