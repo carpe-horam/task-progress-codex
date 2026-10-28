@@ -1,0 +1,10 @@
+[
+  "Mixed running/pending review counters remain visible; all-ended pending results export as awaiting main review, never root synthesis.",
+  "Pending result remains unresolved; app/HTML/Excel preserve bound agent, submission and independent review history.",
+  "Rejected/retried results retain separate rejection and acceptance evidence; accepting open keeps delivery incomplete.",
+  "Accepted resolved result releases consumer while overall delivery still waits for main integration and root synthesis.",
+  "Main self-execution exposes its reason without missing-agent warning; actual root synthesis appears in independent acceptance history.",
+  "Legacy completed results remain readable with zero fabricated acceptance records and no disk backfill.",
+  "Known main-session role on legacy leaf, group and attempt never implies review exemption or a new pending-review state in app/HTML/XLSX.",
+  "Actual legacy synthesis summary/evidence remains visible independently without inventing a review decision or changing stored legacy records."
+]

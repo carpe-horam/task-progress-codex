@@ -1,0 +1,22 @@
+{
+  "verified_at": "2026-10-28T14:09:45.048294+08:00",
+  "release": "/Users/machengling/Library/Application Support/Task Progress/releases/0.2.0-c5acf7def33d2f72932e",
+  "cache": "/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.1.0",
+  "cache_version": "0.1.0",
+  "runtime_version": "0.2.0",
+  "icon_sha256": {
+    "source": "921972e8a14afa748fad09461f0075a1bf5f111bc1eece93090eda46e8ba5c45",
+    "installed_cache": "921972e8a14afa748fad09461f0075a1bf5f111bc1eece93090eda46e8ba5c45",
+    "runtime": "921972e8a14afa748fad09461f0075a1bf5f111bc1eece93090eda46e8ba5c45"
+  },
+  "runtime_app_matches_source": true,
+  "live_resource_contains_new_icon": true,
+  "cache_backend_unchanged": true,
+  "cache_manifest_changes": [
+    "interface.composerIcon",
+    "interface.logo"
+  ],
+  "browser": "Headless Chrome, isolated real server / simulated MCP Apps host",
+  "browser_app_cases_passed": 10,
+  "host_toolbar_repaint_verified": false
+}

@@ -14,7 +14,7 @@ const html = fs.readFileSync(path.join(root, 'plugins/task-progress/app.html'), 
 const pending = new Map(); let sequence = 0; let browser; const results = [];
 const python = spawn('python3', ['-c', `import importlib.util,pathlib,sys
 spec=importlib.util.spec_from_file_location('audit',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.main()
+m.LEGACY_DB_PATH=pathlib.Path(sys.argv[2])/'progress-v3.sqlite3';m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.main()
 `, path.join(root, 'plugins/task-progress/server.py'), temp]);
 python.stderr.on('data', data => process.stderr.write(data));
 readline.createInterface({input:python.stdout}).on('line', line => {
@@ -144,6 +144,11 @@ async function main(){
   assert.equal(text.includes('\\n'),false,text);assert.equal(text.includes('\n'),true,text);
   if(artifactDir)await report.screenshot({path:path.join(artifactDir,'export-after.png'),fullPage:true});
   await report.close();
+  // Complete the private interaction goal before testing the next task view.
+  await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'finished',outcome:'resolved',attempt_id:r.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id});
+  const bRetry=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'running',retry:true,assignment});
+  await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'finished',outcome:'resolved',attempt_id:bRetry.structuredContent.progress.nodes.find(n=>n.id==='b').attempt_id});
+  await rpc('update_task',{session_id:sid,task_id:'root',execution_status:'finished',outcome:'resolved',summary:'Private interaction goal verified',evidence:['isolated-browser-interaction'],assignment});
   const nextTask=await rpc('init_task_network',{session_id:sid,task_title:'切换后的任务'});
   await page.evaluate(r=>document.getElementById('current').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*'),nextTask);
   await card.locator('#task-title').filter({hasText:'切换后的任务'}).waitFor();

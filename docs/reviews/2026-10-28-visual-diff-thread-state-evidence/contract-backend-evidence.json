@@ -1,0 +1,55 @@
+{
+  "snapshot_hash": "2ad80c68658800689263bd352d45bf49580ca986526f8a96fde7b86a28f2ce21",
+  "snapshot_counts": {
+    "completed": 18,
+    "total": 21,
+    "percent": 85,
+    "resolved_leaf_count": 11,
+    "pending_review_count": 7,
+    "executing_count": 2,
+    "blocked_count": 1,
+    "ready_count": 0,
+    "status": "awaiting_review",
+    "root_status": "awaiting_review"
+  },
+  "recomputed_counts": {
+    "completed": 18,
+    "total": 21,
+    "percent": 85,
+    "resolved_leaf_count": 11,
+    "pending_review_count": 7,
+    "executing_count": 2,
+    "blocked_count": 1,
+    "ready_count": 0,
+    "status": "awaiting_review",
+    "root_status": "awaiting_review"
+  },
+  "historical_acceptance": {},
+  "clone_all_seven_accepted": {
+    "completed": 18,
+    "total": 21,
+    "percent": 85,
+    "resolved_leaf_count": 18,
+    "pending_review_count": 0,
+    "executing_count": 2,
+    "blocked_count": 0,
+    "ready_count": 1,
+    "status": "in_progress",
+    "root_status": "executing"
+  },
+  "clone_ready": [
+    "remaining-sdk-optional-tools"
+  ],
+  "fixture_counts": {
+    "completed": 2,
+    "total": 2,
+    "percent": 100,
+    "resolved_leaf_count": 0,
+    "pending_review_count": 2,
+    "executing_count": 0,
+    "blocked_count": 0,
+    "ready_count": 0,
+    "status": "awaiting_review",
+    "root_status": "awaiting_review"
+  }
+}

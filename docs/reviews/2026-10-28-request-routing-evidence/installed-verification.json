@@ -1,0 +1,38 @@
+{
+  "health": {
+    "service": "task-progress",
+    "transport": "streamable-http",
+    "version": "0.2.0",
+    "pid": 25565,
+    "instance_id": "d24891ac-3146-46c7-9763-b0c626f180ac",
+    "runtime_path": "/Users/machengling/Library/Application Support/Task Progress/releases/0.2.0-5aad43dfcd6c1d2c7ced/shared_service.py",
+    "port": 53421,
+    "uptime_seconds": 55.312,
+    "request_count": 84
+  },
+  "file_sha256": {
+    "server.py": "f32705c3fff85c75d5a7d087e7b11348f68fd20c5c7a9e1b3b6f92637cdc23b3",
+    "app.html": "51a7e83137314222fc0538dfee74be8685ccd59e419b5e527a3d43777f05f5e7",
+    "shared_service.py": "952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e",
+    "service_manager.py": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c",
+    "legacy_history.py": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c",
+    "hooks/task_progress_hook.py": "9895cd434653b001ece1add4036469d31ac80f7dabd3863c9929882f13247af1",
+    "skills/track-progress/SKILL.md": "2328ed67498b304849c214584b82dfd5b885ba366fccbd03656e3529cb15fc90",
+    "skills/track-progress/references/request-routing.md": "bfdf91697367fde7aa7704cdd4457418543de9f4f65cbb2dc1e4bb5b3a86783d"
+  },
+  "advertised_tool_count": 22,
+  "new_tools": [
+    "activate_request",
+    "cancel_request",
+    "route_request",
+    "update_request",
+    "update_task_context"
+  ],
+  "current_session": "08cfece3-45ac-40f5-a797-c2b846c92464",
+  "current_instance": "8f63c218-a088-4ad7-a8e9-2b6142f9ef7f",
+  "context_write_read_verified": true,
+  "can_finish_session_before_final_review": false,
+  "context_revision_count": 1,
+  "native_current_chat_get_progress": "passed via existing MCP tool",
+  "native_new_tool_catalog": "current turn still has old catalog; reload needed"
+}

@@ -1,0 +1,96 @@
+{
+  "captured_at": "2026-10-28T12:28:26.578428+08:00",
+  "task_instance_id": "697c19b5-5905-4237-8300-fb5221c8b19e",
+  "task_title": "独立排队任务Q：核对恢复协议文档",
+  "state_revision": 101,
+  "status": "pending",
+  "ready_tasks": [],
+  "can_finish_session": false,
+  "return_to": {
+    "task_instance_id": "697c19b5-5905-4237-8300-fb5221c8b19e",
+    "task_id": "root",
+    "resume_note": ""
+  },
+  "next_actions": [
+    "decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason",
+    "返回主任务 独立排队任务Q：核对恢复协议文档（697c19b5-5905-4237-8300-fb5221c8b19e）；插入请求结束不代表原任务完成。"
+  ],
+  "task_context": {
+    "goal": "独立排队任务Q：核对恢复协议文档",
+    "constraints": [
+      "只读插件文件，不安装、不提交、不改变其他任务",
+      "输出仅写指定实跑证据目录"
+    ],
+    "acceptance_criteria": [
+      "检查安装版文档四项规则并引用真实行号",
+      "由主会话复核后收尾"
+    ],
+    "resume_note": "",
+    "provided_context": {
+      "scenario": "user_authorized_live_exercise",
+      "output_dir": "/tmp/task-progress-live-run-20261028"
+    }
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "title": "独立排队任务Q：核对恢复协议文档",
+      "status": "blocked",
+      "execution_status": "pending",
+      "outcome": null,
+      "review_status": null,
+      "attempt_id": null,
+      "started_at": null,
+      "finished_at": null,
+      "summary": "",
+      "evidence": [],
+      "dispatch": null
+    }
+  ],
+  "requests": [
+    {
+      "request_id": "foreground:14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_title": "实跑主任务A：生成并核验当前插件接口清单",
+      "mode": "foreground",
+      "status": "completed",
+      "return_to": {
+        "task_instance_id": "697c19b5-5905-4237-8300-fb5221c8b19e",
+        "task_id": "root",
+        "resume_note": ""
+      },
+      "origin_return_to": null,
+      "summary": "主任务A已完成：采集真实接口，在运行中插入Q/P，P完成验收后返回A并完成实际清单复核。Q尚在队列，当前只结束A，继续处理Q。"
+    },
+    {
+      "request_id": "live-20261028-Q",
+      "task_instance_id": "697c19b5-5905-4237-8300-fb5221c8b19e",
+      "task_title": "独立排队任务Q：核对恢复协议文档",
+      "mode": "queue",
+      "status": "active",
+      "return_to": null,
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": ""
+    },
+    {
+      "request_id": "live-20261028-P",
+      "task_instance_id": "4a3bafa4-e429-4760-8440-ec31ba5c218e",
+      "task_title": "独立并行任务P：生成运行版文件校验清单",
+      "mode": "parallel",
+      "status": "completed",
+      "return_to": {
+        "task_instance_id": "697c19b5-5905-4237-8300-fb5221c8b19e",
+        "task_id": "root",
+        "resume_note": ""
+      },
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": "独立并行请求P已产出并经主会话独立复算验收；它的完成不表示原任务A或队列Q完成。"
+    }
+  ]
+}

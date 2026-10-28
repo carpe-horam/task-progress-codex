@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -39,6 +40,7 @@ RESOURCE_URI = "ui://task-progress/progress-inspector/v3"
 LEGACY_RESOURCE_URIS = ("ui://task-progress/progress-inspector/v2",)
 RESOURCE_MIME = "text/html;profile=mcp-app"
 APP_HTML_PATH = Path(__file__).with_name("app.html")
+LEGACY_DB_PATH = CACHE_DIR / "progress-v3.sqlite3"
 PLUGIN_MANIFEST_PATH = Path(__file__).with_name(".codex-plugin") / "plugin.json"
 
 VALID_STATUSES = ("pending", "in_progress", "completed")
@@ -181,12 +183,358 @@ def _read(session_id: Any) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _legacy_history(session_id: str, include_details: bool = False) -> dict[str, Any] | None:
+    # Legacy records are a separate read-only source, never current writable
+    # state. A clear tombstone suppresses them even after a later JSON init.
+    if _read_order(session_id).get("legacy_history_cleared"):
+        return None
+    try:
+        if not LEGACY_DB_PATH.exists():
+            return None
+        spec = importlib.util.spec_from_file_location("task_progress_legacy_history", Path(__file__).with_name("legacy_history.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.read_legacy_history(LEGACY_DB_PATH, session_id, include_details=include_details)
+    except Exception:
+        # A broken archive must not block ordinary JSON progress or leak raw DB
+        # errors/paths. The UI can still show a bounded warning.
+        return {"schema": 3, "source": "sqlite_v3", "read_only": True,
+                "status": "unavailable", "task_count": 0, "records": [],
+                "warning": "旧版历史暂不可读取；当前 JSON 任务不受影响。"}
+
+
 def _write(session_id: str, data: dict[str, Any]) -> None:
     path = _session_file(session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     data["updated_at"] = _now()
     data["state_revision"] = _advance_order(session_id, "state_revision")
-    _atomic_json(path, data)
+    # The foreground and every independent request share one atomic document.
+    # A parallel write only replaces its own instance, never the foreground.
+    document = data
+    if data.get("parallel_request_id"):
+        document = _read(session_id)
+        if document is None:
+            raise ProgressError("会话已清理；迟到的并行结果不能重建任务。")
+        state = document.get("session_work_state", {})
+        iid = _task_instance_id(data)
+        if iid not in state.get("instances", {}):
+            raise ProgressError("并行任务实例已失效；迟到结果已拒绝。")
+        state["instances"][iid] = data
+        document["updated_at"] = data["updated_at"]
+        document["state_revision"] = data["state_revision"]
+    if document.get("session_work_state"):
+        document["session_work"] = _session_work(document)
+    _atomic_json(path, document)
+
+
+def _task_closed(data: dict[str, Any]) -> bool:
+    if data.get("schema_version") != 2:
+        return _stats(data)[3] == "completed"
+    nodes = data.get("nodes", {})
+    root = nodes.get(data.get("root_id"), {})
+    return (root.get("execution_status") in TERMINAL_EXECUTION_STATUSES
+            and not any(n.get("execution_status") == "running" or n.get("review_status") == "pending"
+                        for n in nodes.values())
+            and (root.get("outcome") == "resolved" or bool(root.get("summary", "").strip())))
+
+
+def _inherit_work_state(previous: dict[str, Any] | None, data: dict[str, Any]) -> None:
+    if not previous or not previous.get("session_work_state"):
+        return
+    state = deepcopy(previous["session_work_state"])
+    settled = _session_work(previous)["requests"]
+    for item in state["requests"]:
+        snapshot = next((r for r in settled if r["request_id"] == item["request_id"]), None)
+        if snapshot:
+            item.update(status=snapshot["status"], summary=snapshot["summary"], context_brief=snapshot["context_brief"])
+    data["session_work_state"] = state
+    _ensure_work_state(data)
+
+
+def _request_status(data: dict[str, Any]) -> str:
+    if data.get("request_cancelled"):
+        return "cancelled"
+    if any(n.get("review_status") == "pending" for n in data.get("nodes", {}).values()):
+        return "pending_review"
+    if not _task_closed(data):
+        return "active"
+    if data.get("schema_version") != 2:
+        return "completed"
+    root = data["nodes"][data["root_id"]]
+    return ("completed" if root.get("outcome") == "resolved" else
+            "open" if root.get("execution_status") == "finished" else root["execution_status"])
+
+
+def _ensure_work_state(data: dict[str, Any]) -> dict[str, Any]:
+    state = data.setdefault("session_work_state", {"requests": [], "instances": {}, "managed": False})
+    data.setdefault("task_context", {"goal": data.get("task_title", ""), "constraints": [],
+        "acceptance_criteria": [], "resume_note": ""})
+    iid = _task_instance_id(data)
+    if not any(r.get("task_instance_id") == iid for r in state["requests"]):
+        state["requests"].append({
+            "request_id": f"foreground:{iid}", "task_instance_id": iid,
+            "task_title": data.get("task_title", ""), "goal": data.get("task_title", ""),
+            "request_text": data.get("original_request_text"),
+            "context_source": "explicit_request_text" if data.get("original_request_text") is not None else "request_text_unrecorded",
+            "mode": "foreground", "reason": "恢复已有主任务，不补造历史请求原文。",
+            "acceptance_criteria": [], "constraints": [], "context_brief": {},
+            "return_to": None, "created_at": data.get("created_at"),
+        })
+    return state
+
+
+def _session_work(document: dict[str, Any]) -> dict[str, Any]:
+    state = document.get("session_work_state", {})
+    iid = _task_instance_id(document)
+    requests = []
+    for original in state.get("requests", []):
+        item = deepcopy(original)
+        item["origin_return_to"] = deepcopy(original.get("origin_return_to", original.get("return_to")))
+        instance = document if item.get("task_instance_id") == iid else state.get("instances", {}).get(item.get("task_instance_id"))
+        if instance is not None:
+            item["status"] = _request_status(instance)
+            root = instance.get("nodes", {}).get(instance.get("root_id"), {})
+            item["summary"] = root.get("summary", "")
+            item["task_title"] = instance.get("task_title", item["task_title"])
+            item["context_brief"] = deepcopy(instance.get("task_context", item.get("context_brief", {})))
+            for key in ("goal", "constraints", "acceptance_criteria"):
+                if key in instance.get("task_context", {}):
+                    item[key] = deepcopy(instance["task_context"][key])
+        else:
+            item.setdefault("status", "queued")
+            item.setdefault("summary", "")
+        # Internal deduplication material and unbounded edit logs are not UI data.
+        for key in ("fingerprint_hash", "revisions"):
+            item.pop(key, None)
+        requests.append(item)
+    foreground = next((r for r in requests if r.get("task_instance_id") == iid), None)
+    active = [r for r in requests if r["status"] in ("queued", "active", "pending_review")]
+    anchor = {"task_instance_id": iid, "task_id": document.get("root_id"),
+              "resume_note": document.get("task_context", {}).get("resume_note", "")}
+    return_to = anchor if foreground and foreground["status"] in ("active", "pending_review") else None
+    for item in requests:
+        # The original insertion relationship is history. The next action must
+        # return to the live foreground, never to an already archived task.
+        item["return_to"] = deepcopy(return_to) if item.get("task_instance_id") != iid else None
+    actions = []
+    if return_to:
+        actions.append(f"返回主任务 {document.get('task_title', '')}（{iid}）；插入请求结束不代表原任务完成。")
+    for item in active:
+        if item["status"] == "queued":
+            actions.append(f"请求 {item['request_id']} 仅排队；主任务如实收尾后显式 activate_request，按 FIFO 激活。")
+        elif item["status"] == "pending_review":
+            actions.append(f"主会话独立验收请求 {item['request_id']} 的待复核结果。")
+        elif item.get("mode") == "parallel":
+            actions.append(f"按实例 {item['task_instance_id']} 继续规划/派发并行请求 {item['request_id']}；Task Progress 不自动启动执行。")
+    return {"foreground": foreground, "requests": requests, "can_finish_session": not active,
+            "return_to": return_to, "next_actions": actions,
+            "verification": "caller_declared_not_host_authenticated"}
+
+
+def _task_from_document(document: dict[str, Any] | None, task_instance_id: str | None, *, writable: bool = True):
+    if document is None:
+        if task_instance_id is not None:
+            raise ProgressError("任务实例不存在或已清理；迟到请求已拒绝。")
+        return None
+    if task_instance_id is None or task_instance_id == _task_instance_id(document):
+        data = document
+    else:
+        data = document.get("session_work_state", {}).get("instances", {}).get(task_instance_id)
+        if data is None:
+            raise ProgressError("task_instance_id 不匹配；旧任务或其他实例的请求已拒绝。")
+    if writable and data.get("request_cancelled"):
+        raise ProgressError("请求已取消；迟到更新不能恢复执行。")
+    return data
+
+
+def _select_task(sid: str, task_instance_id: str | None, *, writable: bool = True):
+    return _task_from_document(_read(sid), task_instance_id, writable=writable)
+
+
+def _capture_response_snapshot(sid: str) -> dict[str, Any]:
+    """Caller holds the session lock: allocate ordering for this exact state."""
+    document = _read(sid)
+    return {"document": document, "view_sequence": _advance_order(sid, "view_sequence"),
+            "state_revision": _read_order(sid)["state_revision"]}
+
+
+def _foreground_request(sid: str, task_instance_id: str):
+    data = _read(sid)
+    if data is None or not task_instance_id or task_instance_id != _task_instance_id(data):
+        raise ProgressError("必须提供当前 foreground 的 task_instance_id；迟到的请求管理操作已拒绝。")
+    return data, _ensure_work_state(data)
+
+
+def _nonempty(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > 12000:
+        raise ProgressError(f"{name} 必须是非空字符串（最多12000字符）。")
+    return value.strip()
+
+
+def _context_list(value: Any, name: str, *, required: bool = False) -> list[str]:
+    if not isinstance(value, list) or len(value) > 64 or (required and not value):
+        raise ProgressError(f"{name} 必须是字符串列表（最多64项）。")
+    return [_nonempty(item, name) for item in value]
+
+
+def route_request(session_id: str, task_instance_id: str, request_id: str, request_text: str,
+                  task_title: str, mode: str, reason: str, acceptance_criteria: list[str],
+                  constraints: list[str] | None = None, context_brief: dict[str, Any] | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    rid = _nonempty(request_id, "request_id")
+    if len(rid) > 256 or mode not in ("queue", "parallel"):
+        raise ProgressError("request_id 最多256字符；mode 必须为 queue 或 parallel。")
+    _nonempty(request_text, "request_text")
+    original_text = request_text
+    title, why = _nonempty(task_title, "task_title"), _nonempty(reason, "reason")
+    criteria = _context_list(acceptance_criteria, "acceptance_criteria", required=True)
+    limits = _context_list(constraints if constraints is not None else [], "constraints")
+    if context_brief is not None and (not isinstance(context_brief, dict) or len(json.dumps(context_brief, ensure_ascii=False)) > 16000):
+        raise ProgressError("context_brief 必须为有限的显式上下文对象（最多16000字符）。")
+    content = {"request_text": original_text, "task_title": title, "mode": mode, "reason": why,
+               "acceptance_criteria": criteria, "constraints": limits, "context_brief": context_brief or {}}
+    fingerprint = hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    with _session_lock(sid):
+        data, state = _foreground_request(sid, task_instance_id)
+        existing = next((r for r in state["requests"] if r["request_id"] == rid), None)
+        tombstone = _read_order(sid).get("request_tombstones", {}).get(rid)
+        if tombstone:
+            raise ProgressError("request_id 已清理；旧登记不能重建工作。")
+        if existing:
+            if existing.get("fingerprint_hash") != fingerprint:
+                raise ProgressError("request_id 已用于不同请求内容；请为新请求使用新的 ID。")
+        else:
+            state["managed"] = True
+            item = {**deepcopy(content), "goal": title, "request_id": rid, "task_instance_id": None,
+                    "fingerprint_hash": fingerprint, "status": "queued", "created_at": _now(),
+                    "return_to": {"task_instance_id": task_instance_id, "task_id": data.get("root_id")}}
+            if mode == "parallel":
+                network = _new_network(sid, title)
+                network["parallel_request_id"] = rid
+                network["original_request_text"] = original_text
+                network["task_context"] = {"goal": title, "constraints": limits,
+                    "acceptance_criteria": criteria, "resume_note": "", "provided_context": deepcopy(context_brief or {})}
+                item.update(task_instance_id=_task_instance_id(network), status="active")
+                state["instances"][_task_instance_id(network)] = network
+            state["requests"].append(item)
+            _write(sid, data)
+    return get_progress(sid)
+
+
+def activate_request(session_id: str, task_instance_id: str, request_id: str) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    # A lost successful response may be retried with the old foreground ID.
+    # Return the already activated instance without consuming another queue item.
+    with _session_lock(sid):
+        current = _read(sid)
+        item = next((r for r in (current or {}).get("session_work_state", {}).get("requests", [])
+                     if r["request_id"] == request_id), None)
+        replay = bool(current and item and item.get("activated_from") == task_instance_id
+                      and item.get("task_instance_id") == _task_instance_id(current))
+    if replay:
+        return get_progress(sid)
+    with _session_lock(sid):
+        data, state = _foreground_request(sid, task_instance_id)
+        queued = [r for r in state["requests"] if r.get("status") == "queued"]
+        if not queued or queued[0]["request_id"] != request_id:
+            raise ProgressError("只能显式激活 FIFO 队首的 queued 请求。")
+        if not _task_closed(data):
+            raise ProgressError("原主任务尚未完成或如实收尾；排队请求不能抢占当前工作。")
+        # Snapshot the settled foreground entry before replacing its network.
+        summary = _session_work(data)
+        settled = next(r for r in summary["requests"] if r.get("task_instance_id") == task_instance_id)
+        old = next(r for r in state["requests"] if r.get("task_instance_id") == task_instance_id)
+        old.update(status=settled["status"], summary=settled["summary"], context_brief=settled["context_brief"])
+        item = queued[0]
+        replacement = _new_network(sid, item["task_title"])
+        replacement["original_request_text"] = item["request_text"]
+        replacement["task_history"] = _archive_current_task(data, f"显式激活排队请求 {request_id}")
+        replacement["task_context"] = {"goal": item["goal"], "constraints": item["constraints"],
+            "acceptance_criteria": item["acceptance_criteria"], "resume_note": "", "provided_context": item["context_brief"]}
+        item.update(task_instance_id=_task_instance_id(replacement), status="active", activated_at=_now(),
+                    activated_from=task_instance_id)
+        replacement["session_work_state"] = state
+        _write(sid, replacement)
+    return get_progress(sid)
+
+
+def update_request(session_id: str, task_instance_id: str, request_id: str, reason: str,
+                   task_title: str | None = None, constraints: list[str] | None = None,
+                   acceptance_criteria: list[str] | None = None, context_brief: dict[str, Any] | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    why = _nonempty(reason, "reason")
+    with _session_lock(sid):
+        data, state = _foreground_request(sid, task_instance_id)
+        item = next((r for r in state["requests"] if r["request_id"] == request_id), None)
+        if item is None or item.get("status") != "queued":
+            raise ProgressError("update_request 仅调整尚未启动的 queued 请求；当前实例请 update_task_context/rebuild。")
+        changes = {}
+        if task_title is not None:
+            changes.update(task_title=_nonempty(task_title, "task_title"), goal=_nonempty(task_title, "task_title"))
+        if constraints is not None:
+            changes["constraints"] = _context_list(constraints, "constraints")
+        if acceptance_criteria is not None:
+            changes["acceptance_criteria"] = _context_list(acceptance_criteria, "acceptance_criteria", required=True)
+        if context_brief is not None:
+            if not isinstance(context_brief, dict) or len(json.dumps(context_brief, ensure_ascii=False)) > 16000:
+                raise ProgressError("context_brief 必须是有限的显式上下文对象。")
+            changes["context_brief"] = deepcopy(context_brief)
+        item.setdefault("revisions", []).append({"reason": why, "changed_at": _now(),
+            "previous": {key: deepcopy(item.get(key)) for key in changes}})
+        item.update(changes)
+        _write(sid, data)
+    return get_progress(sid)
+
+
+def cancel_request(session_id: str, task_instance_id: str, request_id: str, reason: str) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    why = _nonempty(reason, "reason")
+    with _session_lock(sid):
+        data, state = _foreground_request(sid, task_instance_id)
+        item = next((r for r in state["requests"] if r["request_id"] == request_id), None)
+        network = state["instances"].get(item.get("task_instance_id")) if item else None
+        if item is None or (item.get("status") != "queued" and network is None):
+            raise ProgressError("仅可取消未启动的排队/并行请求。")
+        if network and (network.get("request_cancelled") or any(n.get("attempt_id") or n.get("attempts")
+                      for n in network.get("nodes", {}).values())):
+            raise ProgressError("请求已启动或已取消；本工具不会假装停止外部执行者，请协调执行并如实收尾。")
+        item.update(status="cancelled", summary=why, cancelled_at=_now(), cancellation_reason=why)
+        if network:
+            network["request_cancelled"] = True
+            network["nodes"][network["root_id"]].update(execution_status="cancelled", summary=why)
+        _write(sid, data)
+    return get_progress(sid)
+
+
+def update_task_context(session_id: str, task_instance_id: str, goal: str, constraints: list[str],
+                        acceptance_criteria: list[str], resume_note: str, reason: str,
+                        request_text: str | None = None) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    context = {"goal": _nonempty(goal, "goal"), "constraints": _context_list(constraints, "constraints"),
+               "acceptance_criteria": _context_list(acceptance_criteria, "acceptance_criteria", required=True),
+               "resume_note": _nonempty(resume_note, "resume_note")}
+    why = _nonempty(reason, "reason")
+    if request_text is not None:
+        _nonempty(request_text, "request_text")
+    if not task_instance_id:
+        raise ProgressError("更新上下文必须指定 task_instance_id。")
+    with _session_lock(sid):
+        data = _select_task(sid, task_instance_id)
+        if request_text is not None:
+            if data.get("original_request_text") not in (None, request_text):
+                raise ProgressError("已记录的请求原文不可覆盖；目标调整请保留原文并更新上下文。")
+            data["original_request_text"] = request_text
+        if not data.get("parallel_request_id"):
+            state = _ensure_work_state(data)
+            state["managed"] = True
+            if request_text is not None:
+                item = next(r for r in state["requests"] if r.get("task_instance_id") == task_instance_id)
+                item.update(request_text=request_text, context_source="explicit_request_text")
+        data.setdefault("context_revisions", []).append({"previous": deepcopy(data.get("task_context")),
+            "reason": why, "changed_at": _now()})
+        data["task_context"] = {**data.get("task_context", {}), **context}
+        _write(sid, data)
+    return get_progress(sid, task_instance_id=task_instance_id)
 
 
 def _stats(data: dict[str, Any]) -> tuple[int, int, int, str]:
@@ -212,6 +560,7 @@ def _task_instance_id(data: dict[str, Any]) -> str:
 def _validate_task_instance(data: dict[str, Any], task_instance_id: str | None) -> None:
     order = _read_order(data["session_id"])
     if (task_instance_id is None and not data.get("task_history")
+            and not data.get("session_work_state", {}).get("managed")
             and not order.get("require_task_instance_id", False)):
         return
     if task_instance_id != _task_instance_id(data):
@@ -221,14 +570,43 @@ def _validate_task_instance(data: dict[str, Any], task_instance_id: str | None) 
         )
 
 
-def _archive_current_task(data: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str | None) -> None:
+    if new_task_reason is not None and (not isinstance(new_task_reason, str) or not new_task_reason.strip()):
+        raise ProgressError("new_task_reason 必须说明用户的新目标及旧任务剩余工作的处理方式。")
+    if data is None:
+        return
+    if data.get("session_work_state", {}).get("managed"):
+        if not _task_closed(data):
+            raise ProgressError("受控会话仍有未完成主任务；请继续、重规划或如实收尾，不能通过初始化绕过。")
+        if not _session_work(data)["can_finish_session"]:
+            raise ProgressError("会话仍有排队/并行/待验收请求；使用显式请求管理入口，不能通过初始化绕过。")
+    _assert_no_pending_reviews(data, "替换任务")
+    if data.get("schema_version") == 2:
+        running = [node["id"] for node in data.get("nodes", {}).values() if node.get("execution_status") == "running"]
+        complete = data.get("nodes", {}).get(data.get("root_id"), {}).get("outcome") == "resolved"
+    else:
+        running = [str(index) for index, step in enumerate(data.get("steps", [])) if step.get("status") == "in_progress"]
+        complete = _stats(data)[3] == "completed"
+    if running:
+        raise ProgressError("当前任务仍有运行中的执行尝试（" + ", ".join(running) + "）；请先协调执行者并结束当前 attempt，再开始新目标。new_task_reason 不能绕过此保护。")
+    if not complete and not new_task_reason:
+        raise ProgressError("当前任务尚未完成；继续目标请 get_progress 后 decompose_task，重规划请 rebuild_task_network。只有用户明确开启新目标时，才传 new_task_reason 说明新目标及旧工作处理方式。")
+
+
+def _archive_current_task(data: dict[str, Any] | None, reason: str | None = None) -> list[dict[str, Any]]:
     if data is None:
         return []
     # Exclude task history before building the snapshot, keeping archives flat.
-    current = {key: value for key, value in data.items() if key != "task_history"}
+    current = {key: value for key, value in data.items()
+               if key not in ("task_history", "session_work_state", "session_work")}
     snapshot = _progress_payload(current)
+    for key in ("task_context", "context_revisions"):
+        if key in current:
+            snapshot[key] = deepcopy(current[key])
     snapshot.pop("task_history", None)
     snapshot["archived_at"] = _now()
+    if reason:
+        snapshot["archive_reason"] = reason.strip()
     return [*data.get("task_history", []), deepcopy(snapshot)]
 
 
@@ -848,7 +1226,7 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
     for node in nodes.values():
         node_id = node["id"]
         if node.get("review_status") == "pending":
-            actions.append(f"主会话 review_task({node_id})：接受或退回已提交结果，保留独立验收证据。")
+            actions.append(f"主会话 review_task({node_id})：使用当前 task_instance_id 与 attempt_id={node.get('attempt_id')}，检查 submission 后填写 decision=accept|reject、summary、evidence 与 reviewer.execution_mode=main_session；不要重复 update_task(finished)。")
         elif node.get("execution_status") == "running":
             if node.get("assignment", {}).get("execution_mode") == "subagent" and not (node.get("dispatch") or {}).get("agent_name"):
                 actions.append(f"bind_task_agent({node_id})：绑定实际派发返回的 agent_name；旧执行可补录后提交复核。")
@@ -878,6 +1256,7 @@ def init_task_network(
     tasks: list[dict[str, Any]] | None = None,
     atomic_reason: str | None = None,
     request_id: str | None = None,
+    new_task_reason: str | None = None,
 ) -> dict[str, Any]:
     requested_sid = _normalize_session_id(session_id) if session_id is not None else None
     if not isinstance(task_title, str) or not task_title.strip():
@@ -896,7 +1275,7 @@ def init_task_network(
     )
     request_fingerprint = json.dumps(
         {"task_title": normalized_title, "tasks": tasks, "atomic_reason": atomic_reason,
-         "main_session": fingerprint_main}, sort_keys=True, ensure_ascii=False, default=str,
+         "main_session": fingerprint_main, **({"new_task_reason": new_task_reason} if new_task_reason is not None else {})}, sort_keys=True, ensure_ascii=False, default=str,
     )
     # One process/file lock protects allocation as well as the ledger. Session
     # locks alone cannot deduplicate a request that has not yet received a sid.
@@ -932,7 +1311,7 @@ def init_task_network(
                     raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
                 data = previous
             else:
-                _assert_no_pending_reviews(previous, "替换任务")
+                _assert_can_replace_task(previous, new_task_reason)
                 data = _new_network(sid, normalized_title, main_session=normalized_main)
                 if binding:
                     data["task_instance_id"] = binding["task_instance_id"]
@@ -958,7 +1337,8 @@ def init_task_network(
                     # Reserve the identity before writing data. A crash cannot
                     # turn a no-session retry into another independent task.
                     _atomic_json(ledger_path, ledger)
-                data["task_history"] = _archive_current_task(previous)
+                data["task_history"] = _archive_current_task(previous, new_task_reason)
+                _inherit_work_state(previous, data)
                 _write(sid, data)
             if request_id:
                 # Retain only hashes and identity tombstones, never task content.
@@ -967,8 +1347,9 @@ def init_task_network(
                 ledger[key] = binding
                 ledger[request_key(sid)] = binding
                 _atomic_json(ledger_path, ledger)
+            response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
 def decompose_task(
@@ -980,7 +1361,7 @@ def decompose_task(
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
-        data = _read(sid)
+        data = _select_task(sid, task_instance_id)
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
@@ -1004,8 +1385,9 @@ def decompose_task(
             _reset_execution(parent)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
 def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
@@ -1026,7 +1408,13 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
     node["review_status"] = None
     node["dispatch"] = None
     if assignment.get("execution_mode") == "subagent":
-        agent_name = assignment.get("agent_name", "").strip()
+        # A planned spawn alias is never a dispatch receipt. Only a known
+        # executor addressed by an explicit follow-up tool can bind at start.
+        tool = assignment.get("tool_identifier", "")
+        is_followup = tool in ("collaboration.followup_task", "collaboration.send_message", "mcp__codex_app__send_message_to_thread")
+        agent_name = assignment.get("agent_name", "").strip() if is_followup else ""
+        if is_followup and not agent_name:
+            raise ProgressError("follow-up 派发必须填写真实工具返回的已有 agent_name；新执行者请使用 spawn 后 bind_task_agent。")
         node["dispatch"] = {
             "status": "bound" if agent_name else "pending", "attempt_id": node["attempt_id"],
             "agent_name": agent_name or None, "bound_at": _now() if agent_name else None,
@@ -1132,7 +1520,7 @@ def update_task(
         raise ProgressError("evidence 必须是字符串列表。")
     normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
     with _session_lock(sid):
-        data = _read(sid)
+        data = _select_task(sid, task_instance_id)
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
@@ -1140,6 +1528,9 @@ def update_task(
         if node is None:
             raise ProgressError(f"当前 epoch 中不存在任务 {node_id}；旧 epoch 的结果不会覆盖新计划。")
         previous_status = node["execution_status"]
+        if (data.get("parallel_request_id") and execution_status == "running" and not node.get("children")
+                and (normalized_assignment or node.get("assignment") or {}).get("execution_mode") != "subagent"):
+            raise ProgressError("并行独立请求的叶执行必须为 subagent；主会话只负责规划和独立验收。")
         if node.get("review_status") == "pending":
             raise ProgressError("此 attempt 的结果正在等待主会话验收；请使用 review_task，不可覆盖、重试或绕过 submission。")
         if attempt_id is not None and attempt_id != node.get("attempt_id"):
@@ -1248,13 +1639,14 @@ def update_task(
         _record_attempt_result(node)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
 def _current_task(sid: str, task_id: str, task_instance_id: str | None):
     _validate_node_id(task_id)
-    data = _read(sid)
+    data = _select_task(sid, task_instance_id)
     if data is None or data.get("schema_version") != 2:
         raise ProgressError("该会话没有 HTN 任务网络。")
     _validate_task_instance(data, task_instance_id)
@@ -1279,6 +1671,8 @@ def reassign_task(session_id: str, task_id: str, assignment: dict[str, Any], rea
         data, node = _current_task(sid, task_id, task_instance_id)
         if node.get("children") or node.get("execution_status") != "pending" or node.get("attempt_id"):
             raise ProgressError("reassign_task 仅适用于 pending 叶节点；不能转移正在执行/已结束的 attempt，请显式重规划。")
+        if data.get("parallel_request_id") and planned.get("execution_mode") != "subagent":
+            raise ProgressError("并行独立请求的叶任务只能改派给 subagent。")
         planned = _stamp_assignment(planned, scope="planned_reassignment")
         node.setdefault("reassignment_history", []).append({
             "previous_assignment": deepcopy(node.get("planned_assignment")),
@@ -1289,8 +1683,9 @@ def reassign_task(session_id: str, task_id: str, assignment: dict[str, Any], rea
         node["responsibility_version"] = 1
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result("已显式更新计划分工；这不代表实际执行或身份认证。", progress, sid)
+    return _tool_result("已显式更新计划分工；这不代表实际执行或身份认证。", progress, sid, response_snapshot=response_snapshot)
 
 
 def bind_task_agent(session_id: str, task_id: str, attempt_id: str, agent_name: str,
@@ -1316,8 +1711,9 @@ def bind_task_agent(session_id: str, task_id: str, attempt_id: str, agent_name: 
             _record_attempt_result(node)
             data["revision"] = int(data.get("revision", 0)) + 1
             _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result("已记录派发返回标识；调用方填报，未经 Codex 宿主核验。", progress, sid)
+    return _tool_result("已记录派发返回标识；调用方填报，未经 Codex 宿主核验。", progress, sid, response_snapshot=response_snapshot)
 
 
 def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, summary: str,
@@ -1343,12 +1739,13 @@ def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, s
         _record_attempt_result(node)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result("主会话验收决定已独立记录；原始执行提交保持不变。", progress, sid)
+    return _tool_result("主会话验收决定已独立记录；原始执行提交保持不变。", progress, sid, response_snapshot=response_snapshot)
 
 
-def get_ready_tasks(session_id: str) -> dict[str, Any]:
-    result = get_progress(session_id)
+def get_ready_tasks(session_id: str, task_instance_id: str | None = None) -> dict[str, Any]:
+    result = get_progress(session_id, task_instance_id=task_instance_id)
     structured = result.get("structuredContent", {})
     progress = structured.get("progress")
     if not isinstance(progress, dict) or progress.get("schema_version") != 2:
@@ -1382,7 +1779,7 @@ def rebuild_task_network(
     if not isinstance(reason, str) or not reason.strip():
         raise ProgressError("重建任务网络时必须记录 reason。")
     with _session_lock(sid):
-        data = _read(sid)
+        data = _select_task(sid, task_instance_id)
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
@@ -1408,18 +1805,23 @@ def rebuild_task_network(
         # ledger entries also survive replacing or clearing this task object.
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
 def _format_detail(progress: dict[str, Any] | None) -> str:
     if progress is None:
         return "当前会话没有活跃的进度跟踪。"
+    if progress.get("mode") == "legacy_archive":
+        if progress.get("legacy_history_warning") or progress.get("legacy_history", {}).get("status") == "unavailable":
+            return "旧版历史当前不可读取；任务是否存在及原结果均未知。请检查旧版历史存储后重试，不能据此认定没有任务或任务已完成。"
+        return "当前会话只有只读旧版历史；使用 get_progress(include_history=true) 查看原始任务结果。继续工作请显式初始化新目标，旧版结果不会迁移为已验收。"
     if progress.get("schema_version") == 2:
         lines = [
             f"📋 目标：{progress['task_title']}（计划第 {progress['epoch'] + 1} 轮）",
             f"🧭 规划状态：{progress.get('planning_status', 'required')}",
-            f"📊 叶任务结束：{progress['completed']}/{progress['total']}（{progress['percent']}%），已解决 {progress['resolved_leaf_count']}，未解决 {progress['open_leaf_count']}，待执行 {progress['ready_count']}",
+            f"📊 叶任务结束：{progress['completed']}/{progress['total']}（{progress['percent']}%），已解决 {progress['resolved_leaf_count']}，未解决 {progress['open_leaf_count']}，可执行 {progress['ready_count']}，运行中 {progress['executing_count']}，待验收 {progress['pending_review_count']}",
             f"状态：{progress['status']}",
         ]
         if progress.get("planning_status") == "required":
@@ -1509,12 +1911,107 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
     return "\n".join(lines)
 
 
+def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -> list[dict[str, Any]]:
+    """Project peer roots from this response's document, without reading storage.
+
+    Request registration order is the display order, including completed and
+    cancelled parallel requests. Archived foregrounds and queued requests are
+    not parallel networks. Projection works on copies because network validation
+    normalizes children; a read response must not change the captured document.
+    """
+    state = document.get("session_work_state", {})
+    foreground_id = _task_instance_id(document)
+    projections = []
+    omitted = {"task_history", "history", "session_work_state", "session_work", "parallel_tasks",
+               "legacy_history", "legacy_history_warning", "history_summary"}
+    for request in state.get("requests", []):
+        iid = request.get("task_instance_id")
+        instance = state.get("instances", {}).get(iid)
+        if (request.get("mode") != "parallel" or iid == foreground_id
+                or instance is None or instance.get("schema_version") != 2):
+            continue
+        current = {key: deepcopy(value) for key, value in instance.items() if key not in omitted}
+        progress = _network_progress_payload(current)
+        for key in omitted:
+            progress.pop(key, None)
+        progress.update(request_id=request["request_id"], request_status=_request_status(instance),
+                        state_revision=state_revision, history_included=False)
+        if instance.get("task_context"):
+            progress["task_context"] = deepcopy(instance["task_context"])
+        if instance.get("request_cancelled"):
+            progress.update(request_cancelled=True, status="cancelled", ready_tasks=[], ready_count=0,
+                            next_actions=["请求已取消；不得继续执行，迟到更新会被拒绝。"])
+            for node in progress["nodes"]:
+                node["ready"] = False
+                if node.get("execution_status") == "pending":
+                    node.update(status="blocked", request_cancelled=True)
+        projections.append(progress)
+    return projections
+
+
 def _tool_result(
     text: str, progress: dict[str, Any] | None, session_id: str,
-    *, state_revision: int | None = None,
+    *, state_revision: int | None = None, include_history: bool = False,
+    response_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    with _session_lock(session_id):
-        view_sequence = _advance_order(session_id, "view_sequence")
+    if response_snapshot is None:
+        # Compatibility for callers holding a historical payload: never combine
+        # that payload with metadata from a later document.
+        with _session_lock(session_id):
+            response_snapshot = _capture_response_snapshot(session_id)
+        document = response_snapshot["document"]
+        selected = (_task_from_document(document, progress.get("task_instance_id"), writable=False)
+                    if progress and document and (progress.get("task_instance_id") == _task_instance_id(document)
+                       or progress.get("task_instance_id") in document.get("session_work_state", {}).get("instances", {})) else None)
+        coherent = bool(selected and progress.get("state_revision", 0) == selected.get("state_revision", 0))
+    else:
+        document = response_snapshot["document"]
+        selected = (_task_from_document(document, progress.get("task_instance_id"), writable=False)
+                    if progress and document else None)
+        coherent = True
+    view_sequence = response_snapshot["view_sequence"]
+    session_work = _session_work(document) if coherent and document and document.get("session_work_state") else None
+    if coherent:
+        state_revision = response_snapshot["state_revision"]
+        if progress is not None:
+            progress = dict(progress)
+            progress["state_revision"] = state_revision
+    if progress is not None:
+        progress = dict(progress)
+        legacy = progress.get("legacy_history") or _legacy_history(session_id, include_history)
+        if legacy:
+            progress["legacy_history"] = legacy
+            if legacy.get("warning"):
+                progress["legacy_history_warning"] = legacy["warning"]
+        progress["history_summary"] = {
+            "task_count": len(progress.get("task_history", [])),
+            "plan_count": len(progress.get("history", [])),
+            "legacy_task_count": progress.get("legacy_history", {}).get("task_count", 0),
+        }
+        progress["history_included"] = include_history
+        if not include_history:
+            for key in ("task_history", "history", "legacy_history"):
+                progress.pop(key, None)
+    if progress is not None and session_work is not None:
+        if include_history:
+            raw_requests = {r["request_id"]: r for r in document["session_work_state"]["requests"]}
+            for item in session_work["requests"]:
+                item["revisions"] = deepcopy(raw_requests[item["request_id"]].get("revisions", []))
+        progress["session_work"] = session_work
+        if progress.get("task_instance_id") == _task_instance_id(document):
+            progress["parallel_tasks"] = _parallel_progress_payloads(document, state_revision)
+        if selected and selected.get("task_context"):
+            progress["task_context"] = deepcopy(selected["task_context"])
+            if include_history:
+                progress["context_revisions"] = deepcopy(selected.get("context_revisions", []))
+        if selected and selected.get("request_cancelled"):
+            progress["ready_tasks"] = []
+            for node in progress.get("nodes", []):
+                node["ready"] = False
+            progress["next_actions"] = ["请求已取消；不得继续执行，迟到更新会被拒绝。"]
+        progress["next_actions"] = list(progress.get("next_actions", [])) + session_work["next_actions"]
+        if session_work["next_actions"]:
+            text += "\n会话下一步：\n" + "\n".join(session_work["next_actions"])
     if state_revision is None:
         state_revision = progress.get("state_revision", 0) if progress is not None else 0
     return {
@@ -1524,13 +2021,14 @@ def _tool_result(
             "session_id": session_id,
             "state_revision": state_revision,
             "view_sequence": view_sequence,
+            **({"session_work": session_work} if session_work is not None else {}),
         },
     }
 
 
 def init_progress(
     steps: list[str], task_title: str = "", session_id: str | None = None,
-    legacy_linear: bool = False,
+    legacy_linear: bool = False, new_task_reason: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id, generate=True)
     if not isinstance(steps, list) or not steps or not all(
@@ -1544,13 +2042,13 @@ def init_progress(
         )
     with _session_lock(sid):
         previous = _read(sid)
-        _assert_no_pending_reviews(previous, "转换为线性任务")
+        _assert_can_replace_task(previous, new_task_reason)
         now = _now()
         data = {
             "schema_version": 1,
             "session_id": sid,
             "task_instance_id": str(uuid.uuid4()),
-            "task_history": _archive_current_task(previous),
+            "task_history": _archive_current_task(previous, new_task_reason),
             "task_title": task_title if isinstance(task_title, str) else "",
             "steps": [
                 {
@@ -1564,9 +2062,11 @@ def init_progress(
             "created_at": now,
             "updated_at": now,
         }
+        _inherit_work_state(previous, data)
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
 def update_step(
@@ -1580,7 +2080,7 @@ def update_step(
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
-        data = _read(sid)
+        data = _select_task(sid, task_instance_id)
         if data is None:
             raise ProgressError("该 session_id 没有进度数据；请先调用 init_progress。")
         if "steps" not in data:
@@ -1706,17 +2206,28 @@ def update_step(
                 finished_at=step["finished_at"], summary=step.get("note", ""),
             )
         _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid)
+    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
-def get_progress(session_id: str) -> dict[str, Any]:
+def get_progress(session_id: str, include_history: bool = False, task_instance_id: str | None = None) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
+    if not isinstance(include_history, bool):
+        raise ProgressError("include_history 必须是布尔值。")
     with _session_lock(sid):
-        data = _read(sid)
+        response_snapshot = _capture_response_snapshot(sid)
+        data = _task_from_document(response_snapshot["document"], task_instance_id, writable=False)
         progress = _progress_payload(data) if data is not None else None
         revision = data.get("state_revision", 0) if data is not None else _read_order(sid)["state_revision"]
-    return _tool_result(_format_detail(progress), progress, sid, state_revision=revision)
+        if progress is None:
+            legacy = _legacy_history(sid, include_history)
+            if legacy and (legacy.get("status") == "unavailable" or legacy.get("task_count", 0)):
+                progress = {"mode": "legacy_archive", "read_only": True, "schema_version": 3,
+                            "session_id": sid, "state_revision": revision,
+                            "legacy_history": legacy,
+                            "task_title": "旧版任务历史", "status": "legacy_archive"}
+    return _tool_result(_format_detail(progress), progress, sid, state_revision=revision, include_history=include_history, response_snapshot=response_snapshot)
 
 
 def render_progress(session_id: str) -> dict[str, Any]:
@@ -1942,18 +2453,28 @@ def unregister_ui_view(session_id: str, view_id: str) -> dict[str, Any]:
 def clear_progress(session_id: str) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     with _session_lock(sid):
-        _assert_no_pending_reviews(_read(sid), "清除任务")
+        document = _read(sid)
+        _assert_no_pending_reviews(document, "清除任务")
+        for instance in (document or {}).get("session_work_state", {}).get("instances", {}).values():
+            _assert_no_pending_reviews(instance, "清除任务")
         # Persist the binding requirement first: even if deletion fails halfway,
         # a later stale write without an instance ID can never bind to new data.
         order = _read_order(sid)
         order["require_task_instance_id"] = True
+        order["legacy_history_cleared"] = True
+        for item in (document or {}).get("session_work_state", {}).get("requests", []):
+            if not item.get("fingerprint_hash"):
+                continue
+            order.setdefault("request_tombstones", {})[item["request_id"]] = {"fingerprint_hash": item.get("fingerprint_hash"),
+                "task_instance_id": item.get("task_instance_id")}
         _atomic_json(_order_file(sid), order)
         path = _session_file(sid)
         if path.exists():
             path.unlink()
         _ui_view_file(sid).unlink(missing_ok=True)
         revision = _advance_order(sid, "state_revision")
-    return _tool_result("当前会话的进度数据已清除。", None, sid, state_revision=revision)
+        response_snapshot = _capture_response_snapshot(sid)
+    return _tool_result("当前会话的进度数据已清除。", None, sid, state_revision=revision, response_snapshot=response_snapshot)
 
 
 def save_export_files(files: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2054,7 +2575,7 @@ def _session_property() -> dict[str, Any]:
 def _task_instance_property() -> dict[str, Any]:
     return {
         "type": "string",
-        "description": "当前 progress 返回的 task_instance_id。同一 session_id 有 task_history 或曾 clear_progress 后必填；不匹配或缺失的旧任务更新会被拒绝。未清理过的首个任务兼容省略。",
+        "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。",
     }
 
 
@@ -2079,7 +2600,7 @@ def _assignment_schema() -> dict[str, Any]:
             "tool_identifier": {"type": "string", "description": "派发工具标识"},
             "tool_name": {"type": "string", "description": "工具中文名称"},
             "dispatch_text": {"type": "string", "description": "完整、自包含的派发任务文本"},
-            "agent_name": {"type": "string", "description": "子智能体标识或名称"},
+            "agent_name": {"type": "string", "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"},
             "fork_turns": {"type": "string", "enum": ["none"]},
             "model": {"type": "string", "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"},
             "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS), "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"},
@@ -2212,6 +2733,7 @@ TOOLS = [
                     "description": "任务步骤描述列表",
                 },
                 "task_title": {"type": "string", "description": "任务标题"},
+                "new_task_reason": {"type": "string", "description": "用户明确开启新目标时，说明旧未完成任务如何处理；运行或待验收结果必须先收尾。"},
                 "legacy_linear": {
                     "type": "boolean",
                     "default": False,
@@ -2250,6 +2772,7 @@ TOOLS = [
                 },
                 "tasks": {"type": "array", "items": _task_schema(), "description": "初始粗粒度计划；多阶段任务至少两个有独立结果边界的阶段，每项必须包含 assignment.execution_mode。"},
                 "atomic_reason": {"type": "string", "description": "明确说明为何这是单步任务；与 tasks 互斥。"},
+                "new_task_reason": {"type": "string", "description": "用户明确开启新目标时，说明旧未完成任务如何处理；继续原目标应追加计划或重规划。"},
                 "request_id": {"type": "string", "description": "可选稳定幂等键；重试同一初始化内容时复用。已知session按session隔离；省略session时键须全局唯一（建议UUID），并可随后带返回的session重试。哈希与身份墓碑保留至缓存整体删除，清除任务后旧键仍拒绝重建。"},
             },
         "required": ["task_title"],
@@ -2348,10 +2871,10 @@ TOOLS = [
     {
         "name": "get_progress",
         "title": "读取任务进度",
-        "description": "读取指定会话的当前任务详情、task_instance_id 和 task_history 历史任务快照；HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。此工具只读数据；首次展示请调用一次 render_progress，完整进度默认内嵌在会话中。",
+        "description": "读取当前态及 history_summary，默认不返回历史大数组；include_history=true 按需读取完整历史。HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。此工具只读数据；首次展示请调用一次 render_progress，完整进度默认内嵌在会话中。",
         "inputSchema": {
             "type": "object",
-            "properties": {"session_id": _session_property()},
+            "properties": {"session_id": _session_property(), "include_history": {"type": "boolean", "default": False, "description": "默认只返回当前态及 history_summary；true 返回完整 task_history、当前任务的 history 轮次及只读旧版历史。"}},
             "required": ["session_id"],
         },
         "_meta": _data_tool_meta(),
@@ -2409,7 +2932,50 @@ TOOLS = [
 ]
 
 
+_REQUEST_PROPERTIES = {
+    "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "task_title": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "constraints": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 12000}},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 12000}},
+    "context_brief": {"type": "object", "description": "调用方提供的显式上下文，不能从摘要补造未记录事实。"},
+}
+for _name, _title, _description, _properties, _required in [
+    ("route_request", "登记排队或并行独立请求", "显式主会话实例登记新请求，request_id 幂等。queue 不执行；parallel 创建隔离任务实例，叶执行限 subagent 并由主会话验收。必须说明模式理由；不自动派发、不扩大授权，声明不构成宿主认证。",
+     {**_REQUEST_PROPERTIES, "mode": {"type": "string", "enum": ["queue", "parallel"]}, "request_text": {"type": "string", "minLength": 1, "maxLength": 12000}},
+     ["session_id", "task_instance_id", "request_id", "request_text", "task_title", "mode", "reason", "acceptance_criteria"]),
+    ("activate_request", "显式激活队首请求", "仅原主任务完成或如实收尾后，显式将FIFO队首queued请求设为主任务。保留所有并行实例/请求及原任务历史；不会自动启动执行。",
+     {key: _REQUEST_PROPERTIES[key] for key in ("session_id", "task_instance_id", "request_id")},
+     ["session_id", "task_instance_id", "request_id"]),
+    ("update_request", "调整未启动的排队请求", "主会话以reason调整queued目标、约束和验收条件；保留请求原文及修订。当前实例用update_task_context或rebuild_task_network。",
+     _REQUEST_PROPERTIES, ["session_id", "task_instance_id", "request_id", "reason"]),
+    ("cancel_request", "取消尚未启动请求", "有理由取消queued或尚无attempt的parallel请求；不停止或假取消运行中的智能体/进程。已启动请求先协调执行者并如实收尾。",
+     {key: _REQUEST_PROPERTIES[key] for key in ("session_id", "task_instance_id", "request_id", "reason")},
+     ["session_id", "task_instance_id", "request_id", "reason"]),
+    ("update_task_context", "保存当前任务上下文与恢复位置", "更新指定主任务或并行实例的目标、约束、验收和恢复位置，记录reason与旧版本；重规划保留上下文和既有证据。只记录明确提供的信息，不补造用户原文。",
+     {key: _REQUEST_PROPERTIES[key] for key in ("session_id", "task_instance_id", "constraints", "acceptance_criteria", "reason")} | {
+         "goal": {"type": "string", "minLength": 1, "maxLength": 12000},
+         "request_text": {"type": "string", "minLength": 1, "maxLength": 12000,
+                          "description": "可选，首次显式补录用户原文；已记录原文不能覆盖。"},
+         "resume_note": {"type": "string", "minLength": 1, "maxLength": 12000}},
+     ["session_id", "task_instance_id", "goal", "constraints", "acceptance_criteria", "resume_note", "reason"]),
+]:
+    TOOLS.append({"name": _name, "title": _title, "description": _description,
+        "inputSchema": {"type": "object", "properties": _properties, "required": _required}, "_meta": _data_tool_meta()})
+
+for _tool in TOOLS:
+    if _tool["name"] in ("get_progress", "get_ready_tasks"):
+        _tool["inputSchema"]["properties"]["task_instance_id"] = _task_instance_property()
+        _tool["description"] += " 可选task_instance_id读取隔离并行实例；省略仍读取当前主任务。session_work返回全会话请求和返回锚点。"
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "route_request": lambda args: route_request(**args),
+    "activate_request": lambda args: activate_request(**args),
+    "update_request": lambda args: update_request(**args),
+    "cancel_request": lambda args: cancel_request(**args),
+    "update_task_context": lambda args: update_task_context(**args),
     "reassign_task": lambda args: reassign_task(
         args.get("session_id"), args.get("task_id"), args.get("assignment"), args.get("reason"),
         args.get("reviewer"), args.get("task_instance_id"),
@@ -2433,11 +2999,11 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "unregister_ui_view": lambda args: unregister_ui_view(args.get("session_id"), args.get("view_id")),
     "init_progress": lambda args: init_progress(
         args.get("steps", []), args.get("task_title", ""), args.get("session_id"),
-        args.get("legacy_linear", False),
+        args.get("legacy_linear", False), args.get("new_task_reason"),
     ),
     "init_task_network": lambda args: init_task_network(
         args.get("task_title", ""), args.get("session_id"), args.get("main_session"),
-        args.get("tasks"), args.get("atomic_reason"), args.get("request_id")
+        args.get("tasks"), args.get("atomic_reason"), args.get("request_id"), args.get("new_task_reason")
     ),
     "decompose_task": lambda args: decompose_task(
         args.get("session_id"), args.get("task_id"), args.get("tasks", []),
@@ -2455,7 +3021,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("assignment"),
         args.get("task_instance_id"),
     ),
-    "get_ready_tasks": lambda args: get_ready_tasks(args.get("session_id")),
+    "get_ready_tasks": lambda args: get_ready_tasks(args.get("session_id"), args.get("task_instance_id")),
     "rebuild_task_network": lambda args: rebuild_task_network(
         args.get("session_id"), args.get("reason", ""), args.get("task_title", ""),
         args.get("task_instance_id"),
@@ -2469,7 +3035,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("task_instance_id"),
         args.get("attempt_id"),
     ),
-    "get_progress": lambda args: get_progress(args.get("session_id")),
+    "get_progress": lambda args: get_progress(args.get("session_id"), args.get("include_history", False), args.get("task_instance_id")),
     "render_progress": lambda args: render_progress(args.get("session_id")),
     "save_export_files": lambda args: save_export_files(args.get("files")),
     "clear_progress": lambda args: clear_progress(args.get("session_id")),

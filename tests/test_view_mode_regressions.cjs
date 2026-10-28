@@ -17,7 +17,7 @@ let browser;
 const python = spawn('python3', ['-c', `import importlib.util, pathlib, sys
 spec=importlib.util.spec_from_file_location('view_regression_server',sys.argv[1])
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.SESSION_DIR.mkdir(parents=True,exist_ok=True);m.main()
+m.LEGACY_DB_PATH=pathlib.Path(sys.argv[2])/'progress-v3.sqlite3';m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.SESSION_DIR.mkdir(parents=True,exist_ok=True);m.main()
 `, path.join(root, 'plugins/task-progress/server.py'), temp]);
 python.stderr.on('data', chunk => process.stderr.write(chunk));
 readline.createInterface({input: python.stdout}).on('line', line => {
@@ -88,6 +88,8 @@ async function main() {
   try {
     const old = await rpc('init_task_network',{task_title:'Old task result',atomic_reason:'One isolated UI fixture'});
     const sessionId = old.structuredContent.session_id;
+    const oldRunning=await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Complete isolated view fixture before new task'}});
+    await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'finished',outcome:'resolved',attempt_id:oldRunning.structuredContent.progress.nodes[0].attempt_id});
     await rpc('init_task_network',{session_id:sessionId,task_title:'Current task',atomic_reason:'One isolated UI fixture'});
     const staleFull = await mount('stale-full',old,'fullscreen');
     await staleFull.locator('#task-title').filter({hasText:'Current task'}).waitFor({timeout:8000});

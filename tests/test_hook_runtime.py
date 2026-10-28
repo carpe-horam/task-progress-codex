@@ -72,6 +72,18 @@ class HookRuntimeTests(unittest.TestCase):
         self.assertIn("Do not assume the parent's task ownership", fork_context)
         self.assertIn("Do not accept your own submission", fork_context)
 
+    def test_request_insertion_and_compaction_restore_foreground_work(self):
+        for event, source in (("UserPromptSubmit", "startup"), ("SessionStart", "compact")):
+            with self.subTest(event=event):
+                result = self.invoke(event, "CODEX_MCP_PYTHON_PATH", source)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+                self.assertIn("route_request", context)
+                self.assertIn("task_context and session_work", context)
+                self.assertIn("one request completing does not finish the session", context)
+                self.assertIn("Honor explicit user stops", context)
+                self.assertIn("Follow only your assigned scope as a subagent", context)
+
     def test_malformed_hook_input_still_fails_open_through_launcher(self):
         env = {**os.environ, "PATH": str(self.empty_path), "PLUGIN_ROOT": str(self.plugin),
                "CODEX_MCP_PYTHON_PATH": sys.executable}

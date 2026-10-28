@@ -1,0 +1,124 @@
+{
+  "captured_at": "2026-10-28T12:26:53.510161+08:00",
+  "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+  "task_title": "实跑主任务A：生成并核验当前插件接口清单",
+  "state_revision": 93,
+  "status": "in_progress",
+  "ready_tasks": [],
+  "can_finish_session": false,
+  "return_to": {
+    "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "task_id": "root",
+    "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+  },
+  "next_actions": [
+    "等待任务 inventory-start 的当前执行结果；继续用当前 attempt_id 更新。",
+    "返回主任务 实跑主任务A：生成并核验当前插件接口清单（14d849be-ee26-4346-9d4b-42d5c08eefc4）；插入请求结束不代表原任务完成。",
+    "请求 live-20261028-Q 仅排队；主任务如实收尾后显式 activate_request，按 FIFO 激活。",
+    "按实例 4a3bafa4-e429-4760-8440-ec31ba5c218e 继续规划/派发并行请求 live-20261028-P；Task Progress 不自动启动执行。"
+  ],
+  "task_context": {
+    "goal": "主任务A：生成并核验已安装Task Progress接口清单，验证中途插入请求后继续执行",
+    "constraints": [
+      "这是用户授权的实跑场景，插入请求由主会话构造而非伪装新用户消息",
+      "调用真实已安装MCP服务，不直接写任务状态文件",
+      "未处理完A、并行P和排队Q前不结束会话；不修改插件代码"
+    ],
+    "acceptance_criteria": [
+      "主任务运行中登记P和Q时当前instance及attempt不变",
+      "P真实子智能体完成并验收后返回A的后续节点",
+      "A完成后Q仍阻止会话结束，激活Q并执行完成"
+    ],
+    "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "title": "实跑主任务A：生成并核验当前插件接口清单",
+      "status": "executing",
+      "execution_status": "pending",
+      "outcome": null,
+      "review_status": null,
+      "attempt_id": null,
+      "started_at": null,
+      "finished_at": null,
+      "summary": "",
+      "evidence": [],
+      "dispatch": null
+    },
+    {
+      "id": "inventory-start",
+      "title": "采集接口清单，并在执行中插入独立请求",
+      "status": "executing",
+      "execution_status": "running",
+      "outcome": null,
+      "review_status": null,
+      "attempt_id": "8c261ffe-20cf-41eb-abfa-c9c65cee56f4",
+      "started_at": "2026-10-28T12:25:16+08:00",
+      "finished_at": null,
+      "summary": "正在采集已安装服务的真实工具清单；随后将在此attempt运行中登记排队和并行请求。",
+      "evidence": [],
+      "dispatch": null
+    },
+    {
+      "id": "inventory-resume",
+      "title": "并行请求完成后返回原任务核验清单",
+      "status": "blocked",
+      "execution_status": "pending",
+      "outcome": null,
+      "review_status": null,
+      "attempt_id": null,
+      "started_at": null,
+      "finished_at": null,
+      "summary": "",
+      "evidence": [],
+      "dispatch": null
+    }
+  ],
+  "requests": [
+    {
+      "request_id": "foreground:14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_title": "实跑主任务A：生成并核验当前插件接口清单",
+      "mode": "foreground",
+      "status": "active",
+      "return_to": null,
+      "origin_return_to": null,
+      "summary": ""
+    },
+    {
+      "request_id": "live-20261028-Q",
+      "task_instance_id": null,
+      "task_title": "独立排队任务Q：核对恢复协议文档",
+      "mode": "queue",
+      "status": "queued",
+      "return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root",
+        "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+      },
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": ""
+    },
+    {
+      "request_id": "live-20261028-P",
+      "task_instance_id": "4a3bafa4-e429-4760-8440-ec31ba5c218e",
+      "task_title": "独立并行任务P：生成运行版文件校验清单",
+      "mode": "parallel",
+      "status": "active",
+      "return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root",
+        "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+      },
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": ""
+    }
+  ]
+}

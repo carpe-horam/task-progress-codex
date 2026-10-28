@@ -57,25 +57,56 @@ class FakeLaunchctl:
         self.fail_next_bootstrap = False
         self.fail_next_bootout = False
         self.bad_next_health = False
+        self.bootstrap_codes = []
+        self.unload_delay = 0
+        self.port_release_delay = 0
+        self.exiting = False
+        self.exit_polls = 0
+        self.bootstrap_busy = []
+        self.exit_delays = []
+        self.on_failed_bootstrap = None
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
         action = args[1]
         code = 0
         if action == "print":
-            code = 0 if self.service else 113
+            if self.exiting:
+                self.exit_polls += 1
+                if self.unload_delay:
+                    self.unload_delay -= 1
+                    code = 0
+                else:
+                    code = 113
+                    if self.port_release_delay:
+                        self.port_release_delay -= 1
+                    else:
+                        self.close()
+            else:
+                code = 0 if self.service else 113
         elif action == "bootout":
             if self.fail_next_bootout:
                 self.fail_next_bootout = False
                 return subprocess.CompletedProcess(args, 5, "", "fixture failure")
+            if self.exit_delays:
+                self.unload_delay, self.port_release_delay = self.exit_delays.pop(0)
             if self.service:
-                self.service.close()
-                self.service = None
+                if self.unload_delay or self.port_release_delay:
+                    self.exiting = True
+                else:
+                    self.close()
             else:
                 code = 113
         elif action == "bootstrap":
+            self.bootstrap_busy.append(self.service is not None)
+            if self.bootstrap_codes:
+                failure = self.bootstrap_codes.pop(0)
+                if failure:
+                    return subprocess.CompletedProcess(args, failure, "", "fixture failure")
             if self.fail_next_bootstrap:
                 self.fail_next_bootstrap = False
+                if self.on_failed_bootstrap:
+                    self.on_failed_bootstrap()
                 return subprocess.CompletedProcess(args, 5, "", "fixture failure")
             definition = plistlib.loads(Path(args[3]).read_bytes())
             runtime = definition["ProgramArguments"][1]
@@ -93,6 +124,7 @@ class FakeLaunchctl:
         if self.service:
             self.service.close()
             self.service = None
+        self.exiting = False
 
 
 class ServiceManagerTests(unittest.TestCase):
@@ -103,7 +135,7 @@ class ServiceManagerTests(unittest.TestCase):
         self.source = Path(self.temporary.name) / "plugin source"
         (self.source / ".codex-plugin").mkdir(parents=True)
         (self.source / ".codex-plugin/plugin.json").write_text('{"version":"0.2.0"}')
-        for name in ("shared_service.py", "server.py", "service_manager.py", "app.html"):
+        for name in ("shared_service.py", "server.py", "service_manager.py", "legacy_history.py", "app.html"):
             (self.source / name).write_text(name + " fixture")
         self.runner = FakeLaunchctl()
         with socket.socket() as sock:
@@ -112,7 +144,8 @@ class ServiceManagerTests(unittest.TestCase):
         self.port_patch = patch.object(manager, "PORT", port)
         self.port_patch.start()
         self.service = manager.ServiceManager(home=self.home, plugin_root=self.source,
-                                              platform="darwin", runner=self.runner, health_timeout=0.15)
+                                              platform="darwin", runner=self.runner, health_timeout=0.15,
+                                              lifecycle_timeout=0.15)
 
     def tearDown(self):
         self.runner.close()
@@ -161,11 +194,21 @@ class ServiceManagerTests(unittest.TestCase):
         finally:
             other.close()
 
+    def test_release_packages_archive_reader_and_binds_its_contents_to_digest(self):
+        release = self.service._release()
+        self.assertEqual((release / "legacy_history.py").read_bytes(),
+                         (self.source / "legacy_history.py").read_bytes())
+        (self.source / "legacy_history.py").write_text("updated archive reader")
+        upgraded = self.service._release()
+        self.assertNotEqual(release, upgraded)
+        self.assertEqual((upgraded / "legacy_history.py").read_text(), "updated archive reader")
+        self.assertFalse(self.runner.calls)
+
     def test_upgrade_bootstrap_failure_restores_previous_healthy_job(self):
         first = self.service.install()
         previous = self.service.plist.read_bytes()
         (self.source / "app.html").write_text("changed release")
-        self.runner.fail_next_bootstrap = True
+        self.runner.bootstrap_codes = [13]
         with self.assertRaisesRegex(manager.ServiceError, "Previous installation restored"):
             self.service.install()
         self.assertEqual(self.service.plist.read_bytes(), previous)
@@ -179,6 +222,132 @@ class ServiceManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(manager.ServiceError, "health verification"):
             self.service.install()
         self.assertEqual(self.service.status()["health"]["runtime_path"], first["release"] + "/shared_service.py")
+
+    def test_upgrade_waits_for_both_label_and_listener_to_exit(self):
+        self.service.install()
+        (self.source / "app.html").write_text("new release")
+        self.runner.exit_delays = [(1, 1)]
+        self.service.lifecycle_timeout = 0.6
+        result = self.service.install()
+        self.assertTrue(result["changed"])
+        self.assertGreaterEqual(self.runner.exit_polls, 3)
+        self.assertFalse(any(self.runner.bootstrap_busy))
+        self.assertTrue(self.service.status()["healthy"])
+
+    def test_transient_exit_5_retries_and_authenticates_new_release(self):
+        first = self.service.install()
+        (self.source / "app.html").write_text("new release")
+        self.runner.fail_next_bootstrap = True
+        self.service.lifecycle_timeout = 0.6
+        count = len(self.runner.calls)
+        result = self.service.install()
+        self.assertNotEqual(result["release"], first["release"])
+        self.assertEqual(sum(call[1] == "bootstrap" for call in self.runner.calls[count:]), 2)
+        self.assertTrue(self.service.status()["healthy"])
+        self.assertFalse(any(self.runner.bootstrap_busy))
+
+    def test_rollback_waits_for_exit_and_retries_transient_exit_5(self):
+        first = self.service.install()
+        old_bytes = self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("new release")
+        self.runner.bad_next_health = True
+        self.runner.exit_delays = [(0, 0), (1, 1)]
+        # New release loads; its bad health triggers rollback; first old-release
+        # bootstrap is transiently refused, then the retry succeeds.
+        self.runner.bootstrap_codes = [0, 5, 0]
+        self.service.lifecycle_timeout = 0.8
+        count = len(self.runner.calls)
+        with self.assertRaisesRegex(manager.ServiceError, "Previous installation restored"):
+            self.service.install()
+        self.assertEqual(self.service.plist.read_bytes(), old_bytes)
+        self.assertEqual(self.service.status()["health"]["runtime_path"], first["release"] + "/shared_service.py")
+        self.assertGreaterEqual(self.runner.exit_polls, 3)
+        self.assertEqual(sum(call[1] == "bootstrap" for call in self.runner.calls[count:]), 3)
+        self.assertFalse(any(self.runner.bootstrap_busy))
+
+    def test_permanent_failure_during_rollback_keeps_old_plist_and_reports_failure(self):
+        self.service.install()
+        old_bytes = self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("new release")
+        self.runner.bootstrap_codes = [13, 13]
+        with self.assertRaises(manager.ServiceError) as caught:
+            self.service.install()
+        self.assertIn("Rollback also failed", str(caught.exception))
+        self.assertNotIn("Previous installation restored", str(caught.exception))
+        self.assertEqual(self.service.plist.read_bytes(), old_bytes)
+        self.assertFalse(self.service.status()["healthy"])
+
+    def test_persistent_exit_5_is_bounded_and_does_not_claim_recovery(self):
+        self.service.install()
+        old_bytes = self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("new release")
+        self.runner.bootstrap_codes = [5] * 20
+        self.service.lifecycle_timeout = 0.02
+        count = len(self.runner.calls)
+        with self.assertRaisesRegex(manager.ServiceError, "exit 5.*Rollback also failed"):
+            self.service.install()
+        self.assertEqual(sum(call[1] == "bootstrap" for call in self.runner.calls[count:]), 2)
+        self.assertEqual(self.service.plist.read_bytes(), old_bytes)
+        self.assertFalse(self.service.status()["healthy"])
+
+    def test_retry_stops_if_unknown_job_or_listener_appears(self):
+        self.service.install()
+        old_bytes = self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("new release")
+        self.runner.fail_next_bootstrap = True
+
+        def foreign_occupant():
+            self.runner.service = LocalService(manager.PORT, self.service._headers(),
+                                               "/unknown/shared_service.py", service="other")
+
+        self.runner.on_failed_bootstrap = foreign_occupant
+        count = len(self.runner.calls)
+        with self.assertRaisesRegex(manager.ServiceError, "became occupied.*Rollback also failed"):
+            self.service.install()
+        calls = self.runner.calls[count:]
+        self.assertEqual(sum(call[1] == "bootstrap" for call in calls), 1)
+        self.assertEqual(sum(call[1] == "bootout" for call in calls), 1)
+        self.assertIsNotNone(self.runner.service)
+        self.assertEqual(self.service.plist.read_bytes(), old_bytes)
+
+    def test_retry_stops_for_unknown_listener_even_when_label_is_unloaded(self):
+        self.service.install()
+        old_bytes = self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("new release")
+        self.runner.fail_next_bootstrap = True
+        listeners = []
+
+        def foreign_listener():
+            listeners.append(LocalService(manager.PORT, self.service._headers(),
+                                          "/unknown/listener", service="other"))
+
+        self.runner.on_failed_bootstrap = foreign_listener
+        count = len(self.runner.calls)
+        try:
+            with self.assertRaisesRegex(manager.ServiceError, "became occupied.*Rollback also failed"):
+                self.service.install()
+            calls = self.runner.calls[count:]
+            self.assertEqual(sum(call[1] == "bootstrap" for call in calls), 1)
+            self.assertEqual(sum(call[1] == "bootout" for call in calls), 1)
+            self.assertFalse(self.service._loaded())
+            self.assertTrue(self.service._port_busy())
+            self.assertEqual(self.service.plist.read_bytes(), old_bytes)
+        finally:
+            for listener in listeners:
+                listener.close()
+
+    def test_retry_revalidates_plist_and_refuses_external_replacement(self):
+        self.service.install()
+        (self.source / "app.html").write_text("new release")
+        self.runner.fail_next_bootstrap = True
+        self.service.lifecycle_timeout = 0.6
+        replacement = plistlib.dumps({"Label": manager.LABEL, "ProgramArguments": ["unknown"]})
+        self.runner.on_failed_bootstrap = lambda: self.service.plist.write_bytes(replacement)
+        count = len(self.runner.calls)
+        with self.assertRaisesRegex(manager.ServiceError, "not managed.*Rollback also failed"):
+            self.service.install()
+        self.assertEqual(sum(call[1] == "bootstrap" for call in self.runner.calls[count:]), 1)
+        self.assertEqual(self.service.plist.read_bytes(), replacement)
 
     def test_failed_stop_during_upgrade_does_not_bootstrap_over_running_job(self):
         first = self.service.install()

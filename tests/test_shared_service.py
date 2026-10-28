@@ -1,6 +1,7 @@
 """Real HTTP/process regressions; all progress and daemon state are temporary."""
 import concurrent.futures
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,8 +11,39 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 PLUGIN = Path(__file__).resolve().parents[1] / "plugins/task-progress"
+
+
+class CoreStorageIsolationTests(unittest.TestCase):
+    def test_explicit_session_directory_never_probes_default_legacy_store(self):
+        spec = importlib.util.spec_from_file_location("isolated_shared_service", PLUGIN / "shared_service.py")
+        service = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(service)
+        with tempfile.TemporaryDirectory(prefix="task-progress-core-isolation-") as temporary:
+            root = Path(temporary)
+            fake_home = root / "home"
+            default_db = fake_home / ".cache/task-progress/progress-v3.sqlite3"
+            default_db.parent.mkdir(parents=True)
+            default_db.write_bytes(b"unrelated default-store sentinel")
+            isolated_sessions = root / "isolated/sessions"
+            sid = "00000000-0000-4000-8000-000000000053"
+            with patch.object(Path, "home", return_value=fake_home):
+                core = service.load_core(isolated_sessions)
+            self.assertEqual(core.LEGACY_DB_PATH, isolated_sessions.parent / "progress-v3.sqlite3")
+            # A broken default archive must not appear as an isolation warning.
+            self.assertIsNone(core.get_progress(sid)["structuredContent"]["progress"])
+            self.assertEqual(default_db.read_bytes(), b"unrelated default-store sentinel")
+            # The explicitly selected sibling archive is the only legacy source.
+            core.LEGACY_DB_PATH.write_bytes(b"isolated broken archive")
+            archive = core.get_progress(sid)["structuredContent"]["progress"]
+            self.assertEqual(archive["mode"], "legacy_archive")
+            self.assertEqual(archive["legacy_history_warning"], "legacy_history_unavailable")
+            self.assertEqual(core.LEGACY_DB_PATH.read_bytes(), b"isolated broken archive")
+            with patch.object(Path, "home", return_value=fake_home):
+                production = service.load_core()
+            self.assertEqual(production.LEGACY_DB_PATH, default_db)
 
 
 class SharedServiceTests(unittest.TestCase):

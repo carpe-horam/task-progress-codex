@@ -13,7 +13,7 @@ This document defines the shared backend/UI/skill contract for the responsibilit
 ## Dispatch binding
 
 - Starting a subagent attempt requires model/reasoning plus nonempty `tool_identifier` and `dispatch_text`; its actual `agent_name` can be unknown until the spawn returns.
-- Record `dispatch={status: pending|bound, attempt_id, agent_name, bound_at, ...}` on the node and attempt, independently of immutable execution metadata. A known actual agent ID (for follow-up) may bind immediately.
+- Record `dispatch={status: pending|bound, attempt_id, agent_name, bound_at, ...}` on the node and attempt, independently of immutable execution metadata. New spawns stay pending even if an assignment contains a planned alias. Only an explicit follow-up tool (`collaboration.followup_task`, `collaboration.send_message`, or `mcp__codex_app__send_message_to_thread`) with a known actual agent ID may bind immediately. This checks the declared operation; it does not authenticate the call.
 - Add `bind_task_agent(session_id, task_id, attempt_id, agent_name, task_instance_id)` to bind the returned agent ID to an active subagent attempt once. Identical repeat binding is idempotent; different IDs and stale attempts are rejected. This binding is caller-reported, not host verified.
 - A new subagent attempt cannot report finished before binding; failed/cancelled dispatch cleanup remains possible. Old in-flight attempts without this new dispatch contract remain recoverable, explicitly marked legacy/unbound, and still require review for finished results.
 
@@ -32,7 +32,30 @@ This document defines the shared backend/UI/skill contract for the responsibilit
 - Ready-task text includes its planned executor. UI and offline export preserve planned executor, actual bound agent ID, main self-execution reason, submitted outcome/evidence, review decision/reviewer/evidence, and pending-review state. Review information must not overwrite execution information.
 - Unknown or legacy role/acceptance information stays explicitly unrecorded; no simulated actor authentication, retroactive acceptance, or hidden role inference.
 
-## Validation and file ownership
+## Continuation and historical reads
+
+- Another phase of the same goal uses the same task instance, adding nodes or rebuilding its plan. Initialization cannot replace any running attempt or pending review. Replacing another unfinished task requires a concrete `new_task_reason`, retained on its archive; this records a deliberate change of goal, not permission to bypass review or re-planning.
+- Default reads and mutation responses omit historical bodies and set `history_included=false`. `history_summary` counts archived tasks, plans, and legacy tasks; absent bodies do not mean zero history. `get_progress(include_history=true)` loads history for the panel and exports. Cached history is tied to the current instance and revision; a failed or stale load must not produce a misleading complete export.
+- SQLite v3 records are an independent read-only historical source. They never replace JSON state, release dependencies, synthesize accepted reviews, or become writable current tasks. A SQLite-only session is shown as a legacy archive. Dual-store differences remain visible rather than merging by title or overwriting based on timestamps.
+- Compatibility reads use read-only SQLite and selected display fields, with explicit truncation limits. Missing, unsupported, or corrupt legacy data must not prevent normal JSON operations. Session clearing leaves a compatibility tombstone so subsequent reads or initialization cannot resurrect old SQLite records; the adapter does not delete the source database.
+- A pending-review aggregate may coexist with running work. Display both counts, and label all-submitted results as awaiting review until review is complete. A 100% execution-ended count is never a delivery acceptance claim.
+
+## Session requests and recoverable context (2026-10-28)
+
+The main session owns intent classification, planning, edits, re-planning and acceptance. Task Progress persists those decisions and execution facts, checks its own transitions, and guides the next action. It cannot force unrelated host tools to follow the plan or wake an idle chat.
+
+- Classify current-goal corrections, brief questions, independent requests and explicit stops/replacements separately. Corrections stay in the current instance; a brief answer returns to the original work. Register independent work through `route_request` in `queue` or `parallel` mode, with the actual request, rationale, constraints and acceptance criteria. Registration does not dispatch an agent.
+- A session has one foreground task. Parallel requests own separate task instances and attempts; their writes cannot replace the foreground. Parallel leaf execution is delegated, with the existing binding/submission/review contract. Queued work is not executing and does not enter the foreground progress denominator.
+- The foreground and request registry are persisted in one locked JSON document. Explicit FIFO activation archives and replaces the foreground in one atomic write, only after it is completed or truthfully closed. Init cannot bypass outstanding registered work. Request IDs deduplicate initial registration; stale instance and attempt IDs cannot write to another task.
+- `update_request` edits only a queued request, preserving the original and revisions. `cancel_request` cancels only an unstarted request; stopping an actual executor requires coordination and a truthful task result.
+- `update_task_context` records goal, constraints, acceptance criteria, resume location and a change reason. Actual request text may be recorded once; unknown historical text stays unknown. Rebuild preserves context, revisions and historical evidence; updating context does not revalidate old results against changed criteria.
+- Reads return `session_work` and `task_context`. Before finishing, check outstanding foreground, queued and parallel work. `can_finish_session` means no queued/active/pending-review work, not that every result succeeded. Open, failed and cancelled results must still be reported. Explicit user stops remain authoritative.
+- The UI's primary network percentage counts resolved leaves accepted under the current protocol, including explicit main-session completion. Pending review, failures and cancellations are separate. Missing historical acceptance stays unknown; root synthesis is independent of the leaf percentage.
+- Foreground responses expose `parallel_tasks[]` as current network projections from the same captured document and state revision. They omit historical and recursive session bodies. The UI renders these as sibling roots after the foreground, preserving instance-specific keys, children and acceptance states; queued requests are not roots before activation. The headline progress still refers to the foreground. Cancelled requests' unexecuted nodes remain pending in storage and are displayed as unexecuted, never ready.
+
+See [request routing guidance](../plugins/task-progress/skills/track-progress/references/request-routing.md) and the [control proposal](reviews/2026-10-28-plan-execution-control-proposal.md). Current structural edits use decomposition, reassignment and explicit rebuilding; arbitrary edits to an in-flight or accepted node are not introduced here.
+
+## Validation ownership
 
 Backend owner: `plugins/task-progress/server.py`, Python backend tests except the policy-specific test. UI owner: `plugins/task-progress/app.html`, JavaScript browser tests/helpers. Workflow owner: skill, hooks guidance, READMEs, CHANGELOG, and policy-specific hook/skill tests. Root owns this contract and integration reports/commit. All work shares the existing worktree; no commits or installation by subagents.
 

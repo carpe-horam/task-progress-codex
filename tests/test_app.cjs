@@ -16,7 +16,7 @@ const pending = new Map(); let seq = 0; const results = []; let browser;
 const python = spawn('python3', ['-c', `import importlib.util, pathlib, sys
 spec=importlib.util.spec_from_file_location('audit_server',sys.argv[1])
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.main()
+m.LEGACY_DB_PATH=pathlib.Path(sys.argv[2])/'progress-v3.sqlite3';m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.main()
 `, path.join(root, 'plugins/task-progress/server.py'), temp]);
 python.stderr.on('data', b => process.stderr.write(b));
 readline.createInterface({input:python.stdout}).on('line', line => {
@@ -113,7 +113,7 @@ async function main() {
   await page.evaluate(()=>{window.audit.holdRead=false;for(const h of window.audit.held)h.source.postMessage({jsonrpc:'2.0',id:h.id,result:h.result},'*');window.audit.held=[];});
   await card.locator('#refresh:not([disabled])').waitFor();
   const after=await card.locator('#fraction').textContent();
-  assert.equal(before,'1 / 2 项执行结束');
+  assert.equal(before,'1 / 2 项已解决 / 已验收完成 · 主任务');
   assert.equal(after,before);
   assert.equal(await card.locator('li.step.completed:has(> details[data-key$=":a"])').count(),1);
   record('stale_refresh_is_ignored','pass',{before,after});
@@ -154,7 +154,8 @@ async function main() {
   await rpc('update_task',{session_id:sid,task_id:'root-e1',execution_status:'finished',outcome:'resolved',summary:'Browser fixture children verified',evidence:['isolated-browser-fixture'],assignment:fixtureAssignment});
 
   // Cross-task late notifications cannot restore an archived task.
-  const next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
+  let next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
+  next=await rpc('get_progress',{session_id:sid,include_history:true});
   const archivedC=next.structuredContent.progress.task_history[0].nodes.find(n=>n.id==='c');
   assert.deepEqual(archivedC.attempts.map(attempt=>attempt.attempt),[1,2]);
   await notify('current',next);
@@ -171,7 +172,7 @@ async function main() {
   await newest.locator('.card.tab-hidden').waitFor({state:'attached'});
   assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
   await card.locator('#task-history-section > summary').click();
-  assert((await card.locator('#task-history-list').textContent()).includes('浏览器隔离检查'));
+  await card.locator('#task-history-list').filter({hasText:'浏览器隔离检查'}).waitFor({state:'attached'});
   await card.locator('#export-all').click();
   await card.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const historyFile=fs.readdirSync(temp).find(n=>n.includes('新的任务')&&n.endsWith('.xlsx'));
@@ -210,6 +211,8 @@ async function main() {
   const inheritedCard=await mount('inherited',inheritedSnapshot,'fullscreen');
   const replan=await rpc('rebuild_task_network',{session_id:inheritedSid,reason:'Validate raw history'});
   await notify('inherited',replan);
+  await inheritedCard.locator('#history-section > summary').click();
+  await inheritedCard.locator('#history-list li.step.blocked:has(> details[data-key$=":h"])').waitFor({state:'attached'});
   assert.equal(await inheritedCard.locator('#history-list li.step.blocked:has(> details[data-key$=":h"])').count(),1);
   await inheritedCard.locator('#export-all').click();
   await inheritedCard.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();

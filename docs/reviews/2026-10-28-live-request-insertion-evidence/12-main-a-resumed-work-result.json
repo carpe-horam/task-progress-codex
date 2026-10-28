@@ -1,0 +1,186 @@
+{
+  "completed_at": "2026-10-28T12:28:00.204497+08:00",
+  "original_instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+  "resumed_attempt": "0cc92459-5dfa-4171-817a-d79f8d1d6046",
+  "parallel_root_finished_at": "2026-10-28T12:27:37+08:00",
+  "tool_count": 22,
+  "actual_re_read_matches_original": true,
+  "tools": [
+    {
+      "name": "reassign_task",
+      "required": [
+        "session_id",
+        "task_id",
+        "assignment",
+        "reason",
+        "reviewer"
+      ]
+    },
+    {
+      "name": "bind_task_agent",
+      "required": [
+        "session_id",
+        "task_id",
+        "attempt_id",
+        "agent_name"
+      ]
+    },
+    {
+      "name": "review_task",
+      "required": [
+        "session_id",
+        "task_id",
+        "attempt_id",
+        "decision",
+        "summary",
+        "evidence",
+        "reviewer"
+      ]
+    },
+    {
+      "name": "register_ui_view",
+      "required": [
+        "session_id",
+        "view_id"
+      ]
+    },
+    {
+      "name": "check_ui_view",
+      "required": [
+        "session_id",
+        "view_id"
+      ]
+    },
+    {
+      "name": "unregister_ui_view",
+      "required": [
+        "session_id",
+        "view_id"
+      ]
+    },
+    {
+      "name": "init_progress",
+      "required": [
+        "steps"
+      ]
+    },
+    {
+      "name": "init_task_network",
+      "required": [
+        "task_title"
+      ]
+    },
+    {
+      "name": "decompose_task",
+      "required": [
+        "session_id",
+        "task_id",
+        "tasks"
+      ]
+    },
+    {
+      "name": "update_task",
+      "required": [
+        "session_id",
+        "task_id",
+        "execution_status"
+      ]
+    },
+    {
+      "name": "get_ready_tasks",
+      "required": [
+        "session_id"
+      ]
+    },
+    {
+      "name": "rebuild_task_network",
+      "required": [
+        "session_id",
+        "reason"
+      ]
+    },
+    {
+      "name": "update_step",
+      "required": [
+        "session_id",
+        "step_index",
+        "status"
+      ]
+    },
+    {
+      "name": "get_progress",
+      "required": [
+        "session_id"
+      ]
+    },
+    {
+      "name": "render_progress",
+      "required": [
+        "session_id"
+      ]
+    },
+    {
+      "name": "save_export_files",
+      "required": [
+        "files"
+      ]
+    },
+    {
+      "name": "clear_progress",
+      "required": [
+        "session_id"
+      ]
+    },
+    {
+      "name": "route_request",
+      "required": [
+        "session_id",
+        "task_instance_id",
+        "request_id",
+        "request_text",
+        "task_title",
+        "mode",
+        "reason",
+        "acceptance_criteria"
+      ]
+    },
+    {
+      "name": "activate_request",
+      "required": [
+        "session_id",
+        "task_instance_id",
+        "request_id"
+      ]
+    },
+    {
+      "name": "update_request",
+      "required": [
+        "session_id",
+        "task_instance_id",
+        "request_id",
+        "reason"
+      ]
+    },
+    {
+      "name": "cancel_request",
+      "required": [
+        "session_id",
+        "task_instance_id",
+        "request_id",
+        "reason"
+      ]
+    },
+    {
+      "name": "update_task_context",
+      "required": [
+        "session_id",
+        "task_instance_id",
+        "goal",
+        "constraints",
+        "acceptance_criteria",
+        "resume_note",
+        "reason"
+      ]
+    }
+  ]
+}

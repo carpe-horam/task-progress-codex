@@ -64,13 +64,14 @@ def atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
 
 class ServiceManager:
     def __init__(self, home=None, plugin_root=None, python_executable=None,
-                 platform=None, runner=None, health_timeout=8.0):
+                 platform=None, runner=None, health_timeout=8.0, lifecycle_timeout=20.0):
         self.home = Path(home or Path.home()).expanduser().resolve()
         self.plugin_root = Path(plugin_root or Path(__file__).parent).resolve()
         self.python = str(Path(python_executable or sys.executable).resolve())
         self.platform = platform or sys.platform
         self.runner = runner or subprocess.run
         self.health_timeout = health_timeout
+        self.lifecycle_timeout = lifecycle_timeout
         self.state_dir = self.home / ".cache/task-progress/service"
         self.credentials = self.state_dir / "http-headers.json"
         self.releases = self.home / "Library/Application Support/Task Progress/releases"
@@ -145,6 +146,44 @@ class ServiceManager:
     def _loaded(self):
         return self._launchctl("print", self.job, check=False).returncode == 0
 
+    def _wait_unloaded(self, deadline):
+        # bootout can return while launchd and the HTTP listener are still
+        # exiting. Do not race either resource with a replacement bootstrap.
+        while True:
+            loaded = self._loaded()
+            busy = self._port_busy()
+            if not loaded and not busy:
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ServiceError("Timed out waiting for the managed job to unload and its port to become free")
+            time.sleep(min(0.1, remaining))
+
+    def _bootstrap_owned(self, expected, deadline):
+        # Exit 5 can be transient during launchd namespace cleanup, but is not
+        # proof of that cause. Retry only this verified definition, only while
+        # both resources remain vacant. Never bootout a new occupant to retry.
+        delay = 0.25
+        while True:
+            if time.monotonic() >= deadline:
+                raise ServiceError("Timed out before the managed bootstrap could complete")
+            if self._owned_plist() != expected:
+                raise ServiceError("Managed LaunchAgent definition changed before bootstrap")
+            if self._loaded() or self._port_busy():
+                raise ServiceError("Refusing bootstrap while the job label or port is occupied")
+            result = self._launchctl("bootstrap", self.domain, str(self.plist), check=False)
+            if result.returncode == 0:
+                return
+            remaining = deadline - time.monotonic()
+            if result.returncode != 5 or remaining <= 0:
+                raise ServiceError(f"launchctl bootstrap failed (exit {result.returncode})")
+            if self._loaded() or self._port_busy():
+                raise ServiceError("launchctl bootstrap failed (exit 5); job label or port became occupied")
+            time.sleep(min(delay, remaining))
+            if time.monotonic() >= deadline:
+                raise ServiceError("launchctl bootstrap failed (exit 5; bounded retry expired)")
+            delay = min(delay * 2, 2.0)
+
     def _owned_plist(self):
         if self.plist.is_symlink():
             raise ServiceError("Refusing symlink LaunchAgent")
@@ -208,7 +247,7 @@ class ServiceManager:
             raise ServiceError("Unable to inspect the local service port") from error
 
     def _release(self):
-        required = ["server.py", "app.html", "shared_service.py", "service_manager.py",
+        required = ["server.py", "app.html", "shared_service.py", "service_manager.py", "legacy_history.py",
                     ".codex-plugin/plugin.json"]
         files = [self.plugin_root / name for name in required]
         assets = self.plugin_root / "assets"
@@ -285,13 +324,18 @@ class ServiceManager:
             old_bytes = self.plist.read_bytes() if previous else None
             changed_job = False
             written = False
+            started = False
+            definition = self._definition(runtime)
+            deadline = time.monotonic() + self.lifecycle_timeout
             try:
                 if loaded:
                     self._launchctl("bootout", self.job)
                     changed_job = True
-                atomic_write(self.plist, plistlib.dumps(self._definition(runtime)))
+                    self._wait_unloaded(deadline)
+                atomic_write(self.plist, plistlib.dumps(definition))
                 written = True
-                self._launchctl("bootstrap", self.domain, str(self.plist))
+                self._bootstrap_owned(definition, deadline)
+                started = True
                 changed_job = True
                 health = self._wait_health(runtime)
                 return {"ok": True, "changed": True, "release": str(release), "health": health}
@@ -300,15 +344,21 @@ class ServiceManager:
                     raise ServiceError(f"Installation stopped before changing the previous job: {error}") from error
                 rollback_error = None
                 try:
-                    if written and self._loaded():
+                    rollback_deadline = time.monotonic() + self.lifecycle_timeout
+                    if started and self._loaded():
+                        if self._owned_plist() != definition:
+                            raise ServiceError("Managed LaunchAgent definition changed before rollback")
                         self._launchctl("bootout", self.job)
+                    if self._owned_plist() != (definition if written else previous):
+                        raise ServiceError("Managed LaunchAgent definition changed during rollback")
                     if old_bytes is None:
                         self.plist.unlink(missing_ok=True)
                     else:
                         atomic_write(self.plist, old_bytes)
-                        if loaded:
-                            self._launchctl("bootstrap", self.domain, str(self.plist))
-                            self._wait_health(previous["ProgramArguments"][1])
+                    self._wait_unloaded(rollback_deadline)
+                    if old_bytes is not None and loaded:
+                        self._bootstrap_owned(previous, rollback_deadline)
+                        self._wait_health(previous["ProgramArguments"][1])
                 except Exception as failure:
                     rollback_error = str(failure)
                 message = f"Installation failed: {error}. "

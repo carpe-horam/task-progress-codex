@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-10-28T02:59:57.325338+00:00",
+  "workspace": "/Users/machengling/.codex/worktrees/3e36/task-process",
+  "head": "8a9b6dc4e2d18fa1bcc03350859ece364d4ee6a2",
+  "files": {
+    "plugins/task-progress/service_manager.py": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c",
+    "tests/test_service_manager.py": "2362513796d3bf42a5a400b41331a2ce93329e1e5e506e4a4a722a8f3a8e019f"
+  },
+  "verification": {
+    "command": "python3 -m unittest discover -s tests -p test_service_manager.py -v",
+    "result": "23 tests passed in 2.563s",
+    "scope": "isolated fake launchctl and loopback listener; no real launchd or user service changes"
+  },
+  "observed_failure_log": "/tmp/task-progress-repair-20261028/install.log",
+  "causal_limit": "Immediate bootstrap exit 5 and successful later bootstrap are compatible with transient launchd cleanup delay, but do not establish the specific cause."
+}

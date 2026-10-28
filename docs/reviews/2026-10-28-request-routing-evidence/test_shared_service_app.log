@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "groups": 3,
+  "transport": "HTTP",
+  "clients": 2,
+  "server_processes": 1,
+  "checks": [
+    "Session and fullscreen isolation",
+    "Concurrent update and refresh isolation",
+    "Closing one chat leaves shared service available"
+  ],
+  "browser": "156.0.8078.73",
+  "pageErrors": []
+}

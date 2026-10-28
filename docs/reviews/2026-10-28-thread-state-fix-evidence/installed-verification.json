@@ -1,0 +1,118 @@
+{
+  "captured_at": "2026-10-28T11:02:15.127444+08:00",
+  "health": {
+    "ok": true,
+    "installed": true,
+    "loaded": true,
+    "healthy": true,
+    "health": {
+      "service": "task-progress",
+      "transport": "streamable-http",
+      "version": "0.2.0",
+      "pid": 84919,
+      "instance_id": "902bd4dd-2a90-4824-b55a-072671eb9d8d",
+      "runtime_path": "/Users/machengling/Library/Application Support/Task Progress/releases/0.2.0-a6d161aade4d1f98c878/shared_service.py",
+      "port": 53421,
+      "uptime_seconds": 69.849,
+      "request_count": 110
+    },
+    "plist": "/Users/machengling/Library/LaunchAgents/io.task-progress.mcp.plist",
+    "port": 53421
+  },
+  "file_hashes": {
+    "server.py": {
+      "source": "9cf499cafc04220b8ffeaebeeb10929a4f4cbc8b70c1ccccb6227c2cea67f99c",
+      "installed_cache": "9cf499cafc04220b8ffeaebeeb10929a4f4cbc8b70c1ccccb6227c2cea67f99c",
+      "runtime": "9cf499cafc04220b8ffeaebeeb10929a4f4cbc8b70c1ccccb6227c2cea67f99c"
+    },
+    "app.html": {
+      "source": "55e708a03b71d337a549220e744da1a78d80699f67a08738be041debf0fde48f",
+      "installed_cache": "55e708a03b71d337a549220e744da1a78d80699f67a08738be041debf0fde48f",
+      "runtime": "55e708a03b71d337a549220e744da1a78d80699f67a08738be041debf0fde48f"
+    },
+    "shared_service.py": {
+      "source": "952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e",
+      "installed_cache": "952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e",
+      "runtime": "952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e"
+    },
+    "service_manager.py": {
+      "source": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c",
+      "installed_cache": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c",
+      "runtime": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c"
+    },
+    "legacy_history.py": {
+      "source": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c",
+      "installed_cache": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c",
+      "runtime": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c"
+    }
+  },
+  "live_reads": [
+    {
+      "session_id": "e30c494a-948a-4dc5-be03-4f14246bcadc",
+      "mode": null,
+      "task_instance_id": "bb94ed82-aee5-44cf-8836-a22ee77cc239",
+      "state_revision": 700,
+      "status": "awaiting_review",
+      "pending_review_count": 9,
+      "executing_count": 3,
+      "history_summary": {
+        "task_count": 15,
+        "plan_count": 8,
+        "legacy_task_count": 0
+      },
+      "history_included": true,
+      "legacy_records": []
+    },
+    {
+      "session_id": "03024466-e8a0-4f55-8046-b84beee04fdc",
+      "mode": null,
+      "task_instance_id": "19df4bc4-d65f-423d-ba94-aa5c2ebce681",
+      "state_revision": 0,
+      "status": "in_progress",
+      "pending_review_count": 0,
+      "executing_count": 1,
+      "history_summary": {
+        "task_count": 4,
+        "plan_count": 0,
+        "legacy_task_count": 1
+      },
+      "history_included": true,
+      "legacy_records": [
+        {
+          "task_instance_id": "bf234d75-5e85-4b98-9338-a9609f45e1f3",
+          "status": "resolved"
+        }
+      ]
+    },
+    {
+      "session_id": "f9f5aa88-809d-5181-944b-9ccad022950d",
+      "mode": "legacy_archive",
+      "task_instance_id": null,
+      "state_revision": 0,
+      "status": "legacy_archive",
+      "pending_review_count": null,
+      "executing_count": null,
+      "history_summary": {
+        "task_count": 0,
+        "plan_count": 0,
+        "legacy_task_count": 3
+      },
+      "history_included": true,
+      "legacy_records": [
+        {
+          "task_instance_id": "e767bc3f-1760-42c7-af79-5e0cdf81b159",
+          "status": "resolved"
+        },
+        {
+          "task_instance_id": "b087b95d-a7c7-4d2c-b312-43dc31fdbbd4",
+          "status": "open"
+        },
+        {
+          "task_instance_id": "99a0e8eb-7e5c-4e59-9773-8274a93090f6",
+          "status": "resolved"
+        }
+      ]
+    }
+  ],
+  "scope": "Only authenticated health and get_progress reads; no target business updates."
+}

@@ -1,0 +1,124 @@
+{
+  "captured_at": "2026-10-28T12:27:19.489851+08:00",
+  "task_instance_id": "4a3bafa4-e429-4760-8440-ec31ba5c218e",
+  "task_title": "独立并行任务P：生成运行版文件校验清单",
+  "state_revision": 95,
+  "status": "awaiting_review",
+  "ready_tasks": [],
+  "can_finish_session": false,
+  "return_to": {
+    "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "task_id": "root",
+    "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+  },
+  "next_actions": [
+    "主会话 review_task(runtime-checksums)：使用当前 task_instance_id 与 attempt_id=ac6b2806-3b49-4bb7-a97d-fc504c9b1fa4，检查 submission 后填写 decision=accept|reject、summary、evidence 与 reviewer.execution_mode=main_session；不要重复 update_task(finished)。",
+    "返回主任务 实跑主任务A：生成并核验当前插件接口清单（14d849be-ee26-4346-9d4b-42d5c08eefc4）；插入请求结束不代表原任务完成。",
+    "请求 live-20261028-Q 仅排队；主任务如实收尾后显式 activate_request，按 FIFO 激活。",
+    "主会话独立验收请求 live-20261028-P 的待复核结果。"
+  ],
+  "task_context": {
+    "goal": "独立并行任务P：生成运行版文件校验清单",
+    "constraints": [
+      "只读插件文件，不安装、不提交、不改变其他任务",
+      "输出仅写指定实跑证据目录"
+    ],
+    "acceptance_criteria": [
+      "真实子智能体产出五文件校验清单",
+      "主会话对原始文件独立复算并验收"
+    ],
+    "resume_note": "",
+    "provided_context": {
+      "scenario": "user_authorized_live_exercise",
+      "output_dir": "/tmp/task-progress-live-run-20261028"
+    }
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "title": "独立并行任务P：生成运行版文件校验清单",
+      "status": "awaiting_review",
+      "execution_status": "pending",
+      "outcome": null,
+      "review_status": null,
+      "attempt_id": null,
+      "started_at": null,
+      "finished_at": null,
+      "summary": "",
+      "evidence": [],
+      "dispatch": null
+    },
+    {
+      "id": "runtime-checksums",
+      "title": "子智能体生成五文件SHA256校验清单",
+      "status": "awaiting_review",
+      "execution_status": "finished",
+      "outcome": null,
+      "review_status": "pending",
+      "attempt_id": "ac6b2806-3b49-4bb7-a97d-fc504c9b1fa4",
+      "started_at": "2026-10-28T12:26:33+08:00",
+      "finished_at": "2026-10-28T12:27:00+08:00",
+      "summary": "已从已安装服务 health.runtime_path 确定实际运行目录，独立读取五个实际运行文件及缓存文件并计算 SHA256；5/5 匹配。提交主会话复核，未自行验收。",
+      "evidence": [
+        "/tmp/task-progress-live-run-20261028/parallel-p.json",
+        "{\"captured_at\": \"2026-10-28T12:27:00.011907+08:00\", \"timezone\": \"Asia/Shanghai\", \"runtime_directory\": \"/Users/machengling/Library/Application Support/Task Progress/releases/0.2.0-5aad43dfcd6c1d2c7ced\", \"cache_directory\": \"/Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.2.0\", \"files\": [{\"filename\": \"server.py\", \"runtime_sha256\": \"f32705c3fff85c75d5a7d087e7b11348f68fd20c5c7a9e1b3b6f92637cdc23b3\", \"cache_sha256\": \"f32705c3fff85c75d5a7d087e7b11348f68fd20c5c7a9e1b3b6f92637cdc23b3\", \"match\": true}, {\"filename\": \"app.html\", \"runtime_sha256\": \"51a7e83137314222fc0538dfee74be8685ccd59e419b5e527a3d43777f05f5e7\", \"cache_sha256\": \"51a7e83137314222fc0538dfee74be8685ccd59e419b5e527a3d43777f05f5e7\", \"match\": true}, {\"filename\": \"shared_service.py\", \"runtime_sha256\": \"952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e\", \"cache_sha256\": \"952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e\", \"match\": true}, {\"filename\": \"service_manager.py\", \"runtime_sha256\": \"fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c\", \"cache_sha256\": \"fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c\", \"match\": true}, {\"filename\": \"legacy_history.py\", \"runtime_sha256\": \"79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c\", \"cache_sha256\": \"79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c\", \"match\": true}], \"all_match\": true}"
+      ],
+      "dispatch": {
+        "status": "bound",
+        "attempt_id": "ac6b2806-3b49-4bb7-a97d-fc504c9b1fa4",
+        "agent_name": "/root/live_parallel_p",
+        "bound_at": "2026-10-28T12:26:53+08:00",
+        "tool_identifier": "collaboration.spawn_agent",
+        "dispatch_text": "执行用户授权的独立并行任务P，工作区 /Users/machengling/.codex/worktrees/3e36/task-process。主任务A仍在执行；你仅负责P，不得改主任务或结束主会话。读取 /tmp/task-progress-live-run-20261028/live_client.py 了解已安装MCP服务读取方式；可import后用progress('4a3bafa4-e429-4760-8440-ec31ba5c218e')恢复获派状态，manager.health()得实际运行目录，不读取/输出凭据。对运行目录和缓存 /Users/machengling/.codex/plugins/cache/task-progress-codex/task-progress/0.2.0 中的 server.py, app.html, shared_service.py, service_manager.py, legacy_history.py 各自实际计算SHA256并比较，输出 /tmp/task-progress-live-run-20261028/parallel-p.json，包含Asia/Shanghai时间、实际运行目录、文件名、runtime_sha256、cache_sha256、match；不用源码工作树假定已安装版本。只读插件与运行文件，只能写parallel-p.json，禁止安装、修改产品、提交、触碰其他会话。输出后用既有TaskProgress update_task提交finished/resolved（若有不一致则open）与完整证据给主会话复核；不得自己review或验收root。session 08cfece3-45ac-40f5-a797-c2b846c92464 instance 4a3bafa4-e429-4760-8440-ec31ba5c218e task runtime-checksums，attempt随后发。该任务是实跑请求，不是单元测试伪造结果；独立完成后只报告事实。",
+        "verification": "not_verified_by_codex_host",
+        "source": "mcp_tool_input"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "request_id": "foreground:14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+      "task_title": "实跑主任务A：生成并核验当前插件接口清单",
+      "mode": "foreground",
+      "status": "active",
+      "return_to": null,
+      "origin_return_to": null,
+      "summary": ""
+    },
+    {
+      "request_id": "live-20261028-Q",
+      "task_instance_id": null,
+      "task_title": "独立排队任务Q：核对恢复协议文档",
+      "mode": "queue",
+      "status": "queued",
+      "return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root",
+        "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+      },
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": ""
+    },
+    {
+      "request_id": "live-20261028-P",
+      "task_instance_id": "4a3bafa4-e429-4760-8440-ec31ba5c218e",
+      "task_title": "独立并行任务P：生成运行版文件校验清单",
+      "mode": "parallel",
+      "status": "pending_review",
+      "return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root",
+        "resume_note": "已采集接口清单；正处inventory-start，接下来登记排队Q和并行P；P验收后继续inventory-resume。"
+      },
+      "origin_return_to": {
+        "task_instance_id": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+        "task_id": "root"
+      },
+      "summary": ""
+    }
+  ]
+}

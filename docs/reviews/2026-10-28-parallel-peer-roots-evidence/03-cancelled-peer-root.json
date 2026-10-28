@@ -1,0 +1,1237 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "📋 目标：排队任务 Q（计划第 1 轮）\n🧭 规划状态：required\n📊 叶任务结束：0/1（0%），已解决 0，未解决 0，可执行 0，运行中 0，待验收 0\n状态：pending\n下一步：先提交粗粒度任务拆分；确为单步工作时，初始化时记录 atomic_reason。\n- [root] 排队任务 Q — blocked\n  计划执行者：主会话\n会话下一步：\n返回主任务 排队任务 Q（4ab100c0-198c-48d5-977d-b5e291e4c314）；插入请求结束不代表原任务完成。"
+    }
+  ],
+  "structuredContent": {
+    "progress": {
+      "schema_version": 2,
+      "state_revision": 24,
+      "session_id": "3066b029-ff6e-4ba2-9ab7-635c7effdf59",
+      "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+      "task_title": "排队任务 Q",
+      "main_session": null,
+      "planning_status": "required",
+      "planning_note": "",
+      "status": "pending",
+      "root_status": "blocked",
+      "completed": 0,
+      "total": 1,
+      "percent": 0,
+      "resolved_leaf_count": 0,
+      "open_leaf_count": 0,
+      "failed_leaf_count": 0,
+      "ready_count": 0,
+      "executing_count": 0,
+      "pending_review_count": 0,
+      "split_review_due": [],
+      "blocked_count": 1,
+      "epoch": 0,
+      "revision": 0,
+      "root_id": "root",
+      "created_at": "2026-10-28T12:54:42+08:00",
+      "updated_at": "2026-10-28T12:54:42+08:00",
+      "nodes": [
+        {
+          "id": "root",
+          "title": "排队任务 Q",
+          "parent_id": null,
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "pending",
+          "outcome": null,
+          "summary": "",
+          "evidence": [],
+          "assignment": {},
+          "planned_assignment": {
+            "execution_mode": "main_session"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": null,
+          "submission": null,
+          "review": null,
+          "review_status": null,
+          "profile": null,
+          "attempt": 0,
+          "attempt_id": null,
+          "attempts": [],
+          "started_at": null,
+          "finished_at": null,
+          "responsibility_legacy": false,
+          "status": "blocked",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        }
+      ],
+      "ready_tasks": [],
+      "next_actions": [
+        "decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason",
+        "返回主任务 排队任务 Q（4ab100c0-198c-48d5-977d-b5e291e4c314）；插入请求结束不代表原任务完成。"
+      ],
+      "history_summary": {
+        "task_count": 1,
+        "plan_count": 0,
+        "legacy_task_count": 0
+      },
+      "history_included": false,
+      "session_work": {
+        "foreground": {
+          "request_text": "真实隔离服务示例 queue",
+          "task_title": "排队任务 Q",
+          "mode": "queue",
+          "reason": "独立结果范围",
+          "acceptance_criteria": [
+            "根任务各自保留验收状态"
+          ],
+          "constraints": [],
+          "context_brief": {
+            "goal": "排队任务 Q",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "goal": "排队任务 Q",
+          "request_id": "queue",
+          "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+          "status": "active",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "return_to": null,
+          "activated_at": "2026-10-28T12:54:42+08:00",
+          "activated_from": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+          "origin_return_to": {
+            "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_id": "root"
+          },
+          "summary": ""
+        },
+        "requests": [
+          {
+            "request_id": "foreground:4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_title": "主任务 A · 同名节点隔离",
+            "goal": "主任务 A · 同名节点隔离",
+            "request_text": null,
+            "context_source": "request_text_unrecorded",
+            "mode": "foreground",
+            "reason": "恢复已有主任务，不补造历史请求原文。",
+            "acceptance_criteria": [],
+            "constraints": [],
+            "context_brief": {
+              "goal": "主任务 A · 同名节点隔离",
+              "constraints": [],
+              "acceptance_criteria": [],
+              "resume_note": ""
+            },
+            "return_to": {
+              "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+              "task_id": "root",
+              "resume_note": ""
+            },
+            "created_at": "2026-10-28T12:54:41+08:00",
+            "status": "completed",
+            "summary": "本根任务综合验收完成",
+            "origin_return_to": null
+          },
+          {
+            "request_text": "真实隔离服务示例 queue",
+            "task_title": "排队任务 Q",
+            "mode": "queue",
+            "reason": "独立结果范围",
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "constraints": [],
+            "context_brief": {
+              "goal": "排队任务 Q",
+              "constraints": [],
+              "acceptance_criteria": [
+                "根任务各自保留验收状态"
+              ],
+              "resume_note": "",
+              "provided_context": {}
+            },
+            "goal": "排队任务 Q",
+            "request_id": "queue",
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "status": "active",
+            "created_at": "2026-10-28T12:54:41+08:00",
+            "return_to": null,
+            "activated_at": "2026-10-28T12:54:42+08:00",
+            "activated_from": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "origin_return_to": {
+              "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+              "task_id": "root"
+            },
+            "summary": ""
+          },
+          {
+            "request_text": "真实隔离服务示例 p1",
+            "task_title": "并行任务 P1",
+            "mode": "parallel",
+            "reason": "独立结果范围",
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "constraints": [],
+            "context_brief": {
+              "goal": "并行任务 P1",
+              "constraints": [],
+              "acceptance_criteria": [
+                "根任务各自保留验收状态"
+              ],
+              "resume_note": "",
+              "provided_context": {}
+            },
+            "goal": "并行任务 P1",
+            "request_id": "p1",
+            "task_instance_id": "39438014-60a5-42e1-9dd1-01898804216c",
+            "status": "completed",
+            "created_at": "2026-10-28T12:54:41+08:00",
+            "return_to": {
+              "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+              "task_id": "root",
+              "resume_note": ""
+            },
+            "origin_return_to": {
+              "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+              "task_id": "root"
+            },
+            "summary": "P1 综合验收通过"
+          },
+          {
+            "request_text": "真实隔离服务示例 p2",
+            "task_title": "并行任务 P2",
+            "mode": "parallel",
+            "reason": "独立结果范围",
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "constraints": [],
+            "context_brief": {
+              "goal": "并行任务 P2",
+              "constraints": [],
+              "acceptance_criteria": [
+                "根任务各自保留验收状态"
+              ],
+              "resume_note": "",
+              "provided_context": {}
+            },
+            "goal": "并行任务 P2",
+            "request_id": "p2",
+            "task_instance_id": "db28b999-f5b7-4149-bbae-6e18d47d6efc",
+            "status": "completed",
+            "created_at": "2026-10-28T12:54:41+08:00",
+            "return_to": {
+              "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+              "task_id": "root",
+              "resume_note": ""
+            },
+            "origin_return_to": {
+              "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+              "task_id": "root"
+            },
+            "summary": "P2 综合验收通过"
+          },
+          {
+            "request_text": "Cancelled isolated fixture",
+            "task_title": "并行任务 P3 · 已取消",
+            "mode": "parallel",
+            "reason": "独立取消边界",
+            "acceptance_criteria": [
+              "取消后不显示可执行"
+            ],
+            "constraints": [],
+            "context_brief": {
+              "goal": "并行任务 P3 · 已取消",
+              "constraints": [],
+              "acceptance_criteria": [
+                "取消后不显示可执行"
+              ],
+              "resume_note": "",
+              "provided_context": {}
+            },
+            "goal": "并行任务 P3 · 已取消",
+            "request_id": "cancelled",
+            "task_instance_id": "fdaf4395-17e3-4f9a-aa88-b0fa190ac5b1",
+            "status": "cancelled",
+            "created_at": "2026-10-28T12:54:42+08:00",
+            "return_to": {
+              "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+              "task_id": "root",
+              "resume_note": ""
+            },
+            "summary": "User withdrew before dispatch",
+            "cancelled_at": "2026-10-28T12:54:42+08:00",
+            "cancellation_reason": "User withdrew before dispatch",
+            "origin_return_to": {
+              "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+              "task_id": "root"
+            }
+          }
+        ],
+        "can_finish_session": false,
+        "return_to": {
+          "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+          "task_id": "root",
+          "resume_note": ""
+        },
+        "next_actions": [
+          "返回主任务 排队任务 Q（4ab100c0-198c-48d5-977d-b5e291e4c314）；插入请求结束不代表原任务完成。"
+        ],
+        "verification": "caller_declared_not_host_authenticated"
+      },
+      "parallel_tasks": [
+        {
+          "schema_version": 2,
+          "state_revision": 24,
+          "session_id": "3066b029-ff6e-4ba2-9ab7-635c7effdf59",
+          "task_instance_id": "39438014-60a5-42e1-9dd1-01898804216c",
+          "task_title": "并行任务 P1",
+          "main_session": null,
+          "planning_status": "planned",
+          "planning_note": "",
+          "status": "completed",
+          "root_status": "resolved",
+          "completed": 1,
+          "total": 1,
+          "percent": 100,
+          "resolved_leaf_count": 1,
+          "open_leaf_count": 0,
+          "failed_leaf_count": 0,
+          "ready_count": 0,
+          "executing_count": 0,
+          "pending_review_count": 0,
+          "split_review_due": [],
+          "blocked_count": 0,
+          "epoch": 0,
+          "revision": 6,
+          "root_id": "root",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "updated_at": "2026-10-28T12:54:42+08:00",
+          "nodes": [
+            {
+              "id": "root",
+              "title": "并行任务 P1",
+              "parent_id": null,
+              "children": [
+                "work"
+              ],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "P1 综合验收通过",
+              "evidence": [
+                "fixture://p1-root"
+              ],
+              "assignment": {
+                "self_execution_reason": "Isolated peer-root browser fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T12:54:42+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": null,
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "profile": null,
+              "attempt": 1,
+              "attempt_id": "8bf0f4b2-22cd-4346-85dc-e154cb0203c3",
+              "attempts": [
+                {
+                  "attempt": 1,
+                  "attempt_id": "8bf0f4b2-22cd-4346-85dc-e154cb0203c3",
+                  "kind": "synthesis",
+                  "execution_status": "finished",
+                  "outcome": "resolved",
+                  "summary": "P1 综合验收通过",
+                  "evidence": [
+                    "fixture://p1-root"
+                  ],
+                  "started_at": "2026-10-28T12:54:42+08:00",
+                  "assignment": {
+                    "self_execution_reason": "Isolated peer-root browser fixture",
+                    "execution_mode": "main_session",
+                    "metadata_provenance": {
+                      "source": "unknown",
+                      "verification": "not_verified_by_codex_host",
+                      "model_source": "unknown",
+                      "reasoning_effort_source": "unknown",
+                      "captured_at": "2026-10-28T12:54:42+08:00",
+                      "scope": "attempt_start"
+                    }
+                  },
+                  "planned_assignment": {
+                    "execution_mode": "main_session"
+                  },
+                  "responsibility_version": 1,
+                  "dispatch": null,
+                  "finished_at": "2026-10-28T12:54:42+08:00",
+                  "submission": null,
+                  "review": null,
+                  "review_status": null
+                }
+              ],
+              "started_at": "2026-10-28T12:54:42+08:00",
+              "finished_at": "2026-10-28T12:54:42+08:00",
+              "responsibility_legacy": false,
+              "status": "resolved",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": []
+            },
+            {
+              "id": "work",
+              "title": "相同子任务 ID · P1",
+              "parent_id": "root",
+              "children": [],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "P1 产出已提交，等主会话验收",
+              "evidence": [
+                "fixture://p1-output"
+              ],
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "reasoning_effort": "high",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T12:54:41+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "reasoning_effort": "high",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                "agent_name": "fixture-p1",
+                "bound_at": "2026-10-28T12:54:41+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "submission": {
+                "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                "outcome": "resolved",
+                "summary": "P1 产出已提交，等主会话验收",
+                "evidence": [
+                  "fixture://p1-output"
+                ],
+                "submitted_at": "2026-10-28T12:54:41+08:00"
+              },
+              "review": {
+                "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                "decision": "accept",
+                "summary": "P1 产出已核验",
+                "evidence": [
+                  "fixture://p1-review"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Isolated peer-root browser fixture",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T12:54:42+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T12:54:42+08:00"
+              },
+              "review_status": "accepted",
+              "profile": null,
+              "attempt": 1,
+              "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+              "attempts": [
+                {
+                  "attempt": 1,
+                  "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                  "kind": "execution",
+                  "execution_status": "finished",
+                  "outcome": "resolved",
+                  "summary": "P1 产出已提交，等主会话验收",
+                  "evidence": [
+                    "fixture://p1-output"
+                  ],
+                  "started_at": "2026-10-28T12:54:41+08:00",
+                  "assignment": {
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "model": "fixture-model",
+                    "execution_mode": "subagent",
+                    "reasoning_effort": "high",
+                    "fork_turns": "none",
+                    "metadata_provenance": {
+                      "source": "mcp_tool_input",
+                      "verification": "not_verified_by_codex_host",
+                      "model_source": "mcp_tool_input",
+                      "reasoning_effort_source": "mcp_tool_input",
+                      "captured_at": "2026-10-28T12:54:41+08:00",
+                      "scope": "attempt_start"
+                    }
+                  },
+                  "planned_assignment": {
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "model": "fixture-model",
+                    "execution_mode": "subagent",
+                    "reasoning_effort": "high",
+                    "fork_turns": "none"
+                  },
+                  "responsibility_version": 1,
+                  "dispatch": {
+                    "status": "bound",
+                    "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                    "agent_name": "fixture-p1",
+                    "bound_at": "2026-10-28T12:54:41+08:00",
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "verification": "not_verified_by_codex_host",
+                    "source": "mcp_tool_input"
+                  },
+                  "finished_at": "2026-10-28T12:54:41+08:00",
+                  "submission": {
+                    "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                    "outcome": "resolved",
+                    "summary": "P1 产出已提交，等主会话验收",
+                    "evidence": [
+                      "fixture://p1-output"
+                    ],
+                    "submitted_at": "2026-10-28T12:54:41+08:00"
+                  },
+                  "review": {
+                    "attempt_id": "64d8f494-0da3-47b6-b21e-482d9d816c04",
+                    "decision": "accept",
+                    "summary": "P1 产出已核验",
+                    "evidence": [
+                      "fixture://p1-review"
+                    ],
+                    "reviewer": {
+                      "self_execution_reason": "Isolated peer-root browser fixture",
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-28T12:54:42+08:00",
+                        "scope": "submission_review"
+                      }
+                    },
+                    "reviewed_at": "2026-10-28T12:54:42+08:00"
+                  },
+                  "review_status": "accepted"
+                }
+              ],
+              "started_at": "2026-10-28T12:54:41+08:00",
+              "finished_at": "2026-10-28T12:54:41+08:00",
+              "responsibility_legacy": false,
+              "status": "resolved",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": []
+            }
+          ],
+          "ready_tasks": [],
+          "next_actions": [
+            "任务已完成：报告验收结果。"
+          ],
+          "request_id": "p1",
+          "request_status": "completed",
+          "history_included": false,
+          "task_context": {
+            "goal": "并行任务 P1",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          }
+        },
+        {
+          "schema_version": 2,
+          "state_revision": 24,
+          "session_id": "3066b029-ff6e-4ba2-9ab7-635c7effdf59",
+          "task_instance_id": "db28b999-f5b7-4149-bbae-6e18d47d6efc",
+          "task_title": "并行任务 P2",
+          "main_session": null,
+          "planning_status": "planned",
+          "planning_note": "",
+          "status": "completed",
+          "root_status": "resolved",
+          "completed": 1,
+          "total": 1,
+          "percent": 100,
+          "resolved_leaf_count": 1,
+          "open_leaf_count": 0,
+          "failed_leaf_count": 0,
+          "ready_count": 0,
+          "executing_count": 0,
+          "pending_review_count": 0,
+          "split_review_due": [],
+          "blocked_count": 0,
+          "epoch": 0,
+          "revision": 6,
+          "root_id": "root",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "updated_at": "2026-10-28T12:54:41+08:00",
+          "nodes": [
+            {
+              "id": "root",
+              "title": "并行任务 P2",
+              "parent_id": null,
+              "children": [
+                "work"
+              ],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "P2 综合验收通过",
+              "evidence": [
+                "fixture://p2-root"
+              ],
+              "assignment": {
+                "self_execution_reason": "Isolated peer-root browser fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T12:54:41+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": null,
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "profile": null,
+              "attempt": 1,
+              "attempt_id": "aba38650-19bf-4e2c-964c-18d41472ceeb",
+              "attempts": [
+                {
+                  "attempt": 1,
+                  "attempt_id": "aba38650-19bf-4e2c-964c-18d41472ceeb",
+                  "kind": "synthesis",
+                  "execution_status": "finished",
+                  "outcome": "resolved",
+                  "summary": "P2 综合验收通过",
+                  "evidence": [
+                    "fixture://p2-root"
+                  ],
+                  "started_at": "2026-10-28T12:54:41+08:00",
+                  "assignment": {
+                    "self_execution_reason": "Isolated peer-root browser fixture",
+                    "execution_mode": "main_session",
+                    "metadata_provenance": {
+                      "source": "unknown",
+                      "verification": "not_verified_by_codex_host",
+                      "model_source": "unknown",
+                      "reasoning_effort_source": "unknown",
+                      "captured_at": "2026-10-28T12:54:41+08:00",
+                      "scope": "attempt_start"
+                    }
+                  },
+                  "planned_assignment": {
+                    "execution_mode": "main_session"
+                  },
+                  "responsibility_version": 1,
+                  "dispatch": null,
+                  "finished_at": "2026-10-28T12:54:41+08:00",
+                  "submission": null,
+                  "review": null,
+                  "review_status": null
+                }
+              ],
+              "started_at": "2026-10-28T12:54:41+08:00",
+              "finished_at": "2026-10-28T12:54:41+08:00",
+              "responsibility_legacy": false,
+              "status": "resolved",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": []
+            },
+            {
+              "id": "work",
+              "title": "相同子任务 ID · P2",
+              "parent_id": "root",
+              "children": [],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "P2 独立产出完成",
+              "evidence": [
+                "fixture://p2-output"
+              ],
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "reasoning_effort": "high",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T12:54:41+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "reasoning_effort": "high",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                "agent_name": "fixture-p2",
+                "bound_at": "2026-10-28T12:54:41+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "submission": {
+                "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                "outcome": "resolved",
+                "summary": "P2 独立产出完成",
+                "evidence": [
+                  "fixture://p2-output"
+                ],
+                "submitted_at": "2026-10-28T12:54:41+08:00"
+              },
+              "review": {
+                "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                "decision": "accept",
+                "summary": "P2 独立产出已核验",
+                "evidence": [
+                  "fixture://p2-review"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Isolated peer-root browser fixture",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T12:54:41+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T12:54:41+08:00"
+              },
+              "review_status": "accepted",
+              "profile": null,
+              "attempt": 1,
+              "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+              "attempts": [
+                {
+                  "attempt": 1,
+                  "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                  "kind": "execution",
+                  "execution_status": "finished",
+                  "outcome": "resolved",
+                  "summary": "P2 独立产出完成",
+                  "evidence": [
+                    "fixture://p2-output"
+                  ],
+                  "started_at": "2026-10-28T12:54:41+08:00",
+                  "assignment": {
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "model": "fixture-model",
+                    "execution_mode": "subagent",
+                    "reasoning_effort": "high",
+                    "fork_turns": "none",
+                    "metadata_provenance": {
+                      "source": "mcp_tool_input",
+                      "verification": "not_verified_by_codex_host",
+                      "model_source": "mcp_tool_input",
+                      "reasoning_effort_source": "mcp_tool_input",
+                      "captured_at": "2026-10-28T12:54:41+08:00",
+                      "scope": "attempt_start"
+                    }
+                  },
+                  "planned_assignment": {
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "model": "fixture-model",
+                    "execution_mode": "subagent",
+                    "reasoning_effort": "high",
+                    "fork_turns": "none"
+                  },
+                  "responsibility_version": 1,
+                  "dispatch": {
+                    "status": "bound",
+                    "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                    "agent_name": "fixture-p2",
+                    "bound_at": "2026-10-28T12:54:41+08:00",
+                    "tool_identifier": "collaboration.spawn_agent",
+                    "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                    "verification": "not_verified_by_codex_host",
+                    "source": "mcp_tool_input"
+                  },
+                  "finished_at": "2026-10-28T12:54:41+08:00",
+                  "submission": {
+                    "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                    "outcome": "resolved",
+                    "summary": "P2 独立产出完成",
+                    "evidence": [
+                      "fixture://p2-output"
+                    ],
+                    "submitted_at": "2026-10-28T12:54:41+08:00"
+                  },
+                  "review": {
+                    "attempt_id": "98a3e84f-63d7-407a-91b2-1ef1ec8ecc80",
+                    "decision": "accept",
+                    "summary": "P2 独立产出已核验",
+                    "evidence": [
+                      "fixture://p2-review"
+                    ],
+                    "reviewer": {
+                      "self_execution_reason": "Isolated peer-root browser fixture",
+                      "execution_mode": "main_session",
+                      "metadata_provenance": {
+                        "source": "unknown",
+                        "verification": "not_verified_by_codex_host",
+                        "model_source": "unknown",
+                        "reasoning_effort_source": "unknown",
+                        "captured_at": "2026-10-28T12:54:41+08:00",
+                        "scope": "submission_review"
+                      }
+                    },
+                    "reviewed_at": "2026-10-28T12:54:41+08:00"
+                  },
+                  "review_status": "accepted"
+                }
+              ],
+              "started_at": "2026-10-28T12:54:41+08:00",
+              "finished_at": "2026-10-28T12:54:41+08:00",
+              "responsibility_legacy": false,
+              "status": "resolved",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": []
+            }
+          ],
+          "ready_tasks": [],
+          "next_actions": [
+            "任务已完成：报告验收结果。"
+          ],
+          "request_id": "p2",
+          "request_status": "completed",
+          "history_included": false,
+          "task_context": {
+            "goal": "并行任务 P2",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          }
+        },
+        {
+          "schema_version": 2,
+          "state_revision": 24,
+          "session_id": "3066b029-ff6e-4ba2-9ab7-635c7effdf59",
+          "task_instance_id": "fdaf4395-17e3-4f9a-aa88-b0fa190ac5b1",
+          "task_title": "并行任务 P3 · 已取消",
+          "main_session": null,
+          "planning_status": "planned",
+          "planning_note": "",
+          "status": "cancelled",
+          "root_status": "cancelled",
+          "completed": 0,
+          "total": 1,
+          "percent": 0,
+          "resolved_leaf_count": 0,
+          "open_leaf_count": 0,
+          "failed_leaf_count": 0,
+          "ready_count": 0,
+          "executing_count": 0,
+          "pending_review_count": 0,
+          "split_review_due": [],
+          "blocked_count": 0,
+          "epoch": 0,
+          "revision": 1,
+          "root_id": "root",
+          "created_at": "2026-10-28T12:54:42+08:00",
+          "updated_at": "2026-10-28T12:54:42+08:00",
+          "nodes": [
+            {
+              "id": "root",
+              "title": "并行任务 P3 · 已取消",
+              "parent_id": null,
+              "children": [
+                "work"
+              ],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "cancelled",
+              "outcome": null,
+              "summary": "User withdrew before dispatch",
+              "evidence": [],
+              "assignment": {},
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": null,
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "profile": null,
+              "attempt": 0,
+              "attempt_id": null,
+              "attempts": [],
+              "started_at": null,
+              "finished_at": null,
+              "responsibility_legacy": false,
+              "status": "cancelled",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": []
+            },
+            {
+              "id": "work",
+              "title": "尚未执行的并行任务",
+              "parent_id": "root",
+              "children": [],
+              "depends_on": [],
+              "dependency_policy": "resolved",
+              "execution_status": "pending",
+              "outcome": null,
+              "summary": "",
+              "evidence": [],
+              "assignment": {},
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Submit the isolated peer-root output and evidence.",
+                "model": "fixture-model",
+                "execution_mode": "subagent",
+                "reasoning_effort": "high",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "reassignment_history": [],
+              "dispatch": null,
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "profile": null,
+              "attempt": 0,
+              "attempt_id": null,
+              "attempts": [],
+              "started_at": null,
+              "finished_at": null,
+              "responsibility_legacy": false,
+              "status": "blocked",
+              "ready": false,
+              "blocked_by": [],
+              "dependencies": [],
+              "request_cancelled": true
+            }
+          ],
+          "ready_tasks": [],
+          "next_actions": [
+            "请求已取消；不得继续执行，迟到更新会被拒绝。"
+          ],
+          "request_id": "cancelled",
+          "request_status": "cancelled",
+          "history_included": false,
+          "task_context": {
+            "goal": "并行任务 P3 · 已取消",
+            "constraints": [],
+            "acceptance_criteria": [
+              "取消后不显示可执行"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "request_cancelled": true
+        }
+      ],
+      "task_context": {
+        "goal": "排队任务 Q",
+        "constraints": [],
+        "acceptance_criteria": [
+          "根任务各自保留验收状态"
+        ],
+        "resume_note": "",
+        "provided_context": {}
+      }
+    },
+    "session_id": "3066b029-ff6e-4ba2-9ab7-635c7effdf59",
+    "state_revision": 24,
+    "view_sequence": 29,
+    "session_work": {
+      "foreground": {
+        "request_text": "真实隔离服务示例 queue",
+        "task_title": "排队任务 Q",
+        "mode": "queue",
+        "reason": "独立结果范围",
+        "acceptance_criteria": [
+          "根任务各自保留验收状态"
+        ],
+        "constraints": [],
+        "context_brief": {
+          "goal": "排队任务 Q",
+          "constraints": [],
+          "acceptance_criteria": [
+            "根任务各自保留验收状态"
+          ],
+          "resume_note": "",
+          "provided_context": {}
+        },
+        "goal": "排队任务 Q",
+        "request_id": "queue",
+        "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+        "status": "active",
+        "created_at": "2026-10-28T12:54:41+08:00",
+        "return_to": null,
+        "activated_at": "2026-10-28T12:54:42+08:00",
+        "activated_from": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+        "origin_return_to": {
+          "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+          "task_id": "root"
+        },
+        "summary": ""
+      },
+      "requests": [
+        {
+          "request_id": "foreground:4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+          "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+          "task_title": "主任务 A · 同名节点隔离",
+          "goal": "主任务 A · 同名节点隔离",
+          "request_text": null,
+          "context_source": "request_text_unrecorded",
+          "mode": "foreground",
+          "reason": "恢复已有主任务，不补造历史请求原文。",
+          "acceptance_criteria": [],
+          "constraints": [],
+          "context_brief": {
+            "goal": "主任务 A · 同名节点隔离",
+            "constraints": [],
+            "acceptance_criteria": [],
+            "resume_note": ""
+          },
+          "return_to": {
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "task_id": "root",
+            "resume_note": ""
+          },
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "status": "completed",
+          "summary": "本根任务综合验收完成",
+          "origin_return_to": null
+        },
+        {
+          "request_text": "真实隔离服务示例 queue",
+          "task_title": "排队任务 Q",
+          "mode": "queue",
+          "reason": "独立结果范围",
+          "acceptance_criteria": [
+            "根任务各自保留验收状态"
+          ],
+          "constraints": [],
+          "context_brief": {
+            "goal": "排队任务 Q",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "goal": "排队任务 Q",
+          "request_id": "queue",
+          "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+          "status": "active",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "return_to": null,
+          "activated_at": "2026-10-28T12:54:42+08:00",
+          "activated_from": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+          "origin_return_to": {
+            "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_id": "root"
+          },
+          "summary": ""
+        },
+        {
+          "request_text": "真实隔离服务示例 p1",
+          "task_title": "并行任务 P1",
+          "mode": "parallel",
+          "reason": "独立结果范围",
+          "acceptance_criteria": [
+            "根任务各自保留验收状态"
+          ],
+          "constraints": [],
+          "context_brief": {
+            "goal": "并行任务 P1",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "goal": "并行任务 P1",
+          "request_id": "p1",
+          "task_instance_id": "39438014-60a5-42e1-9dd1-01898804216c",
+          "status": "completed",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "return_to": {
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "task_id": "root",
+            "resume_note": ""
+          },
+          "origin_return_to": {
+            "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_id": "root"
+          },
+          "summary": "P1 综合验收通过"
+        },
+        {
+          "request_text": "真实隔离服务示例 p2",
+          "task_title": "并行任务 P2",
+          "mode": "parallel",
+          "reason": "独立结果范围",
+          "acceptance_criteria": [
+            "根任务各自保留验收状态"
+          ],
+          "constraints": [],
+          "context_brief": {
+            "goal": "并行任务 P2",
+            "constraints": [],
+            "acceptance_criteria": [
+              "根任务各自保留验收状态"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "goal": "并行任务 P2",
+          "request_id": "p2",
+          "task_instance_id": "db28b999-f5b7-4149-bbae-6e18d47d6efc",
+          "status": "completed",
+          "created_at": "2026-10-28T12:54:41+08:00",
+          "return_to": {
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "task_id": "root",
+            "resume_note": ""
+          },
+          "origin_return_to": {
+            "task_instance_id": "4cbbc8bf-fbb4-448d-97b4-c76ed74b0750",
+            "task_id": "root"
+          },
+          "summary": "P2 综合验收通过"
+        },
+        {
+          "request_text": "Cancelled isolated fixture",
+          "task_title": "并行任务 P3 · 已取消",
+          "mode": "parallel",
+          "reason": "独立取消边界",
+          "acceptance_criteria": [
+            "取消后不显示可执行"
+          ],
+          "constraints": [],
+          "context_brief": {
+            "goal": "并行任务 P3 · 已取消",
+            "constraints": [],
+            "acceptance_criteria": [
+              "取消后不显示可执行"
+            ],
+            "resume_note": "",
+            "provided_context": {}
+          },
+          "goal": "并行任务 P3 · 已取消",
+          "request_id": "cancelled",
+          "task_instance_id": "fdaf4395-17e3-4f9a-aa88-b0fa190ac5b1",
+          "status": "cancelled",
+          "created_at": "2026-10-28T12:54:42+08:00",
+          "return_to": {
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "task_id": "root",
+            "resume_note": ""
+          },
+          "summary": "User withdrew before dispatch",
+          "cancelled_at": "2026-10-28T12:54:42+08:00",
+          "cancellation_reason": "User withdrew before dispatch",
+          "origin_return_to": {
+            "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+            "task_id": "root"
+          }
+        }
+      ],
+      "can_finish_session": false,
+      "return_to": {
+        "task_instance_id": "4ab100c0-198c-48d5-977d-b5e291e4c314",
+        "task_id": "root",
+        "resume_note": ""
+      },
+      "next_actions": [
+        "返回主任务 排队任务 Q（4ab100c0-198c-48d5-977d-b5e291e4c314）；插入请求结束不代表原任务完成。"
+      ],
+      "verification": "caller_declared_not_host_authenticated"
+    }
+  }
+}

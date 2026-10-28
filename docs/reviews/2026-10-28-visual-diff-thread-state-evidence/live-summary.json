@@ -1,0 +1,1021 @@
+{
+  "captured_at_utc": "2026-10-28 02:23:16 UTC",
+  "host_status": {
+    "type": "active",
+    "activeFlags": []
+  },
+  "initial": {
+    "revision": 666,
+    "updated_at": "2026-10-28T10:06:40+08:00",
+    "counts": {
+      "total": 21,
+      "completed": 18,
+      "resolved_leaf_count": 11,
+      "pending_review_count": 7,
+      "executing_count": 2,
+      "ready_count": 0,
+      "blocked_count": 1
+    }
+  },
+  "latest": {
+    "session_id": "e30c494a-948a-4dc5-be03-4f14246bcadc",
+    "task_instance_id": "bb94ed82-aee5-44cf-8836-a22ee77cc239",
+    "state_revision": 677,
+    "updated_at": "2026-10-28T10:21:43+08:00",
+    "epoch": 8,
+    "status": "awaiting_review",
+    "root_status": "awaiting_review",
+    "counts": {
+      "total": 23,
+      "ended": 20,
+      "resolved": 11,
+      "review": 9,
+      "running": 1,
+      "ready": 0,
+      "blocked": 2
+    },
+    "nodes": [
+      {
+        "id": "root-e8",
+        "title": "完成本机可验证的发行交付并保留外部验收阻塞",
+        "children": [
+          "p6-amd64-image",
+          "p6-arm64-image",
+          "p6-recovery-audit",
+          "p6-delivery-inventory",
+          "p6-final-validation",
+          "openspec-remaining-audit",
+          "sdk-uploadable-samples",
+          "transport-acceptance-script",
+          "p5-open-local-closures",
+          "p6-restore-drill",
+          "p6-evidence-rollup",
+          "remaining-neutral-image",
+          "remaining-app-modes",
+          "remaining-vd-ownership",
+          "remaining-runtime-ai",
+          "remaining-sdk-optional-tools",
+          "sdk-optional-tools-audit"
+        ],
+        "execution_status": "pending",
+        "outcome": null,
+        "review_status": null,
+        "started_at": null,
+        "finished_at": null,
+        "attempt_id": null,
+        "assignment": {},
+        "dispatch": null,
+        "summary": "",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-amd64-image",
+        "title": "构建并验收 linux/amd64 平台镜像归档",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:16:22+08:00",
+        "finished_at": "2026-10-28T09:18:31+08:00",
+        "attempt_id": "9f9b6008-6932-4279-9a9c-b4c03b91f363",
+        "assignment": {
+          "self_execution_reason": "Docker/build-cache jobs must be serialized; the amd64 image build is the first isolated artifact build and will use the user's local BuildKit caches.",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:16:22+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "linux/amd64 镜像已成功构建并导出为本地 OCI tar；Docker BuildKit 缓存复用了依赖、Chromium、运行时依赖等层，pnpm fetch 仅下载 1 个缺失包。未推送镜像，未创建容器。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-arm64-image",
+        "title": "构建并验收 linux/arm64 平台镜像归档",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:18:43+08:00",
+        "finished_at": "2026-10-28T09:21:38+08:00",
+        "attempt_id": "5ad64307-03ac-4212-ba1f-116961a943e3",
+        "assignment": {
+          "self_execution_reason": "Docker/buildx builds share one BuildKit cache and can contend; the arm64 image is the next architecture artifact and must run after amd64, so the parent runs it serially.",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:18:43+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "linux/arm64 镜像已成功构建并导出 OCI tar；pnpm 包缓存大部分复用，Debian arm64 系统包与 Playwright Chromium 缓存缺失项已下载，镜像中的 Chromium 架构检查通过。未推送或创建容器。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-recovery-audit",
+        "title": "只读复核备份恢复脚本与可隔离演练边界",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:16:30+08:00",
+        "finished_at": "2026-10-28T09:18:31+08:00",
+        "attempt_id": "bacf2dcb-1ad3-4be5-830b-0a1f1b130323",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "子智能体",
+          "dispatch_text": "只读检查备份/恢复脚本和文档，确认平台元数据、上传应用数据、Visual Diff 业务数据分别覆盖内容，给出安全的临时目录演练建议与缺口。不执行恢复、改文件、读/输出凭据或启动 Docker。",
+          "agent_name": "recovery-audit",
+          "model": "gpt-6-luna",
+          "batch": "round-9",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:16:30+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "bacf2dcb-1ad3-4be5-830b-0a1f1b130323",
+          "agent_name": "recovery-audit",
+          "bound_at": "2026-10-28T09:16:30+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "只读检查备份/恢复脚本和文档，确认平台元数据、上传应用数据、Visual Diff 业务数据分别覆盖内容，给出安全的临时目录演练建议与缺口。不执行恢复、改文件、读/输出凭据或启动 Docker。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "只读审计确认平台数据、上传应用包/私有数据、Visual Diff 报告/素材/NSlide 版本包位于持久化树；Runtime Agent 自身 config/auth/work 不在三棵备份树。恢复脚本要求同镜像摘要、manifest 独立 SHA、三个不存在的目标目录；可用纯合成数据在隔离临时目录演练。本轮未执行恢复。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "bacf2dcb-1ad3-4be5-830b-0a1f1b130323",
+          "outcome": "resolved",
+          "summary": "只读审计确认平台数据、上传应用包/私有数据、Visual Diff 报告/素材/NSlide 版本包位于持久化树；Runtime Agent 自身 config/auth/work 不在三棵备份树。恢复脚本要求同镜像摘要、manifest 独立 SHA、三个不存在的目标目录；可用纯合成数据在隔离临时目录演练。本轮未执行恢复。",
+          "evidence": [
+            "deploy/docker/compose.yaml 与 deploy/docker/README.md：platform、visual-diff、recovery-material 三树的挂载和备份范围",
+            "apps/control-plane/src/application-deployments.ts：登记状态、包和应用私有数据路径",
+            "deploy/docker/scripts/backup.mjs 与 restore.mjs：拒绝 symlink/特殊文件，保留 mode/uid/gid；恢复先验证清单再创建目标",
+            "Runtime Agent runtime-data/config、auth、work 未纳入备份；只读审计未读取密钥/备份正文、未改数据、未启停服务"
+          ],
+          "submitted_at": "2026-10-28T09:18:31+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "p6-delivery-inventory",
+        "title": "整理本机发行产物清单、摘要与接入文档",
+        "children": [
+          "nginx-proxy-timeout-fix",
+          "rebuild-amd64-after-fix",
+          "rebuild-arm64-after-fix",
+          "smoke-rebuilt-images",
+          "write-local-delivery-inventory"
+        ],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:37:40+08:00",
+        "finished_at": "2026-10-28T09:37:40+08:00",
+        "attempt_id": "3d47b6f9-3750-4fe3-89e7-cd047bc38a14",
+        "assignment": {
+          "self_execution_reason": "该父节点综合验收其五个已独立完成的本机交付子任务；主会话拥有镜像构建、启动和清理证据。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:37:40+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "P6 本地产物交付阶段已完成：两架构修复镜像均构建并通过隔离容器启动及 HTTP/HTTPS 健康验收，临时容器/数据清理；本机 OCI archive 清单与 SHA/digest 已生成。该阶段不等于外部发布或 P6 的中立基础镜像需求已完成。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-final-validation",
+        "title": "运行最小相关门禁并标明外部验收开放项",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:37:47+08:00",
+        "finished_at": "2026-10-28T09:40:52+08:00",
+        "attempt_id": "09fb3f6f-aa4d-449d-9045-9a329fa0ba41",
+        "assignment": {
+          "self_execution_reason": "两架构容器验收完成且两个并行文件分支已提交，现按仓库必需 Sumi 检查做一次统一集成验证；避免各任务重复整套测试。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:37:47+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "最终 Sumi check 通过（run r20261028013959928-c0a6e8，tier=delta）。前序格式/no-undef 均按根因修复并复检通过。剩余仅 5 条 gov/protected-paths 信息，提示 control 变更推送前需人工确认；本轮未推送。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "openspec-remaining-audit",
+        "title": "只读盘点 OpenSpec 剩余项与可并行本地工作",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:20:47+08:00",
+        "finished_at": "2026-10-28T09:24:05+08:00",
+        "attempt_id": "6af6c137-54fa-4ce5-bfc6-16d198269806",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "multi-agent collaboration",
+          "dispatch_text": "只读对照 openspec/changes/application-owned-execution/tasks.md 的未勾选项与当前代码/已有验收。指出可本地安全完成的具体项、真实外部阻塞和最小验证建议，附路径/符号/任务编号证据。不得编辑文件、运行 Docker、触碰 NSlide/PPTX、读取或输出凭据。",
+          "agent_name": "openspec_remaining_audit",
+          "model": "gpt-6.1-sol",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:20:47+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "6af6c137-54fa-4ce5-bfc6-16d198269806",
+          "agent_name": "openspec_remaining_audit",
+          "bound_at": "2026-10-28T09:20:47+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "只读对照 openspec/changes/application-owned-execution/tasks.md 的未勾选项与当前代码/已有验收。指出可本地安全完成的具体项、真实外部阻塞和最小验证建议，附路径/符号/任务编号证据。不得编辑文件、运行 Docker、触碰 NSlide/PPTX、读取或输出凭据。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "只读核对当前任务清单、代码与 Task Progress 第 8/9 轮证据。发现 P6 中立基础镜像仍包含 Visual Diff/NSlide 业务依赖，双架构构建不等于 7.2 完成；两类 SDK 消费 fixture 仍是 mock 平台离线 smoke，未交付上传/Connector 长驻应用。6.4 可用已有 3 条故障/配置/恢复回归独立收口；HTTPS/WSS、背压与合成恢复可在隔离本机继续。真正外部条件是实际 Agent/目标模型可用性和旧历史缺应用报告对账。未改文件、运行测试/Docker或读取凭据。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "6af6c137-54fa-4ce5-bfc6-16d198269806",
+          "outcome": "resolved",
+          "summary": "只读核对当前任务清单、代码与 Task Progress 第 8/9 轮证据。发现 P6 中立基础镜像仍包含 Visual Diff/NSlide 业务依赖，双架构构建不等于 7.2 完成；两类 SDK 消费 fixture 仍是 mock 平台离线 smoke，未交付上传/Connector 长驻应用。6.4 可用已有 3 条故障/配置/恢复回归独立收口；HTTPS/WSS、背压与合成恢复可在隔离本机继续。真正外部条件是实际 Agent/目标模型可用性和旧历史缺应用报告对账。未改文件、运行测试/Docker或读取凭据。",
+          "evidence": [
+            "openspec/changes/application-owned-execution/tasks.md 实际 8 个 [x]；摘要和开发文档仍写 7/35，应以新证据同步",
+            "deploy/docker/Dockerfile:29,36-46；deploy/docker/scripts/build-server.mjs:37,95-102；src/platform.ts:45：基础镜像/组合根仍硬编码 Visual Diff 依赖",
+            "scripts/verify-sdk-external-consumers.mjs；scripts/fixtures/sdk-consumers/{default-tools,custom-owned}/index.mjs：真实离线 tarball消费，平台HTTP/SSE为mock，缺上传清单与Connector长驻模式",
+            "packages/visual-diff-domain/src/core/analysis-jobs.test.ts:88-180：保存、实际配置及保存失败回归；Task Progress已有3/3相关证据，非本次新跑",
+            "apps/control-plane/src/application-connectors*.test.ts、application-deployments*.test.ts 及 Task Progress第8轮已有定向生命周期/代理证据；无需重复整套测试",
+            "实际AI和历史核账的开放边界已保留：当前服务/有效部署身份/在线Agent未就绪；63条平台任务缺应用报告ID/数量/SHA关系"
+          ],
+          "submitted_at": "2026-10-28T09:24:05+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "nginx-proxy-timeout-fix",
+        "title": "修复 Nginx 共享代理超时重复配置并验证",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:24:27+08:00",
+        "finished_at": "2026-10-28T09:29:24+08:00",
+        "attempt_id": "3fa5be65-24af-4262-86eb-37ce34646b86",
+        "assignment": {
+          "self_execution_reason": "The container smoke exposed a reproducible nginx configuration failure in the shared proxy include; fixing its source and validating the actual rendered config requires a single coordinated edit.",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:24:27+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "两处已定位的发行启动缺陷均已修复：Nginx 默认 proxy_send_timeout 移至 http 上下文，Connector 保留 70s 覆盖；Control Plane 的生产依赖树复制启用 dereference，避免 pnpm symlink 指向构建阶段路径。下游镜像重建节点负责实际容器启动验收。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "rebuild-amd64-after-fix",
+        "title": "基于修复后的源码重建 amd64 OCI 镜像",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:30:56+08:00",
+        "finished_at": "2026-10-28T09:33:17+08:00",
+        "attempt_id": "f8fb1030-3917-4aae-a605-26f1f194c7a5",
+        "assignment": {
+          "self_execution_reason": "Docker buildx 使用共享 BuildKit 缓存，必须串行构建；先重建 amd64 并执行启动烟雾验证，失败时可在消耗 arm64 构建资源前及时修复。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:30:56+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "修复后的 linux/amd64 OCI 镜像已构建并导出成功；BuildKit 重用依赖、Chromium 和运行时依赖缓存，待执行容器启动验收。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "rebuild-arm64-after-fix",
+        "title": "基于修复后的源码重建 arm64 OCI 镜像",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:33:29+08:00",
+        "finished_at": "2026-10-28T09:36:07+08:00",
+        "attempt_id": "4b8aab5f-843d-426b-8e11-01be4efde04b",
+        "assignment": {
+          "self_execution_reason": "共享 BuildKit 缓存需要串行构建；amd64 修复构建已完成，当前轮到 arm64 架构。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:33:29+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "修复后的 linux/arm64 OCI 镜像重建成功；构建中的 Chromium ELF 架构断言通过。双架构容器启动/HTTP/HTTPS smoke 由后续节点统一验收。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "smoke-rebuilt-images",
+        "title": "隔离启动双架构镜像并验证 HTTP 与 HTTPS",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:36:11+08:00",
+        "finished_at": "2026-10-28T09:37:03+08:00",
+        "attempt_id": "b9737e2b-e453-45a7-a082-da22f4606c39",
+        "assignment": {
+          "self_execution_reason": "需要用相同隔离容器配置验证两架构镜像的真实启动与 HTTP/HTTPS 健康端点，并确保临时资源被清理。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:36:11+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "修复后的 amd64 与 arm64 镜像均在隔离、只读容器中启动并通过健康检查；HTTP 和 HTTPS /api/health 都返回 200。两容器、临时证书目录和数据卷均已清理。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "write-local-delivery-inventory",
+        "title": "生成本机 OCI 镜像清单与摘要",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:37:10+08:00",
+        "finished_at": "2026-10-28T09:37:26+08:00",
+        "attempt_id": "92bfe177-601a-4692-b66b-e93470d0d653",
+        "assignment": {
+          "self_execution_reason": "构建和容器验收已经完成；归档摘要、平台架构和本机验证清单由主会话集中生成，避免把临时产物路径写入项目文档。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:37:10+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "已生成仅保存在 /tmp 的本机 OCI 产物 inventory，记录 amd64/arm64 架构、archive SHA-256、manifest/config digest、大小、HTTP/HTTPS 容器 smoke 和开放验收项；未将临时路径写入仓库。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "sdk-uploadable-samples",
+        "title": "实现可上传的默认工具与自有任务模型 SDK 示例",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:28:37+08:00",
+        "finished_at": "2026-10-28T09:36:55+08:00",
+        "attempt_id": "f8d33003-04f6-40a1-b931-4b113f572b69",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "创建子智能体",
+          "dispatch_text": "背景：目标仓库 /Users/machengling/.codex/worktrees/aigc-eval 正在实施 application-owned-execution；用户明确要求尽可能并行。目标：实现两个最小外部应用示例，一种采用 SDK 默认 tasks/storage 工具，一种完全自有任务与存储模型；均具备上传 manifest/web/service 和 Connector 远程启动入口，证明应用可持有任务/结果。文件归属仅限新建 scripts/fixtures/application-owned-execution-apps/** 与必要的包内 README；不要修改 deploy/docker、apps/control-plane、packages/platform-sdk 源码、OpenSpec 主任务清单或 NSlide 工作树。不要运行 Docker/BuildKit、不部署、不上传，不输出或读取凭据。复用现有 SDK/fixture API；如果目前依赖真实平台身份才能验收，做可执行示例加 mock 契约验证并明确真实平台验收未完成。验收：两个示例依赖闭包/manifest 明确、能运行必要的最小命令或脚本检查、无平台业务任务/报告写入。向主会话提交文件和命令证据，不改 Task Process 的其他节点。",
+          "agent_name": "sdk-owned-examples",
+          "model": "gpt-6.1-sol",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:28:37+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "f8d33003-04f6-40a1-b931-4b113f572b69",
+          "agent_name": "sdk-owned-examples",
+          "bound_at": "2026-10-28T09:28:37+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "背景：目标仓库 /Users/machengling/.codex/worktrees/aigc-eval 正在实施 application-owned-execution；用户明确要求尽可能并行。目标：实现两个最小外部应用示例，一种采用 SDK 默认 tasks/storage 工具，一种完全自有任务与存储模型；均具备上传 manifest/web/service 和 Connector 远程启动入口，证明应用可持有任务/结果。文件归属仅限新建 scripts/fixtures/application-owned-execution-apps/** 与必要的包内 README；不要修改 deploy/docker、apps/control-plane、packages/platform-sdk 源码、OpenSpec 主任务清单或 NSlide 工作树。不要运行 Docker/BuildKit、不部署、不上传，不输出或读取凭据。复用现有 SDK/fixture API；如果目前依赖真实平台身份才能验收，做可执行示例加 mock 契约验证并明确真实平台验收未完成。验收：两个示例依赖闭包/manifest 明确、能运行必要的最小命令或脚本检查、无平台业务任务/报告写入。向主会话提交文件和命令证据，不改 Task Process 的其他节点。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "已新增两个可离线打包的外部应用：默认 SDK tasks/storage 与完全自有 work-order JSON 模型；均有 manifest/web/service、后台执行、应用私有数据、可选 Runtime 发现/调用和 --connect 远程入口。最后一轮 mock 契约验收全部通过：两种 tgz 解压后真实 Node 服务、SDK SSE 终态完整消费、页面请求结束后后台保存、第二进程恢复、幂等不重放/冲突及真实 Connector HTTP 透传；mock 平台严格只收到 2 次 Runtime invoke，无业务任务/报告写入。真实平台上传/部署身份、跨机器 HTTPS/WSS 和真实 Agent/模型执行未验收。未部署/上传、运行 Docker、读取真实凭据或修改 NSlide。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "f8d33003-04f6-40a1-b931-4b113f572b69",
+          "outcome": "resolved",
+          "summary": "已新增两个可离线打包的外部应用：默认 SDK tasks/storage 与完全自有 work-order JSON 模型；均有 manifest/web/service、后台执行、应用私有数据、可选 Runtime 发现/调用和 --connect 远程入口。最后一轮 mock 契约验收全部通过：两种 tgz 解压后真实 Node 服务、SDK SSE 终态完整消费、页面请求结束后后台保存、第二进程恢复、幂等不重放/冲突及真实 Connector HTTP 透传；mock 平台严格只收到 2 次 Runtime invoke，无业务任务/报告写入。真实平台上传/部署身份、跨机器 HTTPS/WSS 和真实 Agent/模型执行未验收。未部署/上传、运行 Docker、读取真实凭据或修改 NSlide。",
+          "evidence": [
+            "所有新文件仅在 /Users/machengling/.codex/worktrees/aigc-eval/scripts/fixtures/application-owned-execution-apps/**（12 文件）；README 含构建、两种启动方式、API 与真实验收边界",
+            "node scripts/fixtures/application-owned-execution-apps/verify.mjs --sdk-dir /tmp/application-owned-sdk-current-h0ovH5：exit 0；default-tools/custom-owned 各自 archive closure, detached worker, app-owned result, restart, idempotency, Connector HTTP passed",
+            "pnpm exec eslint scripts/fixtures/application-owned-execution-apps --max-warnings=0：exit 0；pnpm exec prettier --check scripts/fixtures/application-owned-execution-apps：exit 0；git diff --check -- scripts/fixtures/application-owned-execution-apps：exit 0",
+            "node scripts/fixtures/application-owned-execution-apps/build.mjs --sdk-dir /tmp/application-owned-sdk-current-h0ovH5 --out /tmp/application-owned-app-release-20261028-final：exit 0；输入为当前已构建 SDK/contracts dist 的隔离 tarball 快照，未修改共享 dist",
+            "/tmp/application-owned-app-release-20261028-final/artifacts.json：default-tools tgz SHA-256 9cf42ad5dbc9878ee29a78064fe39fc3059e61a23c13c4f05d432b24a1deb03d；custom-owned tgz SHA-256 dea3279f18b0e797b1f263053ec3ba92f4811541b3dbb68856d025dd3f05c6e6",
+            "发布物闭包：SDK 0.1.0、platform-contracts 0.1.0、ws 8.22.0；npm --offline --ignore-scripts 物化 node_modules，验证无 symlink；无平台安装步骤"
+          ],
+          "submitted_at": "2026-10-28T09:36:55+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "transport-acceptance-script",
+        "title": "补充 HTTPS/WSS 与代理隔离背压的最小验收",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:28:38+08:00",
+        "finished_at": "2026-10-28T09:34:36+08:00",
+        "attempt_id": "4294fe99-bc4a-41b0-b872-336235220db1",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "创建子智能体",
+          "dispatch_text": "背景：目标仓库 /Users/machengling/.codex/worktrees/aigc-eval 的 application-owned-execution 仍缺 P2 3.4/3.5 HTTPS/WSS、背压/取消和跨应用隔离验收；现有代码已实现部分 HTTP/SSE/WebSocket 代理。目标：设计并实现一个最小、隔离的 transport acceptance 验证入口，优先新增单独文件 deploy/docker/scripts/verify-application-gateway-transport.mjs 或一个全新 control-plane 专项测试文件，验证临时证书 HTTPS/WSS、流式传输/取消与固定目标隔离；不得改 gateway 源文件、Dockerfile、build-server、共享现有测试文件或 NSlide。先读取 sumi context 对你将写的新路径的约束再编辑。测试范围只覆盖重要风险，避免泛化大测试。交付精确运行命令、证据和未覆盖边界，向主会话报告。",
+          "agent_name": "gateway-transport-acceptance",
+          "model": "gpt-6.1-sol",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:28:38+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "4294fe99-bc4a-41b0-b872-336235220db1",
+          "agent_name": "gateway-transport-acceptance",
+          "bound_at": "2026-10-28T09:28:38+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "背景：目标仓库 /Users/machengling/.codex/worktrees/aigc-eval 的 application-owned-execution 仍缺 P2 3.4/3.5 HTTPS/WSS、背压/取消和跨应用隔离验收；现有代码已实现部分 HTTP/SSE/WebSocket 代理。目标：设计并实现一个最小、隔离的 transport acceptance 验证入口，优先新增单独文件 deploy/docker/scripts/verify-application-gateway-transport.mjs 或一个全新 control-plane 专项测试文件，验证临时证书 HTTPS/WSS、流式传输/取消与固定目标隔离；不得改 gateway 源文件、Dockerfile、build-server、共享现有测试文件或 NSlide。先读取 sumi context 对你将写的新路径的约束再编辑。测试范围只覆盖重要风险，避免泛化大测试。交付精确运行命令、证据和未覆盖边界，向主会话报告。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "已新增独立 transport 验收脚本，真实临时 CA HTTPS 控制面/两应用/WSS Connector 专项通过；没有修改生产源文件。64 MiB 慢读响应在 2359296 bytes 停稳，背压期间同应用真实心跳可达、另一应用可用，取消关闭应用端连接且原应用继续可用。覆盖 TLS 校验正负向、basePath/404、固定目标/平台敏感头、跨部署 token 401、WSS 文本/二进制/正常关闭、SSE 首帧与取消。共享 Sumi check 由主会话统一执行，脚本通过不代表 Nginx/镜像/上传进程验收。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "4294fe99-bc4a-41b0-b872-336235220db1",
+          "outcome": "resolved",
+          "summary": "已新增独立 transport 验收脚本，真实临时 CA HTTPS 控制面/两应用/WSS Connector 专项通过；没有修改生产源文件。64 MiB 慢读响应在 2359296 bytes 停稳，背压期间同应用真实心跳可达、另一应用可用，取消关闭应用端连接且原应用继续可用。覆盖 TLS 校验正负向、basePath/404、固定目标/平台敏感头、跨部署 token 401、WSS 文本/二进制/正常关闭、SSE 首帧与取消。共享 Sumi check 由主会话统一执行，脚本通过不代表 Nginx/镜像/上传进程验收。",
+          "evidence": [
+            "新增 /Users/machengling/.codex/worktrees/aigc-eval/deploy/docker/scripts/verify-application-gateway-transport.mjs；SHA256 835dcd1d12ab4be153dbcbadf9b05c2671982c7fbd553dab31913706f8e62be8",
+            "node deploy/docker/scripts/verify-application-gateway-transport.mjs：exit 0；plannedBytes=67108864 producedBeforeCancel=2359296 heartbeatsDuringStall=1",
+            "pnpm exec prettier --write deploy/docker/scripts/verify-application-gateway-transport.mjs：无变化；file-scoped ESLint --max-warnings=0 exit 0",
+            "真实代理契约：应用 Authorization 保留；平台 session cookie/proxy-authorization 剥离；伪造 Host/URL query/x-aigc-app-id 不改固定目标",
+            "HEAD=60cea6a8f33f593a8aa9ed7a89285b64350666f4；application-deployments.ts SHA256=d8ce43681b6c7db6c69a4304870a09da1c7b14a4b6c1c8a1c5e0bd9b9f97c8dd；公开 SDK dist/connector.js SHA256=bba6b2968c931b816629c6420c26e668cf85e99d99b6a436b42add69b8c4e7ce",
+            "脚本在 finally 中关闭全部临时监听/WebSocket/Connector 并等待子进程退出，父进程删除临时证书和平台数据目录；没有上传、部署、真实模型调用或 NSlide/PPTX 修改",
+            "未覆盖：Nginx/双架构镜像、上传应用进程、长时间/内存峰值负载、上传方向背压、恶意 tunnel frame URL 注入、业务数据持久化；TLS 运行基于当前 Node v26.5.1 + openssl"
+          ],
+          "submitted_at": "2026-10-28T09:34:36+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "p5-open-local-closures",
+        "title": "收口可本地证明的 Visual Diff AI 保存语义与 OpenSpec 证据",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:28:57+08:00",
+        "finished_at": "2026-10-28T09:30:51+08:00",
+        "attempt_id": "92f81dd7-9728-4bda-8b18-7cc3c965a131",
+        "assignment": {
+          "self_execution_reason": "该项只需主会话核实当前保存失败回归与清单编号，并将清晰且已有证据的状态同步到 OpenSpec 文档；共享 OpenSpec 文件由主会话单一维护者修改，避免冲突。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:28:57+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "已执行 AnalysisJobs 三条定向回归并确认全通过，按证据收口 OpenSpec 6.4；同步清单统计为 9/35，并在开发文档说明这项本机证据不覆盖真实 Agent、外部多应用、历史迁移或 Docker 部署。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-restore-drill",
+        "title": "隔离演练平台三树备份与恢复校验",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:41:42+08:00",
+        "finished_at": "2026-10-28T09:43:48+08:00",
+        "attempt_id": "fd48b59c-c7f3-48c9-aab1-c3a09bb233cd",
+        "assignment": {
+          "self_execution_reason": "这是一次使用 root 权限和临时 Docker bind mounts 的隔离恢复演练；主会话控制合成输入、镜像身份及临时资源清理，避免并发改写恢复目标。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:41:42+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "隔离容器以纯合成 platform、visual-diff、recovery 三目录完成备份与恢复；manifest SHA 与本机 arm64 镜像 config digest 匹配，恢复文件内容及 0640 权限一致。预置已存在的目标目录被拒绝覆盖。临时目录与 --rm 容器已清理；真实数据、上传应用目录和远程应用数据未参与，故 OpenSpec 7.1 保持未勾选。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "p6-evidence-rollup",
+        "title": "更新实施状态与本轮验收证据边界",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": "resolved",
+        "review_status": null,
+        "started_at": "2026-10-28T09:41:42+08:00",
+        "finished_at": "2026-10-28T09:44:17+08:00",
+        "attempt_id": "1b6f1939-b1d1-4890-bc60-62898b7fea4a",
+        "assignment": {
+          "self_execution_reason": "证据汇总涉及当前 Task Progress、OpenSpec 勾选状态和多处历史记录，需由根会话统一核对并避免并发修改同一文件。",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T09:41:42+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "OpenSpec 已同步为 12/35；仅基于本机证据勾选 3.4、3.5、7.4，7.1 仍未完成。开发文档按 D03/D07、P4 样例、双架构镜像、合成恢复、Sumi 和边界汇总实证，明确真实平台/Agent/中立镜像/历史迁移缺口。最终 Sumi check 通过；容器及临时资源已清理。未修改 NSlide/PPTX，未推送。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "remaining-neutral-image",
+        "title": "提供不含业务依赖的中立平台镜像构建目标",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:46:18+08:00",
+        "finished_at": "2026-10-28T10:01:30+08:00",
+        "attempt_id": "0efab65e-84af-4a11-8027-2f23cf7fb471",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "多智能体并行实现",
+          "dispatch_text": "在 /Users/machengling/.codex/worktrees/aigc-eval 实现 application-owned-execution 中立平台镜像构建目标。先读取相关代码和 sumi context/规则；不得修改 NSlide/PPTX。文件所有权严格限于 deploy/docker/Dockerfile、deploy/docker/scripts/build-server.mjs（若必要）、其独立 Docker 构建验证脚本和对应 docs/architecture/docker-deployment 文件；保留当前一体化镜像/单镜像部署，新增可独立构建且不包含 Visual Diff/NSlide 业务依赖的 platform target。不得删旧 runtime API。运行最小构建/静态验证，说明镜像层内容证据与限制；不要和主会话/其他 agent 修改重叠文件。",
+          "agent_name": "neutral-platform-image",
+          "model": "gpt-6-luna",
+          "batch": "application-owned-remaining",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:46:18+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "0efab65e-84af-4a11-8027-2f23cf7fb471",
+          "agent_name": "neutral-platform-image",
+          "bound_at": "2026-10-28T09:46:18+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "在 /Users/machengling/.codex/worktrees/aigc-eval 实现 application-owned-execution 中立平台镜像构建目标。先读取相关代码和 sumi context/规则；不得修改 NSlide/PPTX。文件所有权严格限于 deploy/docker/Dockerfile、deploy/docker/scripts/build-server.mjs（若必要）、其独立 Docker 构建验证脚本和对应 docs/architecture/docker-deployment 文件；保留当前一体化镜像/单镜像部署，新增可独立构建且不包含 Visual Diff/NSlide 业务依赖的 platform target。不得删旧 runtime API。运行最小构建/静态验证，说明镜像层内容证据与限制；不要和主会话/其他 agent 修改重叠文件。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "中立 platform-only 镜像目标已实现并通过实际 linux/arm64 Docker 构建和镜像内容检查。默认 integrated target 与 Runtime API 保留；默认大请求转发超时去掉 Visual Diff 特判，采用通用阈值。Docker 检查未留下容器。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "0efab65e-84af-4a11-8027-2f23cf7fb471",
+          "outcome": "resolved",
+          "summary": "中立 platform-only 镜像目标已实现并通过实际 linux/arm64 Docker 构建和镜像内容检查。默认 integrated target 与 Runtime API 保留；默认大请求转发超时去掉 Visual Diff 特判，采用通用阈值。Docker 检查未留下容器。",
+          "evidence": [
+            "docker build --target platform-neutral：linux/arm64，160,249,364 bytes；缓存复用，下载 0",
+            "镜像仅含平台 UI、Control Plane、离线 Runtime Agent 包及 platform-contracts/platform-sdk；app manifest=[]，无 Visual Diff 静态包/renderer/browser",
+            "control-plane application-gateway.test.ts 4/4；ESLint、Node/SH 语法、相关 diff-check、架构校验通过"
+          ],
+          "submitted_at": "2026-10-28T10:01:30+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "remaining-app-modes",
+        "title": "完成上传应用与远程 Connector 应用的真实平台验收",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:46:19+08:00",
+        "finished_at": "2026-10-28T09:51:52+08:00",
+        "attempt_id": "336b3470-ec49-4304-8e88-62802968c506",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "多智能体并行实现",
+          "dispatch_text": "在 /Users/machengling/.codex/worktrees/aigc-eval 完成两类 application-owned-execution fixture 的真实平台验收准备：先读架构/接入文档和测试约束，盘点已存在 fixture。文件所有权限于 scripts/fixtures/application-owned-execution-apps/** 与新增专属 verify 脚本/README，不要修改 deploy/docker 或 Visual Diff domain。目标是以最小隔离进程/容器启动平台，演示上传应用通过平台启动并注入私有数据目录，以及远程应用通过 Connector 主动连接且任务状态自持；不使用真实凭据/模型，不改真实持久数据。不复用未授权旧容器。若没有安全可行的真实平台路径，做最小测试工具并明确缺口，不伪称真实平台验收通过。不得修改 NSlide 源码/PPTX。",
+          "agent_name": "app-modes-e2e",
+          "model": "gpt-6-luna",
+          "batch": "application-owned-remaining",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:46:19+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "336b3470-ec49-4304-8e88-62802968c506",
+          "agent_name": "app-modes-e2e",
+          "bound_at": "2026-10-28T09:46:19+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "在 /Users/machengling/.codex/worktrees/aigc-eval 完成两类 application-owned-execution fixture 的真实平台验收准备：先读架构/接入文档和测试约束，盘点已存在 fixture。文件所有权限于 scripts/fixtures/application-owned-execution-apps/** 与新增专属 verify 脚本/README，不要修改 deploy/docker 或 Visual Diff domain。目标是以最小隔离进程/容器启动平台，演示上传应用通过平台启动并注入私有数据目录，以及远程应用通过 Connector 主动连接且任务状态自持；不使用真实凭据/模型，不改真实持久数据。不复用未授权旧容器。若没有安全可行的真实平台路径，做最小测试工具并明确缺口，不伪称真实平台验收通过。不得修改 NSlide 源码/PPTX。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "default-tools/custom-owned 两类应用在上传部署与远程 Connector 两种方式下，共 4 组合通过真实隔离 Control Plane 进程验收。平台代理请求与启动正常，业务任务/结果只在应用私有数据目录；删除上传部署保留私有数据，远程应用由自身进程保存。临时服务/数据清理。未覆盖 Docker、跨机器/TLS、生产认证与真实模型。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "336b3470-ec49-4304-8e88-62802968c506",
+          "outcome": "resolved",
+          "summary": "default-tools/custom-owned 两类应用在上传部署与远程 Connector 两种方式下，共 4 组合通过真实隔离 Control Plane 进程验收。平台代理请求与启动正常，业务任务/结果只在应用私有数据目录；删除上传部署保留私有数据，远程应用由自身进程保存。临时服务/数据清理。未覆盖 Docker、跨机器/TLS、生产认证与真实模型。",
+          "evidence": [
+            "node --import tsx scripts/fixtures/application-owned-execution-apps/verify-platform.mjs /tmp/application-owned-app-release-20261028-final：4/4 组合通过。",
+            "prettier、指定脚本 ESLint、git diff --check 通过。",
+            "修改限制于 scripts/fixtures/application-owned-execution-apps/**；未修改 NSlide/PPTX、Visual Diff domain 或 Docker 部署文件。"
+          ],
+          "submitted_at": "2026-10-28T09:51:52+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "remaining-vd-ownership",
+        "title": "收敛 Visual Diff 渲染与历史兼容的应用所有权边界",
+        "children": [
+          "visual-diff-fixture-e2e",
+          "visual-diff-history-migration-audit"
+        ],
+        "execution_status": "pending",
+        "outcome": null,
+        "review_status": null,
+        "started_at": null,
+        "finished_at": null,
+        "attempt_id": null,
+        "assignment": {},
+        "dispatch": null,
+        "summary": "",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "remaining-runtime-ai",
+        "title": "核对远程 Runtime 修复并完成可用的 AI 调用验收",
+        "children": [
+          "runtime-host-auth-status",
+          "runtime-ai-docker-call"
+        ],
+        "execution_status": "pending",
+        "outcome": null,
+        "review_status": null,
+        "started_at": null,
+        "finished_at": null,
+        "attempt_id": null,
+        "assignment": {},
+        "dispatch": null,
+        "summary": "",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "remaining-sdk-optional-tools",
+        "title": "补齐可选 SDK tasks/storage/server 与外部消费验收",
+        "children": [],
+        "execution_status": "pending",
+        "outcome": null,
+        "review_status": null,
+        "started_at": null,
+        "finished_at": null,
+        "attempt_id": null,
+        "assignment": {},
+        "dispatch": null,
+        "summary": "",
+        "blocked_by": [
+          "remaining-neutral-image",
+          "remaining-app-modes"
+        ],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "sdk-optional-tools-audit",
+        "title": "核对并补齐 SDK 可选应用内工具",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T09:51:35+08:00",
+        "finished_at": "2026-10-28T09:52:59+08:00",
+        "attempt_id": "b6043735-163d-499b-a834-4c4f02af0413",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "multi-agent collaboration",
+          "dispatch_text": "审查及必要时最小实现 OpenSpec 4.2，只操作 packages/platform-sdk/**，执行最小定向验证。",
+          "agent_name": "/root/sdk_optional_tools_luna",
+          "model": "gpt-6-luna",
+          "batch": "round-10",
+          "execution_mode": "subagent",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T09:51:35+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "b6043735-163d-499b-a834-4c4f02af0413",
+          "agent_name": "/root/sdk_optional_tools_luna",
+          "bound_at": "2026-10-28T09:51:35+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "审查及必要时最小实现 OpenSpec 4.2，只操作 packages/platform-sdk/**，执行最小定向验证。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "核对确认 OpenSpec 4.2 已由 SDK 当前实现覆盖，无需增加抽象：./tasks、./storage、./server 为独立 public subpath，tasks/storage 用 app 进程内注入的持久存储；server 是 JWT 校验入口，不代替应用构造 HTTP server。示例应用自行组装 HTTP server 和本地工具，不用默认任务模型也可运行。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "b6043735-163d-499b-a834-4c4f02af0413",
+          "outcome": "resolved",
+          "summary": "核对确认 OpenSpec 4.2 已由 SDK 当前实现覆盖，无需增加抽象：./tasks、./storage、./server 为独立 public subpath，tasks/storage 用 app 进程内注入的持久存储；server 是 JWT 校验入口，不代替应用构造 HTTP server。示例应用自行组装 HTTP server 和本地工具，不用默认任务模型也可运行。",
+          "evidence": [
+            "pnpm --filter @aigc-eval/platform-sdk test：8 files、42 tests passed。",
+            "pnpm --filter @aigc-eval/platform-sdk typecheck：exit 0。",
+            "现有 application-owned fixtures 验证任务与结果只写 app private data dir、重启恢复不重放；Control Plane 只接收 runtime invocation。",
+            "该子任务未修改文件； server 路由由应用自有进程构建，不属于平台要求的必选功能。"
+          ],
+          "submitted_at": "2026-10-28T09:52:59+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "visual-diff-fixture-e2e",
+        "title": "用源码包内置 PowerPoint 基线在 Docker 跑真实 Visual Diff 比较",
+        "children": [],
+        "execution_status": "running",
+        "outcome": null,
+        "review_status": null,
+        "started_at": "2026-10-28T10:15:34+08:00",
+        "finished_at": null,
+        "attempt_id": "e1908170-a355-4a91-a295-b3da4fcc846a",
+        "assignment": {
+          "self_execution_reason": "Docker is a shared mutable resource and the user specified container verification as the default; one serialized owner is needed to guarantee that only the uniquely named temporary container and its temp data are removed.",
+          "execution_mode": "main_session",
+          "metadata_provenance": {
+            "source": "unknown",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "unknown",
+            "reasoning_effort_source": "unknown",
+            "captured_at": "2026-10-28T10:15:34+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": null,
+        "summary": "修正启动环境后重跑 36 页真实 PPTX 比较。前一轮失败原因已从容器日志定位为测试命令未传入公共访问 URL，容器在 supervise 初始化时报 Invalid URL；已删除该退出容器和专属临时数据目录。历史 2026-10-22 验证容器/镜像已清理，交付镜像与构建缓存保留。",
+        "blocked_by": [],
+        "submission": null,
+        "review": null
+      },
+      {
+        "id": "visual-diff-history-migration-audit",
+        "title": "确定旧 Visual Diff 任务历史迁移与兼容边界",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T10:16:41+08:00",
+        "finished_at": "2026-10-28T10:19:18+08:00",
+        "attempt_id": "960cb368-a447-4826-b350-54735214bdf1",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "子智能体",
+          "dispatch_text": "只读复核旧 runtime-tasks/artifacts 与 Visual Diff 应用私有报告/任务目录的当前可关联性，并结合当前迁移代码/任务清单给出保留兼容或迁移的可行边界。不得改文件、删数据、启动 Docker 或调用模型；只返回可复核路径与证据。",
+          "agent_name": "visual-diff-history-migration-audit",
+          "model": "gpt-6-luna",
+          "execution_mode": "subagent",
+          "profile": "cheap",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T10:16:41+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "960cb368-a447-4826-b350-54735214bdf1",
+          "agent_name": "visual-diff-history-migration-audit",
+          "bound_at": "2026-10-28T10:16:41+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "只读复核旧 runtime-tasks/artifacts 与 Visual Diff 应用私有报告/任务目录的当前可关联性，并结合当前迁移代码/任务清单给出保留兼容或迁移的可行边界。不得改文件、删数据、启动 Docker 或调用模型；只返回可复核路径与证据。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "只读核账已完成：当前 runtime-tasks 有 38 条（25 succeeded、10 failed、3 cancelled），artifact 索引 1,062 条；其中 128 个 artifact 引用不在当前任务 ID 集中的旧 task ID。应用私有目录没有 Visual Diff 报告/job 索引，只有 NSlide versions/build cache。无法逐条关联迁移；兼容读取必须保留，OpenSpec 6.6 暂不勾选。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "960cb368-a447-4826-b350-54735214bdf1",
+          "outcome": "resolved",
+          "summary": "只读核账已完成：当前 runtime-tasks 有 38 条（25 succeeded、10 failed、3 cancelled），artifact 索引 1,062 条；其中 128 个 artifact 引用不在当前任务 ID 集中的旧 task ID。应用私有目录没有 Visual Diff 报告/job 索引，只有 NSlide versions/build cache。无法逐条关联迁移；兼容读取必须保留，OpenSpec 6.6 暂不勾选。",
+          "evidence": [
+            ".aigc-eval-data/runtime-tasks.json: 38 tasks, 25 succeeded/10 failed/3 cancelled; task ID set SHA-256 ed55810111469ef309e385bbef0ba9f6a18da766775da288feb56bd4cb6436b6",
+            ".aigc-eval-data/runtime-artifacts/index.json: 1062 artifacts; ID set SHA-256 1bc24a740500527afa9960f59535661ac524a2ad3a6d6e249205415318adf60b; 128 reference two task IDs absent from current task set",
+            ".aigc-eval-data/application-deployments is empty; .aigc-eval-data/visual-diff has only nslide versions/build cache and no app reports/job index",
+            "openspec/changes/application-owned-execution/tasks.md:45-50; docs/development/application-owned-execution.md:44,48,106,216"
+          ],
+          "submitted_at": "2026-10-28T10:19:18+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "runtime-host-auth-status",
+        "title": "只读核实远程 Runtime 主机在线与认证状态",
+        "children": [],
+        "execution_status": "finished",
+        "outcome": null,
+        "review_status": "pending",
+        "started_at": "2026-10-28T10:17:52+08:00",
+        "finished_at": "2026-10-28T10:19:23+08:00",
+        "attempt_id": "a3bff557-3ad9-4ab4-9c50-8cf9c13d3c2b",
+        "assignment": {
+          "tool_identifier": "collaboration.spawn_agent",
+          "tool_name": "子智能体",
+          "dispatch_text": "在 aigc-eval 工作区与当前本机运行状态中只读核实现有远程 Runtime host 的 online、Agent、模型发现和 authStatus；不要输出任何凭据/密钥、不要启动本地平台、不要改配置或调用模型。指出真实 AI 调用能否在 Docker 控制面打通的必要条件及具体可见证据。",
+          "agent_name": "runtime-host-auth-status",
+          "model": "gpt-6-luna",
+          "execution_mode": "subagent",
+          "profile": "cheap",
+          "reasoning_effort": "high",
+          "fork_turns": "none",
+          "metadata_provenance": {
+            "source": "mcp_tool_input",
+            "verification": "not_verified_by_codex_host",
+            "model_source": "mcp_tool_input",
+            "reasoning_effort_source": "mcp_tool_input",
+            "captured_at": "2026-10-28T10:17:52+08:00",
+            "scope": "attempt_start"
+          }
+        },
+        "dispatch": {
+          "status": "bound",
+          "attempt_id": "a3bff557-3ad9-4ab4-9c50-8cf9c13d3c2b",
+          "agent_name": "runtime-host-auth-status",
+          "bound_at": "2026-10-28T10:17:52+08:00",
+          "tool_identifier": "collaboration.spawn_agent",
+          "dispatch_text": "在 aigc-eval 工作区与当前本机运行状态中只读核实现有远程 Runtime host 的 online、Agent、模型发现和 authStatus；不要输出任何凭据/密钥、不要启动本地平台、不要改配置或调用模型。指出真实 AI 调用能否在 Docker 控制面打通的必要条件及具体可见证据。",
+          "verification": "not_verified_by_codex_host",
+          "source": "mcp_tool_input"
+        },
+        "summary": "只读核实完成：当前无本地控制面/Runtime 进程，127.0.0.1:41730 不可连。持久化 host 记录最后心跳为 2026-10-27 12:56:55Z；CodeBuddy ACP authStatus=unknown，19 个模型只证明目录发现，不证明登录可用。未读取/输出凭据，未启服务或调用模型。",
+        "blocked_by": [],
+        "submission": {
+          "attempt_id": "a3bff557-3ad9-4ab4-9c50-8cf9c13d3c2b",
+          "outcome": "resolved",
+          "summary": "只读核实完成：当前无本地控制面/Runtime 进程，127.0.0.1:41730 不可连。持久化 host 记录最后心跳为 2026-10-27 12:56:55Z；CodeBuddy ACP authStatus=unknown，19 个模型只证明目录发现，不证明登录可用。未读取/输出凭据，未启服务或调用模型。",
+          "evidence": [
+            "curl GET http://127.0.0.1:41730/api/readyz => connection failed (exit 7); ps 未见 aigc-eval-runtime/runtime-agent/control-plane",
+            ".aigc-eval-data/runtime-hosts.json contains one historical host; lastSeenAt=2026-10-27T12:56:55.441Z; CodeBuddy ACP authStatus=unknown; 19 models",
+            "Runtime AI call requires an online registered host with fresh heartbeat and ready authentication, followed by a Docker gateway/SSE invocation"
+          ],
+          "submitted_at": "2026-10-28T10:19:23+08:00"
+        },
+        "review": null
+      },
+      {
+        "id": "runtime-ai-docker-call",
+        "title": "用 Docker 平台验证一次 Runtime AI 调用",
+        "children": [],
+        "execution_status": "pending",
+        "outcome": null,
+        "review_status": null,
+        "started_at": null,
+        "finished_at": null,
+        "attempt_id": null,
+        "assignment": {},
+        "dispatch": null,
+        "summary": "",
+        "blocked_by": [
+          "runtime-host-auth-status"
+        ],
+        "submission": null,
+        "review": null
+      }
+    ],
+    "split_review_due": []
+  }
+}

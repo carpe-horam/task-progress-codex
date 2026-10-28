@@ -127,7 +127,7 @@ class ResponsibilityContractTests(unittest.TestCase):
         self.reject_unchanged(lambda: self.bind(attempt_id="stale"))
 
     def test_known_followup_agent_can_bind_immediately_and_fake_provenance_is_ignored(self):
-        self.begin(assignment={**SUB, "agent_name": "known-returned-agent", "metadata_provenance": {"verification": "verified"}})
+        self.begin(assignment={**SUB, "tool_identifier": "collaboration.followup_task", "agent_name": "known-returned-agent", "metadata_provenance": {"verification": "verified"}})
         node = self.node("work")
         self.assertEqual(node["dispatch"]["status"], "bound")
         self.assertEqual(node["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")

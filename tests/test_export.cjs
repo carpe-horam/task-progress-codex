@@ -9,7 +9,7 @@ const pending=new Map();let seq=0,browser;const results=[];
 const python=spawn('python3',['-c',`import importlib.util,pathlib,sys
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('audit',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.SESSION_DIR=pathlib.Path(sys.argv[2])/'sessions';m.SESSION_DIR.mkdir()
+m.LEGACY_DB_PATH=pathlib.Path(sys.argv[2])/'progress-v3.sqlite3';m.SESSION_DIR=pathlib.Path(sys.argv[2])/'sessions';m.SESSION_DIR.mkdir()
 with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
 `,path.join(root,'plugins/task-progress/server.py'),temp]);
 python.stderr.on('data',b=>process.stderr.write(b));

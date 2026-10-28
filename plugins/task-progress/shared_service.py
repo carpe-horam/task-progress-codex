@@ -71,6 +71,9 @@ def load_core(session_dir: Path | None = None):
     if session_dir is not None:
         session_dir.mkdir(parents=True, exist_ok=True)
         core.SESSION_DIR = session_dir
+        # Explicit storage is an isolation boundary for every data generation.
+        # Keep the production cache/sessions + sibling SQLite layout locally.
+        core.LEGACY_DB_PATH = session_dir.parent / "progress-v3.sqlite3"
     return core
 
 

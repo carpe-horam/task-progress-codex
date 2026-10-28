@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-10-28T04:54:43.022Z",
+  "renderer": "Headless Chrome via Playwright, real isolated Python server fixtures",
+  "sources": {
+    "plugins/task-progress/app.html": "1d9da3d91959b7fd215248fa4da4ddb2a1d8658133ae187716e23faecf7b0075",
+    "plugins/task-progress/server.py": "06587cf3175592c7950dacc48d810984561b30f1a6ad409dd701913cf942dc44",
+    "tests/test_parallel_roots_app.cjs": "83984448026d9259d5144b05d048772789df20dad52dc756b38f9ca17ab51362"
+  }
+}

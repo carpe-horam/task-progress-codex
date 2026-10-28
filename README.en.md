@@ -24,6 +24,8 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, t
 | **Plan before substantive work** | Session startup and each new prompt receive a planning reminder. Multi-stage work can submit its initial HTN tree in one call, and the server rejects an unplanned empty root from starting. |
 | **Dependencies and parallel work** | Define prerequisites for tasks. Ready tasks can run in parallel when they do not depend on one another. |
 | **Delegation and separate acceptance** | Delegate complex work, including sequential handoffs. Preserve planned roles, dispatch bindings, subagent submissions, and main-session reviews separately; pending review blocks dependencies. |
+| **Independent requests** | The main session queues unrelated requests or delegates isolated parallel instances without replacing the foreground task. Completing an inserted request does not complete the session. |
+| **Recoverable context and replanning** | Persist goals, original requests, constraints, acceptance criteria and resume locations; retain change reasons and evidence when the main session adjusts the plan. |
 | **Conversation isolation and history** | Each Codex conversation has its own progress. Starting a new task archives the previous one; replanning rounds and retries are preserved. |
 | **Execution and model records** | See the executor and any available model/effort values, with caller-reported and Codex verification status; unknown values are not guessed. |
 | **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
@@ -34,6 +36,12 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, t
 ## How it works
 
 Task Progress uses an HTN (Hierarchical Task Network) to represent multi-step work. Parent tasks can be decomposed into subtasks, and dependencies connect related work. Ready tasks without dependencies can run in parallel; tasks with unmet prerequisites wait. Codex hooks provide non-blocking startup reminders, and the server prevents an unplanned empty root from starting. Simple questions need no task tree; a single-step task records an `atomic_reason`.
+
+The main session owns planning and decisions; Task Progress persists details and guides the next action. Corrections stay in the current instance, brief answers return to the original work, and independent requests use `route_request` for a queue or an isolated parallel instance. After the foreground task is truthfully closed, explicitly activate the FIFO head with `activate_request`. Save recovery details through `update_task_context`. See [request routing and recovery](plugins/task-progress/skills/track-progress/references/request-routing.md).
+
+The primary percentage counts resolved leaves accepted under the current protocol. Pending review and execution completion remain distinct, and root synthesis is separate from 100% leaf completion. Missing historical acceptance stays unknown. The plugin does not launch work or wake idle chats. HTML/XLSX exports currently cover the selected task's execution history; request queues and recovery context remain durably available through the API.
+
+Parallel tasks appear as sibling roots after the foreground root in the same task network, in registration order, with their own children and acceptance records. This is a display relationship; instances and dependencies remain isolated. Unstarted requests stay in the queue, and the headline percentage covers only the foreground task.
 
 ```mermaid
 flowchart LR
@@ -135,7 +143,9 @@ Default behavior:
 
 ## Data and requirements
 
-- The MCP server uses authenticated local HTTP shared by chats belonging to the same OS user. Task progress remains under `~/.cache/task-progress/sessions` without migration; it is not uploaded with this repository or shared with other users.
+- The MCP server uses authenticated local HTTP shared by chats belonging to the same OS user. Current tasks remain under `~/.cache/task-progress/sessions`. Records in the retired `progress-v3.sqlite3` store appear as a separate read-only archive excerpt; they do not overwrite current state or require migration, and are not uploaded with this repository.
+- Normal reads return the current task and history counts. Expanding history or exporting loads the historical bodies on demand. Execution ended, awaiting review, and resolved remain separate: 100% execution ended does not mean delivery accepted.
+- Continue or re-plan the same task for another phase of its goal. Initializing a new goal cannot archive running or pending-review work; replacing other unfinished work requires an explicit reason.
 - Python 3 and a Codex client supporting Streamable HTTP and `http_headers_helper` are required. Automatic service installation currently targets macOS. The `server.py` stdio entry point remains for compatibility and isolated testing; the default plugin connection no longer launches it.
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.
 - Task Progress records and displays work status. Actual Codex model execution uses the user's own Codex account and service connection.

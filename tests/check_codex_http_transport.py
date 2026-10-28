@@ -64,8 +64,18 @@ def client(executable, server_name, overrides, index):
                               "capabilities": {"experimentalApi": True}})
         process.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n"); process.stdin.flush()
         status = rpc(2, "mcpServerStatus/list", {"serverName": server_name, "detail": "full"})
-        entries = status.get("data", [])
-        assert len(entries) == 1, {"status_keys": list(status), "entry_count": len(entries)}
+        # Some app-server versions return every configured server despite the
+        # serverName filter. Select this server explicitly and follow pagination.
+        entries = [entry for entry in status.get("data", []) if entry.get("name") == server_name]
+        seen_cursors = set()
+        while not entries and status.get("nextCursor"):
+            cursor = status["nextCursor"]
+            assert cursor not in seen_cursors, "MCP status pagination repeated a cursor"
+            seen_cursors.add(cursor)
+            status = rpc(10 + len(seen_cursors), "mcpServerStatus/list",
+                         {"serverName": server_name, "detail": "full", "cursor": cursor})
+            entries = [entry for entry in status.get("data", []) if entry.get("name") == server_name]
+        assert len(entries) == 1, {"requested_server": server_name, "matching_entries": len(entries)}
         entry = entries[0]
         tools = entry.get("tools", {})
         names = list(tools) if isinstance(tools, dict) else [tool["name"] for tool in tools]

@@ -1,0 +1,77 @@
+{
+  "session_id": "08cfece3-45ac-40f5-a797-c2b846c92464",
+  "task_instance_id": "8f63c218-a088-4ad7-a8e9-2b6142f9ef7f",
+  "status": "completed",
+  "completed": 7,
+  "total": 7,
+  "resolved_leaf_count": 7,
+  "pending_review_count": 0,
+  "executing_count": 0,
+  "task_context": {
+    "goal": "研究并修复主会话与任务计划脱节，支持独立请求排队/并行、持久上下文与清晰验收进度",
+    "constraints": [
+      "主会话负责规划、编辑、调整和验收；插件保存事实并引导",
+      "只读审查原visual-diff会话，不代其接受业务结果",
+      "复用当前工作区；不提交或推送代码",
+      "队列不覆盖原任务，用户明确停止优先；不宣称插件已强制接管宿主"
+    ],
+    "acceptance_criteria": [
+      "独立任务完成不结束原任务或未处理队列",
+      "重规划、重启后目标、约束、验收和恢复位置保留",
+      "待验收结果不计入主验收进度；产出摘要可见",
+      "隔离回归和独立审查通过，实际安装代码与源码一致"
+    ],
+    "resume_note": "本轮研究、请求分流/恢复/进度实现、独立复审、回归及本机安装均已验收；7个叶任务和root已解决，无待执行请求。交付记录 docs/reviews/2026-10-28-request-routing-delivery.md。重新加载插件或重启Codex后可使用新增工具；不自动重开本轮任务。"
+  },
+  "can_finish_session": true,
+  "nodes": [
+    {
+      "id": "root",
+      "title": "深度研究任务规划与主会话实际执行脱节的解决方案",
+      "status": "resolved",
+      "review_status": null
+    },
+    {
+      "id": "failure-mechanisms",
+      "title": "分析实际脱节机制与现有协议缺口",
+      "status": "resolved",
+      "review_status": "accepted"
+    },
+    {
+      "id": "control-options",
+      "title": "核查宿主能力与可实施约束方案",
+      "status": "resolved",
+      "review_status": "accepted"
+    },
+    {
+      "id": "recommendation",
+      "title": "综合证据比较方案并给出实施路线",
+      "status": "resolved",
+      "review_status": null
+    },
+    {
+      "id": "request-routing",
+      "title": "实现独立请求排队、并行隔离与返回原任务",
+      "status": "resolved",
+      "review_status": "accepted"
+    },
+    {
+      "id": "progress-clarity",
+      "title": "让已验收结果、待验收项与请求队列直接可见",
+      "status": "resolved",
+      "review_status": "accepted"
+    },
+    {
+      "id": "integration-acceptance",
+      "title": "验证中途插入请求后的继续执行与安装交付",
+      "status": "resolved",
+      "review_status": null
+    },
+    {
+      "id": "request-review",
+      "title": "独立复审请求隔离与恢复边界",
+      "status": "resolved",
+      "review_status": "accepted"
+    }
+  ]
+}

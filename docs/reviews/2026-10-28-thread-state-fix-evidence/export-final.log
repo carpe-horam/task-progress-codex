@@ -1,0 +1,30 @@
+[
+  {
+    "case": "export_attempt_titles",
+    "feedback": "已导出 Excel 和可视化 HTML，保存位置：/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-Project root-191952bd-20261028T025936Z.xlsx\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-Project root-191952bd-20261028T025936Z.html",
+    "rows": [
+      {
+        "taskId": "build",
+        "title": "Build leaf",
+        "attemptCount": 1
+      },
+      {
+        "taskId": "test",
+        "title": "Test leaf",
+        "attemptCount": 1
+      }
+    ],
+    "xlsxTitles": [
+      "Build leaf",
+      "Test leaf"
+    ]
+  },
+  {
+    "case": "emoji_title_at_utf16_truncation_boundary",
+    "feedback": "已导出 Excel 和可视化 HTML，保存位置：/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中😀-cdfba49e-20261028T025936Z.xlsx\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中😀-cdfba49e-20261028T025936Z.html"
+  },
+  {
+    "case": "ordinary_unicode_title",
+    "feedback": "已导出 Excel 和可视化 HTML，保存位置：/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-中文😀正常标题-36a1fe42-20261028T025937Z.xlsx\n/var/folders/7q/vy4n0b957kl_dcp4dp8pt5580000gn/T/progress-export-audit-TOL2Be/Downloads/Task Progress Exports/Task-Progress-中文😀正常标题-36a1fe42-20261028T025937Z.html"
+  }
+]

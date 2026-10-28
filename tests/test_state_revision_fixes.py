@@ -40,7 +40,7 @@ class StateRevisionFixTests(unittest.TestCase):
         self.temp.cleanup()
 
     def initialize(self, sid=None, key="request-A", title="Task A"):
-        return server.init_task_network(title, sid, atomic_reason="One isolated operation", request_id=key)
+        return server.init_task_network(title, sid, atomic_reason="One isolated operation", request_id=key, new_task_reason="Explicit new fixture target; prior stopped fixture archived")
 
     def unchanged_on_rejection(self, sid, action):
         before = server._session_file(sid).read_bytes() if server._session_file(sid).exists() else None
@@ -55,7 +55,7 @@ class StateRevisionFixTests(unittest.TestCase):
         third = content(self.initialize(first["session_id"]))
         self.assertEqual(first["session_id"], second["session_id"])
         self.assertEqual(first["progress"]["task_instance_id"], third["progress"]["task_instance_id"])
-        self.assertEqual(third["progress"]["task_history"], [])
+        self.assertEqual(third["progress"]["history_summary"]["task_count"], 0)
         self.assertEqual(first["state_revision"], third["state_revision"])
         self.assertGreater(third["view_sequence"], second["view_sequence"])
 
@@ -93,7 +93,7 @@ class StateRevisionFixTests(unittest.TestCase):
         ledger_text = (server.SESSION_DIR / ".init-request-ledger.json").read_text()
         self.assertNotIn("Sensitive task title", ledger_text)
         self.assertNotIn("request-A", ledger_text)
-        self.assertEqual(progress(self.initialize(sid, "fresh", "Fresh task"))["task_history"], [])
+        self.assertEqual(progress(self.initialize(sid, "fresh", "Fresh task"))["history_summary"]["task_count"], 0)
         self.unchanged_on_rejection(sid, lambda: self.initialize(sid, title="Sensitive task title"))
 
     def test_explicit_sessions_have_separate_request_scopes(self):
@@ -123,7 +123,7 @@ class StateRevisionFixTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.initialize()
         self.assertFalse(list(server.SESSION_DIR.glob("*.json")))
-        self.assertEqual(progress(self.initialize())["task_history"], [])
+        self.assertEqual(progress(self.initialize())["history_summary"]["task_count"], 0)
 
     def test_reservation_cannot_overwrite_replacement_or_clear(self):
         with mock.patch.object(server, "_write", side_effect=OSError("simulated failure")):
@@ -162,7 +162,7 @@ with mock.patch.object(Path,"home",return_value=d/"home"):
  spec.loader.exec_module(s)
 s.SESSION_DIR=d
 r=s.init_task_network("Concurrent retry",atomic_reason="One operation",request_id="shared-first-request")["structuredContent"]
-print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],len(r["progress"]["task_history"])]))
+print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"]["history_summary"]["task_count"]]))
 '''
         processes = [subprocess.Popen([sys.executable, "-B", "-c", worker, str(PLUGIN / "server.py"), self.temp.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(4)]
         results = []
@@ -300,7 +300,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],len(r["progr
                 old = content(server.init_task_network("Old task", sid, atomic_reason="One old task"))
                 old_source = dict(view_sequence=old["view_sequence"], state_revision=old["state_revision"], task_instance_id=old["progress"]["task_instance_id"])
                 server.register_ui_view(sid, "tab", **old_source, display_mode=initial_mode, mode_generation=0)
-                new = content(server.init_task_network("New task", sid, atomic_reason="One new task"))
+                new = content(server.init_task_network("New task", sid, atomic_reason="One new task", new_task_reason="New view fixture target; old pending fixture archived"))
                 new_source = dict(view_sequence=new["view_sequence"], state_revision=new["state_revision"], task_instance_id=new["progress"]["task_instance_id"])
                 server.register_ui_view(sid, "new-inline", **new_source, mode_generation=0)
                 # generation 1's fullscreen registration carries the polled new

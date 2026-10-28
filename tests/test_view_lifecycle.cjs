@@ -16,7 +16,7 @@ let browser;
 const python = spawn('python3', ['-c', `import importlib.util, pathlib, sys
 spec=importlib.util.spec_from_file_location('lifecycle_server',sys.argv[1])
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.SESSION_DIR.mkdir(parents=True,exist_ok=True);m.main()
+m.LEGACY_DB_PATH=pathlib.Path(sys.argv[2])/'progress-v3.sqlite3';m.SESSION_DIR=pathlib.Path(sys.argv[2]);m.SESSION_DIR.mkdir(parents=True,exist_ok=True);m.main()
 `, path.join(root, 'plugins/task-progress/server.py'), temp]);
 python.stderr.on('data', chunk => process.stderr.write(chunk));
 readline.createInterface({input: python.stdout}).on('line', line => {
@@ -82,10 +82,12 @@ async function main() {
   }
 
   try {
-    const first = await rpc('init_task_network',{task_title:'旧任务'});
+    const first = await rpc('init_task_network',{task_title:'旧任务',atomic_reason:'Isolated lifecycle source fixture'});
     const sessionId = first.structuredContent.session_id;
     const oldFrame = await mount('old',first);
-    const second = await rpc('init_task_network',{session_id:sessionId,task_title:'当前任务'});
+    const running=await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Complete isolated lifecycle fixture'}});
+    await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'finished',outcome:'resolved',attempt_id:running.structuredContent.progress.nodes[0].attempt_id});
+    const second = await rpc('init_task_network',{session_id:sessionId,task_title:'当前任务',atomic_reason:'Isolated lifecycle current fixture'});
     const latestFrame = await mount('latest',second);
     await latestFrame.locator('#task-title').filter({hasText:'当前任务'}).waitFor();
     const tabFrame = await mount('tab',second,'fullscreen');

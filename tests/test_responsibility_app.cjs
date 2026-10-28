@@ -50,7 +50,7 @@ async function checkExport(r,expected,{reviewRows=1}={}) {
   for (const value of expected) assert(text.includes(value),`HTML export missing ${value}`);
   assert.equal(await worker.locator('.rp-review-history').count(),1);
   assert.equal(await worker.locator('.rp-review').count(),reviewRows);
-  assert.equal(await report.locator('.rp-delivery').textContent(),'尚未完成');
+  assert.equal(await report.locator('.rp-delivery').textContent(),node(r).review_status === 'pending' ? '待主会话验收' : '尚未完成');
   const call=await hostPage.evaluate(()=>window.host.calls.find(c=>c.name==='save_export_files'));
   const workbook=call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path;
   const sheets=readWorkbook(workbook);
@@ -143,9 +143,32 @@ async function submit(r,outcome='resolved') {
 async function review(r,decision) {
   return host.rpc('review_task',{...binding(r),task_id:'worker',attempt_id:node(r).attempt_id,decision,summary:'MAIN_REVIEW_'+decision,evidence:['MAIN_REVIEW_EVIDENCE_'+decision],reviewer:mainAssignment});
 }
+async function checkPendingBoundaries() {
+  let r=await host.rpc('init_task_network',{task_title:'All results awaiting independent review',tasks:[{id:'worker',title:'First delegated result',assignment:subAssignment},{id:'peer',title:'Second delegated result',assignment:subAssignment}]});
+  r=await start(r);r=await submit(r);
+  r=await host.rpc('update_task',{...binding(r),task_id:'peer',execution_status:'running',assignment:subAssignment});
+  const peerAttempt=node(r,'peer').attempt_id;
+  r=await host.rpc('bind_task_agent',{...binding(r),task_id:'peer',attempt_id:peerAttempt,agent_name:'boundary-peer'});
+  const page=await host.page(),frame=await host.mount(page,'main',r);
+  const meta=await frame.locator('#network-meta').textContent();
+  assert(meta.includes('进行中 1') && meta.includes('待主会话验收 1'),'aggregate exposes simultaneous running and review counts');
+  await page.close();
+  const mixed=await host.exportReport(r);
+  assert.equal(await mixed.report.locator('#rp-state-counts').textContent(),'1 项执行中 · 1 项待主会话验收');
+  await mixed.report.close();await mixed.hostPage.close();
+  r=await host.rpc('update_task',{...binding(r),task_id:'peer',attempt_id:peerAttempt,execution_status:'finished',outcome:'resolved',summary:'Second submitted result',evidence:['Second result evidence']});
+  assert.equal(r.structuredContent.progress.pending_review_count,2);
+  const all=await host.exportReport(r);
+  assert.equal(await all.report.locator('.rp-delivery').textContent(),'待主会话验收','all-ended pending review cannot enter root synthesis');
+  assert.equal(await all.report.locator('#rp-state-counts').textContent(),'0 项执行中 · 2 项待主会话验收');
+  await screenshot(all.report,'all-pending-review-boundary');
+  await all.report.close();await all.hostPage.close();
+  results.push('Mixed running/pending review counters remain visible; all-ended pending results export as awaiting main review, never root synthesis.');
+}
 async function main() {
   const sourceAtStart=sourceIdentity(),startedAt=new Date().toISOString();
   host=await createHost();
+  await checkPendingBoundaries();
   let r=await host.rpc('init_task_network',{task_title:'Responsibility acceptance and retry',tasks:[{id:'worker',title:'Complex worker',assignment:subAssignment},{id:'consumer',title:'Main integration',depends_on:['worker'],assignment:mainAssignment}]});
   r=await start(r); r=await submit(r);
   assert.equal(node(r).outcome,null); assert.equal(node(r).review_status,'pending');

@@ -17,7 +17,7 @@ let host, service, sequence = 0;
 const pids = new Set();
 async function main() {
   service = spawn('python3', ['-B', path.resolve(__dirname, '../plugins/task-progress/shared_service.py'),
-    '--port', '0', '--state-dir', state, '--session-dir', sessions]);
+    '--port', '0', '--state-dir', state, '--session-dir', sessions], {env:{...process.env,HOME:root}});
   service.stderr.on('data', chunk => process.stderr.write(chunk));
   const metadataPath = path.join(state, 'daemon.json');
   for(let i=0; i<150 && !fs.existsSync(metadataPath); i++) {

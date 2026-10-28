@@ -1,0 +1,29 @@
+{
+  "host": "isolated simulated MCP Apps parent; not Codex desktop",
+  "cases": [
+    {
+      "name": "inline_is_default_full_progress",
+      "result": "pass"
+    },
+    {
+      "name": "fullscreen_tab_hides_inline_and_close_restores_it",
+      "result": "pass"
+    },
+    {
+      "name": "old_inline_collapses",
+      "result": "pass"
+    },
+    {
+      "name": "compact_open_button_requests_fullscreen",
+      "result": "pass"
+    },
+    {
+      "name": "fullscreen_restores_and_loads_latest",
+      "result": "pass"
+    },
+    {
+      "name": "fullscreen_controls_enabled",
+      "result": "pass"
+    }
+  ]
+}

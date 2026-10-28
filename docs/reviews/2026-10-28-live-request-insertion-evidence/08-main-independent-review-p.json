@@ -1,0 +1,27 @@
+{
+  "reviewed_at": "2026-10-28T12:27:36.960985+08:00",
+  "actual_runtime_directory": "/Users/machengling/Library/Application Support/Task Progress/releases/0.2.0-5aad43dfcd6c1d2c7ced",
+  "recomputed_files": [
+    {
+      "file": "server.py",
+      "sha256": "f32705c3fff85c75d5a7d087e7b11348f68fd20c5c7a9e1b3b6f92637cdc23b3"
+    },
+    {
+      "file": "app.html",
+      "sha256": "51a7e83137314222fc0538dfee74be8685ccd59e419b5e527a3d43777f05f5e7"
+    },
+    {
+      "file": "shared_service.py",
+      "sha256": "952e30db654da5ea7b2db12ab04785710a0fab61d8824cec71efe5287c37b14e"
+    },
+    {
+      "file": "service_manager.py",
+      "sha256": "fc706776d8f822df25eddfb5cf67ac2e9016a5d6e51d0848372ab20229b82a6c"
+    },
+    {
+      "file": "legacy_history.py",
+      "sha256": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c"
+    }
+  ],
+  "accepted": true
+}

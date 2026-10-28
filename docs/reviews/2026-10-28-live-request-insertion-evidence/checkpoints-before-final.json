@@ -1,0 +1,65 @@
+[
+  {
+    "file": "02-main-a-running-before-insertion.json",
+    "time": "2026-10-28T12:25:39.188915+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "in_progress",
+    "can_finish_session": false
+  },
+  {
+    "file": "03-a-running-with-queued-q-and-parallel-p.json",
+    "time": "2026-10-28T12:26:12.602213+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "in_progress",
+    "can_finish_session": false
+  },
+  {
+    "file": "06-overlap-main-a-and-parallel-p.json",
+    "time": "2026-10-28T12:26:53.510161+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "in_progress",
+    "can_finish_session": false
+  },
+  {
+    "file": "07-parallel-p-pending-review.json",
+    "time": "2026-10-28T12:27:19.489851+08:00",
+    "instance": "4a3bafa4-e429-4760-8440-ec31ba5c218e",
+    "status": "awaiting_review",
+    "can_finish_session": false
+  },
+  {
+    "file": "10-parallel-p-completed-must-return-to-a.json",
+    "time": "2026-10-28T12:27:37.125647+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "in_progress",
+    "can_finish_session": false
+  },
+  {
+    "file": "11-main-a-resumed-after-p-completed.json",
+    "time": "2026-10-28T12:28:00.194525+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "in_progress",
+    "can_finish_session": false
+  },
+  {
+    "file": "13-main-a-completed-queue-q-still-blocks-finish.json",
+    "time": "2026-10-28T12:28:26.556264+08:00",
+    "instance": "14d849be-ee26-4346-9d4b-42d5c08eefc4",
+    "status": "completed",
+    "can_finish_session": false
+  },
+  {
+    "file": "14-queue-q-explicitly-activated-after-a.json",
+    "time": "2026-10-28T12:28:26.578428+08:00",
+    "instance": "697c19b5-5905-4237-8300-fb5221c8b19e",
+    "status": "pending",
+    "can_finish_session": false
+  },
+  {
+    "file": "15-queue-q-running-with-real-agent.json",
+    "time": "2026-10-28T12:29:03.807870+08:00",
+    "instance": "697c19b5-5905-4237-8300-fb5221c8b19e",
+    "status": "in_progress",
+    "can_finish_session": false
+  }
+]

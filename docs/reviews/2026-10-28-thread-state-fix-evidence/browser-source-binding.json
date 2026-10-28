@@ -1,0 +1,75 @@
+{
+  "captured_at": "2026-10-28T10:55:00.464672+08:00",
+  "head": "8a9b6dc4e2d18fa1bcc03350859ece364d4ee6a2",
+  "suite_count": 7,
+  "total_groups": 48,
+  "suites": [
+    {
+      "script": "tests/test_app.cjs",
+      "groups": 10,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_app.log",
+      "status": "passed",
+      "browser": "156.0.8078.73"
+    },
+    {
+      "script": "tests/test_app_audit_regressions.cjs",
+      "groups": 7,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_app_audit_regressions.log",
+      "status": "passed",
+      "browser": "156.0.8078.73"
+    },
+    {
+      "script": "tests/test_interaction.cjs",
+      "groups": 15,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_interaction.log",
+      "status": "passed",
+      "browser": "156.0.8078.73"
+    },
+    {
+      "script": "tests/test_view_mode_regressions.cjs",
+      "groups": 3,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_view_mode_regressions.log",
+      "status": "passed",
+      "browser": null
+    },
+    {
+      "script": "tests/test_shared_service_app.cjs",
+      "groups": 3,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_shared_service_app.log",
+      "status": "passed",
+      "browser": "156.0.8078.73"
+    },
+    {
+      "script": "tests/test_view_lifecycle.cjs",
+      "groups": 6,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_view_lifecycle.log",
+      "status": "passed",
+      "browser": null
+    },
+    {
+      "script": "tests/test_history_loading_app.cjs",
+      "groups": 4,
+      "log": "/tmp/task-progress-ui-20261028/legacy-suite/test_history_loading_app.log",
+      "status": "passed",
+      "browser": null
+    }
+  ],
+  "sha256": {
+    "plugins/task-progress/app.html": "55e708a03b71d337a549220e744da1a78d80699f67a08738be041debf0fde48f",
+    "plugins/task-progress/server.py": "9cf499cafc04220b8ffeaebeeb10929a4f4cbc8b70c1ccccb6227c2cea67f99c",
+    "plugins/task-progress/legacy_history.py": "79410a0e7efe4ecbfc4c78568555ac53c8ad6c5b58f336656b65871171d6c19c",
+    "plugins/task-progress/.codex-plugin/plugin.json": "b5f77ac254fd035c10894cbb644b2a6f9447221d6b4024e92a5af78b05daa40b",
+    "tests/browser_host.cjs": "f3fd9fafaf94bdde57d72cb6c45436fa8741a3391e8dc77b9f14dd821ba03658",
+    "tests/test_app.cjs": "e4b6ccac3153206ee6e1427997716bef5bb42769bc619de1446455de857b211c",
+    "tests/test_app_audit_regressions.cjs": "51bb1d3728881650927de1fe9657d1a38687206ff8ed76939233dd5a804cbca8",
+    "tests/test_interaction.cjs": "d2231f42d2f123d86b31632afbb735b6244bab799e65068ebb9ef24528dda7b1",
+    "tests/test_view_mode_regressions.cjs": "cd49bf490c8a68aba5b54a7505589f46dd55d16af5f63ccc9af94cdd540fd7c8",
+    "tests/test_shared_service_app.cjs": "82e5384878f0a16d26c90086a1ae181c1cf95291b06ac72f6654ea53b6c49aed",
+    "tests/test_view_lifecycle.cjs": "04d74b8ee9b8ecd3ba92384fea1332141280026ce510dce6cd20434f180d09c3",
+    "tests/test_history_loading_app.cjs": "39ef48b7c00f022001cf24a806977392f663769aadcd132fd5b4de78e733a93b"
+  },
+  "runtime": "Existing Playwright 1.60.0 and installed Chrome; serial tests; no dependency installs",
+  "fixture_changes": "History reads explicitly request include_history:true; live tasks finish before new goals; legacy running snapshots only installed in a different private fixture session, task bytes unchanged by reads; JSON/SQLite or HOME paths isolated",
+  "validation_note": "Final legacy-only unavailable-count copy was covered by final history_loading run; other final app/audit checks completed before that text-only legacy copy adjustment. Previous responsibility/export results were retained without unrelated reruns.",
+  "limits": "Simulated MCP Apps parent with real app/server and isolated HTTP daemon; no installed plugin/native Codex transport acceptance or real task writes."
+}
