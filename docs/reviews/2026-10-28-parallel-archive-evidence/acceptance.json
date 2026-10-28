@@ -1,0 +1,48 @@
+{
+  "behavior": {
+    "archive": "Parallel HTN instance only after every node is finished/resolved, no pending review, root acceptance complete",
+    "visible": [
+      "active",
+      "pending_review",
+      "awaiting_root_synthesis",
+      "open",
+      "failed",
+      "cancelled",
+      "inconsistent_legacy_root"
+    ],
+    "storage": "Frozen acceptance snapshots in foreground task_history; original state.instances retained for explicit iid reads and retry",
+    "deduplication": "archive_key = [task_instance_id, epoch, root attempt_id or legacy finished_at/revision]",
+    "retry": "Only explicit running + retry=true may reopen resolved parallel instances; invalidate ancestor acceptances and retain frozen archives",
+    "legacy": "Project old completed instances into history without task file writes or state_revision changes; persist on the next real mutation",
+    "query_export": "Compact history counts; paginated history and explicit full/records; HTML/XLSX keep all acceptance evidence"
+  },
+  "validation": {
+    "backend": {
+      "tests": 103,
+      "failures": 0,
+      "errors": 0,
+      "modules": [
+        "test_request_queue.py",
+        "test_selective_query_wire.py",
+        "test_responsibility_contract.py",
+        "test_server.py"
+      ]
+    },
+    "browser_passed": [
+      "test_parallel_roots_app.cjs",
+      "test_parallel_archive_app.cjs",
+      "test_history_loading_app.cjs",
+      "test_request_queue_app.cjs",
+      "test_record_loading_app.cjs"
+    ],
+    "initial_validation_drift": "Launcher expected 23 tools; consume_display_intent added by 8f5b7b5 brought the existing public/app tool list to 24. Updated count and asserted key tools plus app-only visibility. Initial log retained."
+  },
+  "app_sha256": "3f25acd0b272c97d0a990ab1d1656f6fb99a0dbbe90307a04932624133026f83",
+  "boundaries": [
+    "Isolated temporary Python sessions and Chrome with simulated MCP Apps host",
+    "No native Codex host acceptance, installation, commit, push or release performed",
+    "No destructive task or evidence deletion",
+    "New iframe required for updated app JavaScript"
+  ],
+  "planning_hint": "decompose_task description suggests at least two independent result boundaries; one-child API remains compatible"
+}

@@ -203,7 +203,7 @@ def _legacy_history(session_id: str, include_details: bool = False) -> dict[str,
                 "warning": "旧版历史暂不可读取；当前 JSON 任务不受影响。"}
 
 
-def _write(session_id: str, data: dict[str, Any]) -> None:
+def _write(session_id: str, data: dict[str, Any], *, archive_before: dict[str, Any] | None = None) -> None:
     path = _session_file(session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     data["updated_at"] = _now()
@@ -223,6 +223,12 @@ def _write(session_id: str, data: dict[str, Any]) -> None:
         document["updated_at"] = data["updated_at"]
         document["state_revision"] = data["state_revision"]
     if document.get("session_work_state"):
+        # Instances remain addressable for explicit retry. Archives are frozen
+        # snapshots, deduplicated by the completed root acceptance, not the iid.
+        if archive_before and not any(item.get("archive_key") == archive_before["archive_key"]
+                                      for item in document.get("task_history", [])):
+            document.setdefault("task_history", []).append(archive_before)
+        document["task_history"] = _parallel_task_history(document)
         document["session_work"] = _session_work(document)
     _atomic_json(path, document)
 
@@ -344,6 +350,8 @@ def _task_from_document(document: dict[str, Any] | None, task_instance_id: str |
             raise ProgressError("task_instance_id 不匹配；旧任务或其他实例的请求已拒绝。")
     if writable and data.get("request_cancelled"):
         raise ProgressError("请求已取消；迟到更新不能恢复执行。")
+    if writable and _parallel_is_archivable(data):
+        raise ProgressError("并行任务已完成并归档；仅显式 running/retry=true 可重新执行，迟到更新已拒绝。")
     return data
 
 
@@ -593,11 +601,9 @@ def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str |
         raise ProgressError("当前任务尚未完成；继续目标请 get_progress 后 decompose_task，重规划请 rebuild_task_network。只有用户明确开启新目标时，才传 new_task_reason 说明新目标及旧工作处理方式。")
 
 
-def _archive_current_task(data: dict[str, Any] | None, reason: str | None = None) -> list[dict[str, Any]]:
-    if data is None:
-        return []
+def _task_archive_snapshot(data: dict[str, Any], reason: str | None = None) -> dict[str, Any]:
     # Exclude task history before building the snapshot, keeping archives flat.
-    current = {key: value for key, value in data.items()
+    current = {key: deepcopy(value) for key, value in data.items()
                if key not in ("task_history", "session_work_state", "session_work")}
     snapshot = _progress_payload(current)
     for key in ("task_context", "context_revisions"):
@@ -607,7 +613,55 @@ def _archive_current_task(data: dict[str, Any] | None, reason: str | None = None
     snapshot["archived_at"] = _now()
     if reason:
         snapshot["archive_reason"] = reason.strip()
-    return [*data.get("task_history", []), deepcopy(snapshot)]
+    return deepcopy(snapshot)
+
+
+def _parallel_is_archivable(data: dict[str, Any]) -> bool:
+    if not data.get("parallel_request_id") or data.get("schema_version") != 2 or not _task_closed(data):
+        return False
+    # A terminal/open/failed/cancelled request is still unresolved. Even old
+    # completed instances must have resolved every node before leaving current.
+    return bool(data.get("nodes")) and all(
+        node.get("execution_status") == "finished" and node.get("outcome") == "resolved"
+        and node.get("review_status") != "pending" for node in data["nodes"].values())
+
+
+def _parallel_archive_key(data: dict[str, Any]) -> str:
+    root = data["nodes"][data["root_id"]]
+    return json.dumps([_task_instance_id(data), data.get("epoch", 0),
+        root.get("attempt_id") or root.get("finished_at") or data.get("revision", 0)], ensure_ascii=False)
+
+
+def _parallel_archive_snapshot(data: dict[str, Any]) -> dict[str, Any]:
+    root = data["nodes"][data["root_id"]]
+    snapshot = _task_archive_snapshot(data, "并行任务已完成综合验收。")
+    snapshot.update(archive_kind="parallel", request_id=data["parallel_request_id"],
+        archive_key=_parallel_archive_key(data),
+        archived_at=root.get("finished_at") or data.get("updated_at") or data.get("created_at"))
+    return snapshot
+
+
+def _parallel_task_history(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Project old completed instances on read; persist only on an actual write."""
+    history = list(document.get("task_history", []))
+    keys = {item.get("archive_key") for item in history if item.get("archive_key")}
+    state = document.get("session_work_state", {})
+    for request in state.get("requests", []):
+        instance = state.get("instances", {}).get(request.get("task_instance_id"))
+        if request.get("mode") != "parallel" or not instance or not _parallel_is_archivable(instance):
+            continue
+        key = _parallel_archive_key(instance)
+        if key not in keys:
+            snapshot = _parallel_archive_snapshot(instance)
+            history.append(snapshot)
+            keys.add(key)
+    return history
+
+
+def _archive_current_task(data: dict[str, Any] | None, reason: str | None = None) -> list[dict[str, Any]]:
+    if data is None:
+        return []
+    return [*_parallel_task_history(data), _task_archive_snapshot(data, reason)]
 
 
 def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -1520,9 +1574,15 @@ def update_task(
         raise ProgressError("evidence 必须是字符串列表。")
     normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
     with _session_lock(sid):
-        data = _select_task(sid, task_instance_id)
+        # The sole mutation of a completed parallel instance is an explicit
+        # retry. Freeze its acceptance before retry invalidates the ancestors.
+        document = _read(sid)
+        data = _task_from_document(document, task_instance_id, writable=not retry)
         if data is None or data.get("schema_version") != 2:
             raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
+        if data.get("request_cancelled"):
+            raise ProgressError("请求已取消；迟到更新不能恢复执行。")
+        archive_before = _parallel_archive_snapshot(data) if _parallel_is_archivable(data) else None
         _validate_task_instance(data, task_instance_id)
         node = data["nodes"].get(node_id)
         if node is None:
@@ -1638,7 +1698,7 @@ def update_task(
             node["review"] = None
         _record_attempt_result(node)
         data["revision"] = int(data.get("revision", 0)) + 1
-        _write(sid, data)
+        _write(sid, data, archive_before=archive_before)
         response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
     return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
@@ -1895,8 +1955,8 @@ def _project_execution_records(progress: dict[str, Any], include_records: bool) 
 def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -> list[dict[str, Any]]:
     """Project peer roots from this response's document, without reading storage.
 
-    Request registration order is the display order, including completed and
-    cancelled parallel requests. Archived foregrounds and queued requests are
+    Request registration order is the display order. Resolved acceptances live
+    in task history; unresolved/cancelled requests remain visible. Queued requests are
     not parallel networks. Projection works on copies because network validation
     normalizes children; a read response must not change the captured document.
     """
@@ -1909,7 +1969,7 @@ def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -
         iid = request.get("task_instance_id")
         instance = state.get("instances", {}).get(iid)
         if (request.get("mode") != "parallel" or iid == foreground_id
-                or instance is None or instance.get("schema_version") != 2):
+                or instance is None or instance.get("schema_version") != 2 or _parallel_is_archivable(instance)):
             continue
         current = {key: deepcopy(value) for key, value in instance.items() if key not in omitted}
         progress = _network_progress_payload(current)
@@ -1959,6 +2019,8 @@ def _tool_result(
             progress["state_revision"] = state_revision
     if progress is not None:
         progress = dict(progress)
+        if coherent and document and progress.get("task_instance_id") == _task_instance_id(document):
+            progress["task_history"] = _parallel_task_history(document)
         legacy = progress.get("legacy_history") or _legacy_history(session_id, include_history)
         if legacy:
             progress["legacy_history"] = legacy
@@ -3039,7 +3101,7 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。拆分时评估可并行的独立工作，默认委派给子智能体；每个子任务都必须提供 assignment.execution_mode（分组节点设 main_session，叶节点按分工设 main_session/subagent）。主会话负责总计划、派发、协调、集成和父级验收；子智能体只执行派发范围并向主会话报告，不验收父节点。Task Progress 不会自动派发。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。拆分应形成至少两个有独立结果边界的子任务；若只能得到一个子任务，保持原节点并补充摘要或依赖即可，无需为形式增加层级。此为规划提示，不改变单子任务追加的兼容行为。拆分时评估可并行的独立工作，默认委派给子智能体；每个子任务都必须提供 assignment.execution_mode（分组节点设 main_session，叶节点按分工设 main_session/subagent）。主会话负责总计划、派发、协调、集成和父级验收；子智能体只执行派发范围并向主会话报告，不验收父节点。Task Progress 不会自动派发。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {

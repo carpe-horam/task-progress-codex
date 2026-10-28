@@ -555,7 +555,11 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 23)
+        self.assertEqual(len(replies[1]["tools"]), 24)
+        listed = {tool["name"]: tool for tool in replies[1]["tools"]}
+        self.assertTrue({"get_progress", "update_task", "review_task", "route_request", "get_progress_view", "consume_display_intent"} <= listed.keys())
+        self.assertEqual(listed["consume_display_intent"]["_meta"]["ui"]["visibility"], ["app"])
+        self.assertEqual(listed["get_progress_view"]["_meta"]["ui"]["visibility"], ["app"])
         manifest_version = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
         self.assertEqual(replies[0]["serverInfo"]["version"], manifest_version)
         self.assertEqual(replies[2]["contents"][0]["text"], server._resource_html())

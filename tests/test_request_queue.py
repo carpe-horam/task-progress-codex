@@ -115,7 +115,8 @@ class RequestQueueTests(unittest.TestCase):
         self.assertEqual(self.p()["task_instance_id"], self.a)
         self.assertFalse(self.p()["session_work"]["can_finish_session"])
         self.assertEqual(self.p()["session_work"]["return_to"]["task_instance_id"], self.a)
-        self.assertEqual(self.raw()["task_history"], [])
+        self.assertEqual(len(self.raw()["task_history"]), 1)
+        self.assertEqual(self.raw()["task_history"][0]["task_instance_id"], b)
 
     def test_fifo_explicit_activation_preserves_parallel_and_rejects_stale_a(self):
         self.route("B")
@@ -417,12 +418,118 @@ class RequestQueueTests(unittest.TestCase):
         self.assertIsNotNone(awaiting["nodes"][1]["submission"])
         server.review_task(self.sid, "same", aid, "accept", "Checked peer result", ["fixture://checked"], MAIN, task_instance_id=iid)
         self.finish(iid, "root")
-        complete = self.p()["parallel_tasks"][0]
+        self.assertEqual(self.p()["parallel_tasks"], [])
+        complete = self.p(history=True)["task_history"][0]
         self.assertEqual(complete["status"], "completed")
-        self.assertEqual(complete["request_status"], "completed")
+        self.assertEqual(complete["archive_kind"], "parallel")
         self.assertEqual(complete["resolved_leaf_count"], 1)
         self.assertGreater(complete["state_revision"], running["state_revision"])
         self.assertEqual(foreground_nodes, self.raw()["nodes"])
+
+    def completed_parallel(self, rid="P"):
+        self.route(rid, mode="parallel")
+        iid = self.item(rid)["task_instance_id"]
+        server.decompose_task(self.sid, "root", [{"id": "same", "title": rid, "assignment": SUB}], task_instance_id=iid)
+        aid = self.start(iid, "same", SUB)
+        self.accept_parallel(iid, aid)
+        return iid, aid
+
+    def accept_parallel(self, iid, aid):
+        server.bind_task_agent(self.sid, "same", aid, "fixture-peer", task_instance_id=iid)
+        self.finish(iid, "same", aid)
+        self.assertIn(iid, [p["task_instance_id"] for p in self.p()["parallel_tasks"]])
+        server.review_task(self.sid, "same", aid, "accept", "Independent result checked", ["fixture://review"], MAIN, task_instance_id=iid)
+        self.assertIn(iid, [p["task_instance_id"] for p in self.p()["parallel_tasks"]], "Leaf review alone is not root synthesis")
+        self.finish(iid, "root")
+
+    def test_completed_parallel_archives_once_and_retry_preserves_frozen_acceptances(self):
+        iid, aid = self.completed_parallel()
+        old = deepcopy(self.p(history=True)["task_history"][0])
+        self.assertEqual(self.p()["history_summary"]["task_count"], 1)
+        self.assertNotIn("task_history", self.p())
+        self.assertEqual(self.p()["parallel_tasks"], [])
+        self.assertIn(iid, self.raw()["session_work_state"]["instances"])
+        self.assert_rejected(lambda: server.update_task_context(self.sid, iid, "Late", [], ["Late"], "Late", "Late"))
+        self.assert_rejected(lambda: server.rebuild_task_network(self.sid, "Late rebuild", task_instance_id=iid))
+        self.assert_rejected(lambda: self.finish(iid, "same", aid))
+        self.assert_rejected(lambda: server.update_task(self.sid, "same", "finished", outcome="resolved", retry=True, attempt_id=aid, task_instance_id=iid))
+        records = server.get_progress(self.sid, task_instance_id=iid, view="records", task_id="same")["structuredContent"]["progress"]
+        self.assertEqual(records["records"][0]["review_status"], "accepted")
+        new = self.start(iid, "same", SUB, retry=True)
+        self.assertNotEqual(aid, new)
+        self.assertEqual(self.p()["parallel_tasks"][0]["task_instance_id"], iid)
+        self.assertEqual(self.node(iid, "root")["execution_status"], "pending")
+        self.assertEqual(self.p(history=True)["task_history"], [old])
+        self.assert_rejected(lambda: self.finish(iid, "same", aid))
+        self.accept_parallel(iid, new)
+        history = self.p(history=True)["task_history"]
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0], old, "Retry cannot update old root evidence or acceptance")
+        self.assertNotEqual(history[0]["archive_key"], history[1]["archive_key"])
+        self.route("unrelated")
+        self.assertEqual(self.p(history=True)["task_history"], history)
+        page = server.get_progress(self.sid, view="history", history_kind="task_history", offset=1, limit=1)["structuredContent"]["progress"]
+        self.assertEqual(page["pagination"]["total"], 2)
+        self.assertEqual(page["records"], [history[1]])
+        full = server.get_progress(self.sid, view="full")["structuredContent"]["progress"]
+        self.assertEqual(full["task_history"][0]["nodes"][1]["attempts"][0]["review_status"], "accepted")
+
+    def test_old_completed_parallel_projects_without_writes_then_persists_once_on_activation(self):
+        iid, _ = self.completed_parallel()
+        data = self.raw()
+        data["task_history"] = []  # Storage produced before parallel archiving.
+        server._atomic_json(server._session_file(self.sid), data)
+        before = server._session_file(self.sid).read_bytes()
+        revision = data["state_revision"]
+        history = self.p(history=True)["task_history"]
+        self.assertEqual(history[0]["task_instance_id"], iid)
+        self.assertEqual(self.p()["parallel_tasks"], [])
+        self.assertEqual(before, server._session_file(self.sid).read_bytes())
+        self.assertEqual(self.p()["state_revision"], revision)
+        self.route("next")
+        self.assertEqual(self.raw()["task_history"], history)
+        self.finish_a()
+        server.activate_request(self.sid, self.a, "next")
+        archives = self.p(history=True)["task_history"]
+        self.assertEqual(len(archives), 2)
+        self.assertEqual(archives[0], history[0])
+        self.assertEqual(len({item.get("archive_key") for item in archives if item.get("archive_kind") == "parallel"}), 1)
+
+    def test_legacy_completed_parallel_retry_freezes_projected_history_before_invalidation(self):
+        iid, _ = self.completed_parallel()
+        data = self.raw()
+        data["task_history"] = []
+        server._atomic_json(server._session_file(self.sid), data)
+        old = self.p(history=True)["task_history"][0]
+        self.start(iid, "same", SUB, retry=True)
+        self.assertEqual(self.raw()["task_history"], [old])
+        self.assertEqual(self.p()["parallel_tasks"][0]["request_status"], "active")
+
+    def test_inconsistent_legacy_resolved_root_with_unresolved_child_stays_current(self):
+        iid, _ = self.completed_parallel()
+        data = self.raw()
+        data["task_history"] = []
+        node = data["session_work_state"]["instances"][iid]["nodes"]["same"]
+        node.update(execution_status="pending", outcome=None, review_status=None)
+        server._atomic_json(server._session_file(self.sid), data)
+        self.assertEqual(self.p()["parallel_tasks"][0]["task_instance_id"], iid)
+        self.assertEqual(self.p()["history_summary"]["task_count"], 0)
+
+    def test_unresolved_parallel_terminal_states_never_disappear(self):
+        for terminal in ("open", "failed", "cancelled"):
+            self.route(terminal, mode="parallel")
+            iid = self.item(terminal)["task_instance_id"]
+            server.decompose_task(self.sid, "root", [{"id": "same", "title": terminal, "assignment": SUB}], task_instance_id=iid)
+            aid = self.start(iid, "same", SUB)
+            server.update_task(self.sid, "same", "failed", attempt_id=aid, summary="Unresolved output", task_instance_id=iid)
+            server.update_task(self.sid, "root", "finished" if terminal == "open" else terminal,
+                outcome="open" if terminal == "open" else None, summary="Still unresolved", assignment=MAIN, task_instance_id=iid)
+        self.assertEqual([p["request_status"] for p in self.p()["parallel_tasks"]], ["open", "failed", "cancelled"])
+        self.assertEqual(self.p(history=True)["task_history"], [])
+        self.route("withdrawn", mode="parallel")
+        withdrawn = self.item("withdrawn")["task_instance_id"]
+        server.cancel_request(self.sid, self.a, "withdrawn", "User withdrew this request")
+        self.assert_rejected(lambda: self.start(withdrawn, "root", SUB, retry=True))
 
     def test_activation_keeps_parallel_roots_and_archives_only_old_foreground(self):
         self.route("B")

@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | English
 
-Current version: **0.2.0** · [Changelog](CHANGELOG.md)
+Current version: **0.2.0** · [Release and installation notes](docs/releases/0.2.0.md) · [Changelog](CHANGELOG.md)
 
 **Turn multi-step Codex work into a clear, trackable, reviewable task network.**
 
@@ -13,9 +13,15 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, t
 
 > [Open the interactive guide and demo](https://carpe-horam.github.io/task-progress-codex/) · [Browse the plugin source](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
-## Animated demo
+## 0.2.0: progress first, details when needed
 
-[![Task Progress animated demo: a task card progresses from 0% to 100%](docs/assets/task-progress-demo.gif)](https://carpe-horam.github.io/task-progress-codex/#demo)
+Start with a coarse plan and follow dependencies. Queue independent requests or delegate isolated parallel work, then resume the original goal. The main session reviews subagent submissions separately from execution completion.
+
+The panel keeps titles, status, duration and executor visible, with dynamic hierarchy numbers. Expand a task for its result summary, then open execution and review details as needed. The top metadata shows only the planning round and main-session model, with a centered waiting clock.
+
+[![Task Progress 0.2.0 interface with demo data](docs/assets/task-progress-0.2.0.png)](https://carpe-horam.github.io/task-progress-codex/#demo)
+
+*Rendered from this version's app.html in Chrome with synthetic demo data. Try the [interactive guide](https://carpe-horam.github.io/task-progress-codex/#demo); this preview does not establish native Codex host or scheduling behavior.*
 
 ## Features
 
@@ -31,7 +37,7 @@ Task Progress is a Codex plugin with an interactive task panel, an MCP server, t
 | **Results and duration** | Review task status, progress, elapsed time, summaries, and acceptance evidence. Details stay collapsed until you open them. |
 | **Automatic refresh** | The task panel refreshes every five seconds and also supports manual refresh. |
 | **Export execution records** | Export an Excel workbook and a visual HTML report together to `~/Downloads/Task Progress Exports`. |
-| **Support for different clients** | Clients that support MCP Apps display an interactive task card. Other clients receive a readable plain-text progress summary. |
+| **Support for different clients** | MCP Apps clients can display an interactive panel. The model can explicitly query progress and explain the results; the host controls presentation. |
 
 ## How it works
 
@@ -41,7 +47,7 @@ The main session owns planning and decisions; Task Progress persists details and
 
 The primary percentage counts resolved leaves accepted under the current protocol. Pending review and execution completion remain distinct, and root synthesis is separate from 100% leaf completion. Missing historical acceptance stays unknown. The plugin does not launch work or wake idle chats. HTML/XLSX exports currently cover the selected task's execution history; request queues and recovery context remain durably available through the API.
 
-Parallel tasks appear as sibling roots after the foreground root in the same task network, in registration order, with their own children and acceptance records. This is a display relationship; instances and dependencies remain isolated. Unstarted requests stay in the queue, and the headline percentage covers only the foreground task.
+Parallel tasks appear as sibling roots after the foreground root in the same task network, in registration order, with their own children and acceptance records. This is a display relationship; instances and dependencies remain isolated. Only a parallel root accepted as resolved by the main session moves from the current network into history. Open, failed and cancelled work stays current. An explicit retry reactivates it while preserving the previous completed record. Unstarted requests stay in the queue, and the headline percentage covers only the foreground task.
 
 The initial view shows titles, status and elapsed time, plus a concise role, bound agent, model and reasoning-effort line. Task context starts collapsed, with any queued request count in its heading. Expanding a task first shows one result summary. Execution, binding, review and evidence remain in a separate, initially closed details section. Refreshes preserve the user's disclosure choices within the current task instance.
 
@@ -58,6 +64,9 @@ flowchart LR
     F -- No --> H[Review and complete]
 ```
 
+<details>
+<summary>Execution, delegation and acceptance details</summary>
+
 Complex analysis, implementation, multi-file changes, specialist validation, and review default to subagents even when execution must be sequential. Give a dependency chain to one agent, or assign file owners and serialize their work. The main session plans, dispatches, coordinates, makes cross-task decisions, and accepts results. Short operations or work that genuinely cannot be handed off may run in the main session with a specific `self_execution_reason` (except an explicitly atomic root).
 
 `planned_assignment` preserves the planned executor; starting an attempt cannot silently change its role. Use `reassign_task` with the main session's reason to change a pending leaf. Dispatch follows **start attempt → spawn subagent → bind the returned ID with `bind_task_agent`**. A subagent submits through `update_task`, producing `awaiting_review`; the main session separately accepts or rejects it through `review_task`. Pending review blocks every dependency policy. Accepting an open result leaves it open. Group/root acceptance requires all direct children resolved, no pending reviews, and a main-session summary with evidence.
@@ -66,47 +75,45 @@ The plugin stores plans, dispatches, submissions and reviews and validates workf
 
 For long-running work, the skill asks Codex to consider breaking down any individual task that runs for more than 10 minutes. It only creates smaller, independently verifiable tasks when that would improve execution or progress visibility.
 
+</details>
+
 ## Installation
 
-### Install from the GitHub Marketplace
+### First install of 0.2.0 (macOS)
 
-Add this marketplace from a terminal:
+Install the `v0.2.0` release tag independently of the default branch. Requires Python 3 and a Codex CLI/client with plugin, Streamable HTTP and `http_headers_helper` support.
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
 codex plugin add task-progress@task-progress-codex
 python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-You can also install **Task Progress** from **Plugins Directory**, then run `service_manager.py install` above. Since 0.2.0, all chats connect to one user-level background service; installing the plugin alone does not start that service. Restart Codex after installation.
+Restart Codex afterwards. Installing the plugin does not start the background service by itself; the last command is required. Use a stable Python 3 installation, as the service stores the interpreter's absolute path.
+
+### Upgrade an existing installation to 0.2.0
+
+Register the fixed release source again, reinstall the plugin and service, then restart Codex:
+
+```sh
+codex plugin marketplace remove task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
+codex plugin add task-progress@task-progress-codex
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
+```
+
+This removes and re-adds the Marketplace registration. Task data stays in its separate local cache and needs no migration. Restart Codex to release old stdio processes. Refreshing Marketplace metadata alone does not update the installed plugin or background service. If the Marketplace is not registered yet, use the first-install commands instead.
 
 ### Install from a local clone
 
 ```sh
-git clone https://github.com/carpe-horam/task-progress-codex.git
+git clone --branch v0.2.0 --depth 1 https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
-python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
 codex plugin add task-progress@task-progress-codex
+python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
 ```
 
-Restart Codex after installation. Run the installer using a stable Python 3 installation; the background service records its absolute interpreter path.
-
-### Update the plugin
-
-For a GitHub Marketplace installation, refresh the marketplace snapshot:
-
-```sh
-codex plugin marketplace upgrade task-progress-codex
-```
-
-For a local clone, pull the latest version from the repository:
-
-```sh
-cd task-progress-codex
-git pull --ff-only origin main
-```
-
-After refreshing the source, reinstall the plugin, run `service_manager.py install` from the new installed version (or the updated local clone), then restart Codex. The installer reuses an identical release or switches to a new runtime directory, restoring the previous installation if health checks fail. Refreshing the marketplace alone does not update the installed plugin or background service.
+Restart Codex afterwards. If the Marketplace name already exists, remove that registration before adding the local source. Updating the clone also requires reinstalling the plugin and service.
 
 ### Shared background service (macOS)
 
@@ -143,6 +150,9 @@ Default behavior:
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
 - Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.” Caller-supplied values include a capture time and are labeled as unverified by the Codex host.
 
+<details>
+<summary>Developer reference: selective queries and pagination</summary>
+
 ## Selective queries
 
 Mutation receipts put identity fields such as `session_id`, `task_instance_id`, `root_id` and `epoch` at the top of `structuredContent`. A started attempt returns top-level `attempt_id`; `affected` holds the single target's status. Receipts contain no tree, summaries, evidence or request bodies. Use `request_task_instance_id` for the new instance after registering parallel work.
@@ -164,6 +174,8 @@ Pages use `offset`, `limit` (default 50, maximum 200) and returned `pagination.h
 Full preserves the selected JSON instance, records, archives and complete session request registry. Peers contain compact current snapshots; read each peer instance separately for its history. Legacy SQLite remains a bounded read-only excerpt, not a complete database. `get_ready_tasks` returns only paginated `structuredContent.ready_tasks`; dependency summaries/evidence are deduplicated by ID in `dependency_evidence[id]`, without a whole tree.
 
 Old messages do not shrink retroactively. Reopen old iframes to load the new resource. Measured UTF-8 bytes are neither tokens nor native Codex message-expansion timing.
+
+</details>
 
 ## Data and requirements
 

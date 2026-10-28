@@ -1,0 +1,8 @@
+{
+  "passed": [
+    "Compact initial/refresh responses omit full history; exact-bound history survives refresh, new revisions/counts invalidate it, stale full replies cannot truncate export.",
+    "Unavailable full history produces an export error and saves zero incomplete files.",
+    "JSON current state and SQLite history show distinct sources; SQLite-only card/export remains read-only and never claims modern acceptance.",
+    "Bounded/truncated SQLite excerpts and missing details retain explicit warnings in export; an unavailable old database cannot block complete current JSON history."
+  ]
+}

@@ -5,7 +5,10 @@ import sys
 
 
 RESPONSIBILITY = (
-    " Complex work defaults to subagents even when sequential; serialize shared file owners. "
+    " Split a leaf only into at least two children with distinct outcomes. If only one child is useful, "
+    "keep the original task and refine its description or dependencies; do not add a one-child wrapper "
+    "or invent filler steps. Existing groups may still receive one genuinely new task at a time. "
+    "Complex work defaults to subagents even when sequential; serialize shared file owners. "
     "The main session plans and accepts; record self_execution_reason for its leaf work. "
     "Start the attempt, spawn, then bind the returned ID. A subagent submits only its assigned node; "
     "the main session reviews it separately using queried submission/evidence and review_task."

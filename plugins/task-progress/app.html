@@ -679,7 +679,7 @@ h1{font-size:18px;line-height:1.35}
   }
   function taskScope(progress) { return 'task:' + encodeURIComponent(taskIdentity(progress)); }
   function archivedTaskScope(progress, position) {
-    return taskScope(progress) + ':archive' + (progress.task_instance_id ? '' : ':' + encodeURIComponent(progress.archived_at || '') + ':' + position);
+    return taskScope(progress) + ':archive' + (progress.archive_key ? ':' + encodeURIComponent(progress.archive_key) : progress.task_instance_id ? '' : ':' + encodeURIComponent(progress.archived_at || '') + ':' + position);
   }
   function collectExportData(progress) {
     const report = collectSingleTaskExportData(progress);
@@ -1555,10 +1555,12 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     return fragment;
   }
   function shownParallelTasks(progress) {
-    if (Array.isArray(progress.parallel_tasks)) return progress.parallel_tasks.filter(task=>task && task.task_instance_id && task.task_instance_id!==progress.task_instance_id);
+    const archived = new Set(list(progress.task_history).filter(task=>task.archive_kind==='parallel').map(task=>task.task_instance_id));
+    const completed = task => {const nodes=nodesFrom(task.nodes);return task.request_status==='completed' && nodes.length && nodes.every(node=>node.execution_status==='finished' && node.outcome==='resolved' && node.review_status!=='pending');};
+    if (Array.isArray(progress.parallel_tasks)) return progress.parallel_tasks.filter(task=>task && task.task_instance_id && task.task_instance_id!==progress.task_instance_id && !completed(task));
     // Old cached host payloads can name a parallel instance without its nodes.
     // Keep its place in the root list until a fresh foreground snapshot arrives.
-    return list(sessionWork?.requests).filter(item=>item.mode==='parallel' && item.task_instance_id && item.task_instance_id!==progress.task_instance_id).map(item=>({...item, details_unavailable:true}));
+    return list(sessionWork?.requests).filter(item=>item.mode==='parallel' && item.task_instance_id && item.task_instance_id!==progress.task_instance_id && !(item.status==='completed' && archived.has(item.task_instance_id))).map(item=>({...item, details_unavailable:true}));
   }
   function renderNetwork(progress, nodes, openDetails) {
     $('steps').className = 'steps task-tree';

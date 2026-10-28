@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-当前版本：**0.2.0** · [更新记录](CHANGELOG.md)
+当前版本：**0.2.0** · [发布与安装说明](docs/releases/0.2.0.md) · [更新记录](CHANGELOG.md)
 
 **把 Codex 的多步骤工作变成清楚、可追踪、可复盘的任务网络。**
 
@@ -13,9 +13,15 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 
 > [打开交互式宣传手册与功能演示](https://carpe-horam.github.io/task-progress-codex/) · [查看插件源码](https://github.com/carpe-horam/task-progress-codex/tree/main/plugins/task-progress)
 
-## 效果图与动态演示
+## 0.2.0：先看进展，需要时再看细节
 
-[![Task Progress 任务卡片从 0% 推进到 100% 的动态演示](docs/assets/task-progress-demo.gif)](https://carpe-horam.github.io/task-progress-codex/#demo)
+先粗拆目标，按依赖执行；中途的新请求可以排队或独立并行，恢复时接着原任务继续。子智能体提交后由主会话独立验收，执行结束与交付完成分别记录。
+
+新版面板保留任务标题、状态、耗时和执行者，自动计算层级编号；展开任务先看结果摘要，再按需打开执行与验收详情。顶部只显示计划轮次与主会话模型，等待时钟居中显示。
+
+[![Task Progress 0.2.0 当前界面的演示数据预览](docs/assets/task-progress-0.2.0.png)](https://carpe-horam.github.io/task-progress-codex/#demo)
+
+*预览由本版 app.html 在 Chrome 中以合成演示数据渲染；可在[交互手册](https://carpe-horam.github.io/task-progress-codex/#demo)体验，并非真实 Codex 宿主或执行调度的证明。*
 
 ## 能做什么
 
@@ -31,7 +37,7 @@ Task Progress 是一个 Codex 插件，包含交互式任务面板、MCP 服务�
 | **查看结果与耗时** | 汇总任务状态、进度、持续时间、结果摘要与验收证据；详情默认收起，按需展开。 |
 | **自动刷新** | 任务面板每 5 秒刷新一次，也可手动刷新。 |
 | **导出执行记录** | 一键同时导出 Excel 工作簿和可视化 HTML，保存到本机 `Downloads/Task Progress Exports`。 |
-| **适配不同客户端** | 支持 MCP Apps 的客户端显示交互式卡片；不支持卡片的客户端会收到可读的纯文本进度摘要。 |
+| **适配不同客户端** | 支持 MCP Apps 的客户端可显示交互面板；模型可显式查询进度，再向用户说明结果。宿主决定展示方式。 |
 
 ## 工作方式
 
@@ -41,7 +47,7 @@ Task Progress 默认用 HTN（分层任务网络）表达多步骤工作：父�
 
 主进度显示按当前协议验收完成的已解决叶任务，待验收和执行结束分别展示。叶任务达到 100% 后仍需根任务综合验收；旧记录缺少验收信息时保持未知。插件不自动启动工作或唤醒闲置聊天。当前 HTML/XLSX 导出仍以所选任务的执行历史为范围，独立请求队列与恢复上下文通过 API 持久读取。
 
-并行任务与主任务在同一个任务网络中显示为同级 root，按登记顺序接在主任务后，各自展开子任务与验收记录。它们仍是隔离实例，同级展示不建立额外父子依赖。未启动请求留在队列区，顶部百分比只统计主任务。
+并行任务与主任务在同一个任务网络中显示为同级 root，按登记顺序接在主任务后，各自展开子任务与验收记录。它们仍是隔离实例，同级展示不建立额外父子依赖。只有主会话将并行根综合验收为 resolved 后，才从当前网络收进历史；open、failed、cancelled 保留当前。显式重试会重新激活，并保留旧完成记录。未启动请求留在队列区，顶部百分比只统计主任务。
 
 首屏显示任务标题、状态和耗时，并保留角色、真实绑定 agent、模型与思考强度的简洁行。任务上下文默认折叠，有排队请求时在折叠标题旁显示数量；展开任务先见一份结果摘要；执行、绑定、验收与证据位于默认关闭的「执行与验收详情」中，按需再展开。刷新会保留当前任务中用户选择的开闭状态。
 
@@ -58,6 +64,9 @@ flowchart LR
     F -- 否 --> H[综合验收并完成]
 ```
 
+<details>
+<summary>执行协议、分工和验收细节</summary>
+
 复杂分析、实现、多文件改动、专门验证和评审默认委派给子智能体，即使只能串行执行。依赖链可整体交给同一 agent；共享文件明确归属并串行交接。主会话负责规划、派发、协调、跨任务决策及验收；短小操作或确实不可交接的工作可自执行，并记录具体 `self_execution_reason`（显式原子 root 除外）。
 
 计划执行者保存在 `planned_assignment`，启动不得静默换角色；pending 叶任务通过 `reassign_task` 记录主会话的变更理由。实际派发按 **启动 attempt → 创建子智能体 → `bind_task_agent` 绑定真实返回 ID** 进行。子智能体用 `update_task` 提交结果后显示 `awaiting_review`，主会话再用 `review_task` 接受或退回；待复核结果不会放行任何依赖。接受 open 结果仍是 open，父/root 只有直接子项全部 resolved 且无待复核项时才能综合验收为 resolved，并须记录主会话摘要和证据。
@@ -66,47 +75,45 @@ flowchart LR
 
 长任务也更容易检查：单个任务执行超过 10 分钟后，进度工具会在下一次读取或更新时返回拆分复核提醒，要求 Codex 拆出可独立阶段，或记录不拆分的原因；不会为了拆分而中断正在运行的 Dagu、CI 或命令。
 
+</details>
+
 ## 安装
 
-### 从 GitHub Marketplace 安装
+### 首次安装 0.2.0（macOS）
 
-在终端添加此 Marketplace：
+安装发布标签 `v0.2.0`，不依赖默认分支。需要 Python 3，以及支持插件、Streamable HTTP 和 `http_headers_helper` 的 Codex CLI/客户端。
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
 codex plugin add task-progress@task-progress-codex
 python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-也可以在 Codex 桌面端打开 **Plugins Directory**，找到 **Task Progress** 并安装，然后执行上面的 `service_manager.py install`。0.2.0 起由一个用户级后台服务接收所有会话的连接；插件安装本身不会启动该后台服务。首次安装后重启 Codex，让插件服务和界面加载完成。
+完成后重启 Codex。插件安装不会单独启动后台服务，最后一条命令是必需步骤。使用稳定安装的 Python 3；服务会记录该解释器的绝对路径。
 
-### 从本地克隆安装
+### 从旧版本升级到 0.2.0
+
+重新登记来源到固定发布标签，重新安装插件和服务，然后重启 Codex：
 
 ```sh
-git clone https://github.com/carpe-horam/task-progress-codex.git
-codex plugin marketplace add ./task-progress-codex
-python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
+codex plugin marketplace remove task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
 codex plugin add task-progress@task-progress-codex
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
 ```
 
-安装完成后重启 Codex。使用稳定安装的 Python 3 运行安装器；后台服务会记住该解释器的绝对路径。
+这会移除并重新添加 Marketplace 登记。任务数据独立保存在本机缓存中，无需迁移。旧 stdio 会话需重启 Codex 后才释放进程；不要仅刷新 Marketplace 就认为插件和服务已升级。若尚未登记该 Marketplace，直接使用首次安装命令。
 
-### 更新插件
-
-从 GitHub Marketplace 安装的插件，先刷新 Marketplace 快照：
+### 从本地源码安装
 
 ```sh
-codex plugin marketplace upgrade task-progress-codex
+git clone --branch v0.2.0 --depth 1 https://github.com/carpe-horam/task-progress-codex.git
+codex plugin marketplace add ./task-progress-codex
+codex plugin add task-progress@task-progress-codex
+python3 ./task-progress-codex/plugins/task-progress/service_manager.py install
 ```
 
-从本地克隆安装的插件，先在仓库目录拉取新版本：
-
-```sh
-cd task-progress-codex
-git pull --ff-only origin main
-```
-
-更新来源后，重新安装插件，并从新安装目录运行 `service_manager.py install`（本地克隆可直接运行仓库中的安装器），最后重启 Codex。安装器会复用相同版本，或切换到新的运行目录；新服务健康检查失败时恢复旧安装。更新 Marketplace 快照只刷新可用插件来源，不会自动更新已安装插件和后台服务。
+安装后重启 Codex。已有同名 Marketplace 时，先按上面的升级方式移除登记，再添加本地来源；更新源码后也须重新安装插件和服务。
 
 ### 全局后台服务（macOS）
 
@@ -147,6 +154,9 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 - 自动刷新保留键盘焦点、文本选择和阅读位置，显示同步失败及恢复状态；卡片适配窄窗口和宿主明暗主题。
 - 对不确定的模型或思考强度不猜测；未知值会显示为未记录。调用方填写的配置会标注采集时间，并明确显示“未经 Codex 宿主核验”。
 
+<details>
+<summary>开发者参考：按需查询与分页</summary>
+
 ## 按需查询
 
 写操作回执在 `structuredContent` 顶层返回 `session_id`、`task_instance_id`、`root_id`、`epoch` 等身份；启动后的 `attempt_id` 也在顶层，单个目标状态位于 `affected`。回执不包含任务树、摘要、证据或请求正文。并行请求登记后，使用 `request_task_instance_id` 定位新实例。
@@ -168,6 +178,8 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 `full` 保留完整目标 JSON 实例及其记录、归档和会话请求登记；其他并行实例只有精简当前快照，其历史须按各自实例 ID 另取。旧 SQLite 仍是有上限的只读摘录，不代表完整数据库。`get_ready_tasks` 仅返回分页的 `structuredContent.ready_tasks`，依赖摘要和证据按 ID 去重位于 `dependency_evidence[id]`，不附整树。
 
 新协议不会追溯缩小旧消息；旧 iframe 需重新打开以加载新版资源。测试中的 UTF-8 字节数不等于 token 数，也不能证明原生 Codex 消息展开耗时。
+
+</details>
 
 ## 数据与运行要求
 

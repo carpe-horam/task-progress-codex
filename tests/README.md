@@ -19,6 +19,7 @@ node tests/test_responsibility_app.cjs
 node tests/test_history_loading_app.cjs
 node tests/test_request_queue_app.cjs
 node tests/test_parallel_roots_app.cjs
+node tests/test_parallel_archive_app.cjs
 node tests/test_selective_view_app.cjs
 node tests/test_record_loading_app.cjs
 ```
@@ -46,6 +47,8 @@ Historical running-duration checks install a pre-protocol snapshot into a separa
 `test_request_queue.py` covers independent instances, FIFO activation, registration and activation retries, original request/context preservation, cancellation, stale writes, atomic activation failure, and controlled thread interleavings with delayed responses. `test_request_queue_app.cjs` verifies real pending submissions and dependency blocking, accepted progress versus root synthesis, queue visibility, parallel roots, foreground protection, and archived-origin versus current-return guidance. These checks do not prove host-side automatic scheduling; request queues and recovery context are currently outside the HTML/XLSX export scope.
 
 Parallel roots now render directly in the task network. `test_parallel_roots_app.cjs` verifies sibling placement, instance-scoped duplicate node IDs, stable expansion, independent review states, foreground activation, cached payload placeholders and cancelled requests. The request-queue browser test uses the same inline roots instead of a preview switch. Backend projection tests ensure all roots share one captured revision and that reads do not change stored nodes or include recursive history.
+
+Resolved parallel roots move into task history only after every node is resolved and root synthesis is complete. Active, pending-review, open, failed and cancelled work stays visible. `test_request_queue.py` covers frozen acceptance snapshots, explicit retry/reappearance, stale writes, read-only projection of old completed instances, history pagination and deduplication across foreground activation. `test_parallel_archive_app.cjs` verifies lazy history, independent disclosure/export keys for repeated acceptances of the same instance, compact refresh and complete HTML/XLSX evidence. Instances remain addressable by their original ID; only an explicit retry may reopen a completed instance. These are isolated backend and Chrome checks, not native Codex host acceptance.
 
 The request-queue browser test also checks collapsed context with a visible queue count, concise task rows retaining role, bound agent, model and reasoning effort, a result summary on task expansion with separately collapsed execution/binding/review/evidence details, full records on demand, refresh persistence, and disclosure isolation when the task instance changes.
 

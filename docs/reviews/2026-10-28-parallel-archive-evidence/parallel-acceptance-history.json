@@ -1,0 +1,982 @@
+{
+  "schema_version": 2,
+  "state_revision": 14,
+  "session_id": "96ebad85-d069-4855-b212-9e4fa3d12126",
+  "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+  "task_history": [
+    {
+      "schema_version": 2,
+      "state_revision": 9,
+      "session_id": "96ebad85-d069-4855-b212-9e4fa3d12126",
+      "task_instance_id": "6864e1b5-6cef-4970-9eec-0a9d54f9124d",
+      "task_title": "并行归档 P",
+      "main_session": null,
+      "planning_status": "planned",
+      "planning_note": "",
+      "status": "completed",
+      "root_status": "resolved",
+      "completed": 1,
+      "total": 1,
+      "percent": 100,
+      "resolved_leaf_count": 1,
+      "open_leaf_count": 0,
+      "failed_leaf_count": 0,
+      "ready_count": 0,
+      "executing_count": 0,
+      "pending_review_count": 0,
+      "split_review_due": [],
+      "blocked_count": 0,
+      "epoch": 0,
+      "revision": 6,
+      "root_id": "root",
+      "created_at": "2026-10-28T17:00:32+08:00",
+      "updated_at": "2026-10-28T17:00:32+08:00",
+      "nodes": [
+        {
+          "id": "root",
+          "title": "并行归档 P",
+          "parent_id": null,
+          "children": [
+            "same"
+          ],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "finished",
+          "outcome": "resolved",
+          "summary": "completion-one synthesis",
+          "evidence": [
+            "fixture://root-completion-one"
+          ],
+          "assignment": {
+            "self_execution_reason": "Inspect isolated archive fixture",
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-28T17:00:32+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "planned_assignment": {
+            "execution_mode": "main_session"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": null,
+          "submission": null,
+          "review": null,
+          "review_status": null,
+          "profile": null,
+          "attempt": 1,
+          "attempt_id": "cfc0068d-33bd-49d6-91e5-9cda36bc5c43",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "cfc0068d-33bd-49d6-91e5-9cda36bc5c43",
+              "kind": "synthesis",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-one synthesis",
+              "evidence": [
+                "fixture://root-completion-one"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "assignment": {
+                "self_execution_reason": "Inspect isolated archive fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "dispatch": null,
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "submission": null,
+              "review": null,
+              "review_status": null
+            }
+          ],
+          "started_at": "2026-10-28T17:00:32+08:00",
+          "finished_at": "2026-10-28T17:00:32+08:00",
+          "responsibility_legacy": false,
+          "status": "resolved",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "same",
+          "title": "并行工作",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "finished",
+          "outcome": "resolved",
+          "summary": "completion-one output",
+          "evidence": [
+            "fixture://completion-one"
+          ],
+          "assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "model": "fixture",
+            "execution_mode": "subagent",
+            "reasoning_effort": "medium",
+            "fork_turns": "none",
+            "metadata_provenance": {
+              "source": "mcp_tool_input",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "mcp_tool_input",
+              "reasoning_effort_source": "mcp_tool_input",
+              "captured_at": "2026-10-28T17:00:32+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "planned_assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "model": "fixture",
+            "execution_mode": "subagent",
+            "reasoning_effort": "medium",
+            "fork_turns": "none"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": {
+            "status": "bound",
+            "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+            "agent_name": "archive-fixture",
+            "bound_at": "2026-10-28T17:00:32+08:00",
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "verification": "not_verified_by_codex_host",
+            "source": "mcp_tool_input"
+          },
+          "submission": {
+            "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+            "outcome": "resolved",
+            "summary": "completion-one output",
+            "evidence": [
+              "fixture://completion-one"
+            ],
+            "submitted_at": "2026-10-28T17:00:32+08:00"
+          },
+          "review": {
+            "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+            "decision": "accept",
+            "summary": "completion-one independently reviewed",
+            "evidence": [
+              "fixture://review-completion-one"
+            ],
+            "reviewer": {
+              "self_execution_reason": "Inspect isolated archive fixture",
+              "execution_mode": "main_session",
+              "metadata_provenance": {
+                "source": "unknown",
+                "verification": "not_verified_by_codex_host",
+                "model_source": "unknown",
+                "reasoning_effort_source": "unknown",
+                "captured_at": "2026-10-28T17:00:32+08:00",
+                "scope": "submission_review"
+              }
+            },
+            "reviewed_at": "2026-10-28T17:00:32+08:00"
+          },
+          "review_status": "accepted",
+          "profile": null,
+          "attempt": 1,
+          "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+              "kind": "execution",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-one output",
+              "evidence": [
+                "fixture://completion-one"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "agent_name": "archive-fixture",
+                "bound_at": "2026-10-28T17:00:32+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "submission": {
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "outcome": "resolved",
+                "summary": "completion-one output",
+                "evidence": [
+                  "fixture://completion-one"
+                ],
+                "submitted_at": "2026-10-28T17:00:32+08:00"
+              },
+              "review": {
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "decision": "accept",
+                "summary": "completion-one independently reviewed",
+                "evidence": [
+                  "fixture://review-completion-one"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Inspect isolated archive fixture",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T17:00:32+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T17:00:32+08:00"
+              },
+              "review_status": "accepted"
+            }
+          ],
+          "started_at": "2026-10-28T17:00:32+08:00",
+          "finished_at": "2026-10-28T17:00:32+08:00",
+          "responsibility_legacy": false,
+          "status": "resolved",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        }
+      ],
+      "ready_tasks": [],
+      "next_actions": [
+        "任务已完成：报告验收结果。"
+      ],
+      "history": [],
+      "task_context": {
+        "goal": "并行归档 P",
+        "constraints": [],
+        "acceptance_criteria": [
+          "Retain each acceptance"
+        ],
+        "resume_note": "",
+        "provided_context": {}
+      },
+      "archived_at": "2026-10-28T17:00:32+08:00",
+      "archive_reason": "并行任务已完成综合验收。",
+      "archive_kind": "parallel",
+      "request_id": "parallel",
+      "archive_key": "[\"6864e1b5-6cef-4970-9eec-0a9d54f9124d\", 0, \"cfc0068d-33bd-49d6-91e5-9cda36bc5c43\"]"
+    },
+    {
+      "schema_version": 2,
+      "state_revision": 14,
+      "session_id": "96ebad85-d069-4855-b212-9e4fa3d12126",
+      "task_instance_id": "6864e1b5-6cef-4970-9eec-0a9d54f9124d",
+      "task_title": "并行归档 P",
+      "main_session": null,
+      "planning_status": "planned",
+      "planning_note": "",
+      "status": "completed",
+      "root_status": "resolved",
+      "completed": 1,
+      "total": 1,
+      "percent": 100,
+      "resolved_leaf_count": 1,
+      "open_leaf_count": 0,
+      "failed_leaf_count": 0,
+      "ready_count": 0,
+      "executing_count": 0,
+      "pending_review_count": 0,
+      "split_review_due": [],
+      "blocked_count": 0,
+      "epoch": 0,
+      "revision": 11,
+      "root_id": "root",
+      "created_at": "2026-10-28T17:00:32+08:00",
+      "updated_at": "2026-10-28T17:00:33+08:00",
+      "nodes": [
+        {
+          "id": "root",
+          "title": "并行归档 P",
+          "parent_id": null,
+          "children": [
+            "same"
+          ],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "finished",
+          "outcome": "resolved",
+          "summary": "completion-two synthesis",
+          "evidence": [
+            "fixture://root-completion-two"
+          ],
+          "assignment": {
+            "self_execution_reason": "Inspect isolated archive fixture",
+            "execution_mode": "main_session",
+            "metadata_provenance": {
+              "source": "unknown",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "unknown",
+              "reasoning_effort_source": "unknown",
+              "captured_at": "2026-10-28T17:00:33+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "planned_assignment": {
+            "execution_mode": "main_session"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": null,
+          "submission": null,
+          "review": null,
+          "review_status": null,
+          "profile": null,
+          "attempt": 2,
+          "attempt_id": "2b72ce4a-983c-4da2-90d3-9f1e267a9da1",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "cfc0068d-33bd-49d6-91e5-9cda36bc5c43",
+              "kind": "synthesis",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-one synthesis",
+              "evidence": [
+                "fixture://root-completion-one"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "assignment": {
+                "self_execution_reason": "Inspect isolated archive fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "dispatch": null,
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "invalidated_by": "same",
+              "invalidated_at": "2026-10-28T17:00:32+08:00"
+            },
+            {
+              "attempt": 2,
+              "attempt_id": "2b72ce4a-983c-4da2-90d3-9f1e267a9da1",
+              "kind": "synthesis",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-two synthesis",
+              "evidence": [
+                "fixture://root-completion-two"
+              ],
+              "started_at": "2026-10-28T17:00:33+08:00",
+              "assignment": {
+                "self_execution_reason": "Inspect isolated archive fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T17:00:33+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "execution_mode": "main_session"
+              },
+              "responsibility_version": 1,
+              "dispatch": null,
+              "finished_at": "2026-10-28T17:00:33+08:00",
+              "submission": null,
+              "review": null,
+              "review_status": null
+            }
+          ],
+          "started_at": "2026-10-28T17:00:33+08:00",
+          "finished_at": "2026-10-28T17:00:33+08:00",
+          "invalidated_results": [
+            {
+              "attempt_id": "cfc0068d-33bd-49d6-91e5-9cda36bc5c43",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "assignment": {
+                "self_execution_reason": "Inspect isolated archive fixture",
+                "execution_mode": "main_session",
+                "metadata_provenance": {
+                  "source": "unknown",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "unknown",
+                  "reasoning_effort_source": "unknown",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "summary": "completion-one synthesis",
+              "evidence": [
+                "fixture://root-completion-one"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "dispatch": null,
+              "submission": null,
+              "review": null,
+              "review_status": null,
+              "invalidated_by": "same",
+              "invalidated_at": "2026-10-28T17:00:32+08:00"
+            }
+          ],
+          "responsibility_legacy": false,
+          "status": "resolved",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        },
+        {
+          "id": "same",
+          "title": "并行工作",
+          "parent_id": "root",
+          "children": [],
+          "depends_on": [],
+          "dependency_policy": "resolved",
+          "execution_status": "finished",
+          "outcome": "resolved",
+          "summary": "completion-two output",
+          "evidence": [
+            "fixture://completion-two"
+          ],
+          "assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "model": "fixture",
+            "execution_mode": "subagent",
+            "reasoning_effort": "medium",
+            "fork_turns": "none",
+            "metadata_provenance": {
+              "source": "mcp_tool_input",
+              "verification": "not_verified_by_codex_host",
+              "model_source": "mcp_tool_input",
+              "reasoning_effort_source": "mcp_tool_input",
+              "captured_at": "2026-10-28T17:00:32+08:00",
+              "scope": "attempt_start"
+            }
+          },
+          "planned_assignment": {
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "model": "fixture",
+            "execution_mode": "subagent",
+            "reasoning_effort": "medium",
+            "fork_turns": "none"
+          },
+          "responsibility_version": 1,
+          "reassignment_history": [],
+          "dispatch": {
+            "status": "bound",
+            "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+            "agent_name": "archive-fixture",
+            "bound_at": "2026-10-28T17:00:32+08:00",
+            "tool_identifier": "collaboration.spawn_agent",
+            "dispatch_text": "Produce isolated archive evidence",
+            "verification": "not_verified_by_codex_host",
+            "source": "mcp_tool_input"
+          },
+          "submission": {
+            "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+            "outcome": "resolved",
+            "summary": "completion-two output",
+            "evidence": [
+              "fixture://completion-two"
+            ],
+            "submitted_at": "2026-10-28T17:00:32+08:00"
+          },
+          "review": {
+            "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+            "decision": "accept",
+            "summary": "completion-two independently reviewed",
+            "evidence": [
+              "fixture://review-completion-two"
+            ],
+            "reviewer": {
+              "self_execution_reason": "Inspect isolated archive fixture",
+              "execution_mode": "main_session",
+              "metadata_provenance": {
+                "source": "unknown",
+                "verification": "not_verified_by_codex_host",
+                "model_source": "unknown",
+                "reasoning_effort_source": "unknown",
+                "captured_at": "2026-10-28T17:00:33+08:00",
+                "scope": "submission_review"
+              }
+            },
+            "reviewed_at": "2026-10-28T17:00:33+08:00"
+          },
+          "review_status": "accepted",
+          "profile": null,
+          "attempt": 2,
+          "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+          "attempts": [
+            {
+              "attempt": 1,
+              "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+              "kind": "execution",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-one output",
+              "evidence": [
+                "fixture://completion-one"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "agent_name": "archive-fixture",
+                "bound_at": "2026-10-28T17:00:32+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "submission": {
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "outcome": "resolved",
+                "summary": "completion-one output",
+                "evidence": [
+                  "fixture://completion-one"
+                ],
+                "submitted_at": "2026-10-28T17:00:32+08:00"
+              },
+              "review": {
+                "attempt_id": "37b7061f-36d3-41db-bcfa-a18d5b98e6a7",
+                "decision": "accept",
+                "summary": "completion-one independently reviewed",
+                "evidence": [
+                  "fixture://review-completion-one"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Inspect isolated archive fixture",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T17:00:32+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T17:00:32+08:00"
+              },
+              "review_status": "accepted"
+            },
+            {
+              "attempt": 2,
+              "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+              "kind": "execution",
+              "execution_status": "finished",
+              "outcome": "resolved",
+              "summary": "completion-two output",
+              "evidence": [
+                "fixture://completion-two"
+              ],
+              "started_at": "2026-10-28T17:00:32+08:00",
+              "assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none",
+                "metadata_provenance": {
+                  "source": "mcp_tool_input",
+                  "verification": "not_verified_by_codex_host",
+                  "model_source": "mcp_tool_input",
+                  "reasoning_effort_source": "mcp_tool_input",
+                  "captured_at": "2026-10-28T17:00:32+08:00",
+                  "scope": "attempt_start"
+                }
+              },
+              "planned_assignment": {
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "model": "fixture",
+                "execution_mode": "subagent",
+                "reasoning_effort": "medium",
+                "fork_turns": "none"
+              },
+              "responsibility_version": 1,
+              "dispatch": {
+                "status": "bound",
+                "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+                "agent_name": "archive-fixture",
+                "bound_at": "2026-10-28T17:00:32+08:00",
+                "tool_identifier": "collaboration.spawn_agent",
+                "dispatch_text": "Produce isolated archive evidence",
+                "verification": "not_verified_by_codex_host",
+                "source": "mcp_tool_input"
+              },
+              "finished_at": "2026-10-28T17:00:32+08:00",
+              "submission": {
+                "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+                "outcome": "resolved",
+                "summary": "completion-two output",
+                "evidence": [
+                  "fixture://completion-two"
+                ],
+                "submitted_at": "2026-10-28T17:00:32+08:00"
+              },
+              "review": {
+                "attempt_id": "f95525ec-f6b5-4a26-a3ac-be9ba158a055",
+                "decision": "accept",
+                "summary": "completion-two independently reviewed",
+                "evidence": [
+                  "fixture://review-completion-two"
+                ],
+                "reviewer": {
+                  "self_execution_reason": "Inspect isolated archive fixture",
+                  "execution_mode": "main_session",
+                  "metadata_provenance": {
+                    "source": "unknown",
+                    "verification": "not_verified_by_codex_host",
+                    "model_source": "unknown",
+                    "reasoning_effort_source": "unknown",
+                    "captured_at": "2026-10-28T17:00:33+08:00",
+                    "scope": "submission_review"
+                  }
+                },
+                "reviewed_at": "2026-10-28T17:00:33+08:00"
+              },
+              "review_status": "accepted"
+            }
+          ],
+          "started_at": "2026-10-28T17:00:32+08:00",
+          "finished_at": "2026-10-28T17:00:32+08:00",
+          "responsibility_legacy": false,
+          "status": "resolved",
+          "ready": false,
+          "blocked_by": [],
+          "dependencies": []
+        }
+      ],
+      "ready_tasks": [],
+      "next_actions": [
+        "任务已完成：报告验收结果。"
+      ],
+      "history": [],
+      "task_context": {
+        "goal": "并行归档 P",
+        "constraints": [],
+        "acceptance_criteria": [
+          "Retain each acceptance"
+        ],
+        "resume_note": "",
+        "provided_context": {}
+      },
+      "archived_at": "2026-10-28T17:00:33+08:00",
+      "archive_reason": "并行任务已完成综合验收。",
+      "archive_kind": "parallel",
+      "request_id": "parallel",
+      "archive_key": "[\"6864e1b5-6cef-4970-9eec-0a9d54f9124d\", 0, \"2b72ce4a-983c-4da2-90d3-9f1e267a9da1\"]"
+    }
+  ],
+  "task_title": "仍在执行的主任务",
+  "main_session": null,
+  "planning_status": "planned",
+  "planning_note": "",
+  "status": "in_progress",
+  "root_status": "decomposing",
+  "completed": 0,
+  "total": 1,
+  "percent": 0,
+  "resolved_leaf_count": 0,
+  "open_leaf_count": 0,
+  "failed_leaf_count": 0,
+  "ready_count": 1,
+  "executing_count": 0,
+  "pending_review_count": 0,
+  "split_review_due": [],
+  "blocked_count": 0,
+  "epoch": 0,
+  "revision": 1,
+  "root_id": "root",
+  "created_at": "2026-10-28T17:00:32+08:00",
+  "updated_at": "2026-10-28T17:00:33+08:00",
+  "nodes": [
+    {
+      "id": "root",
+      "title": "仍在执行的主任务",
+      "parent_id": null,
+      "children": [
+        "same"
+      ],
+      "depends_on": [],
+      "dependency_policy": "resolved",
+      "execution_status": "pending",
+      "outcome": null,
+      "summary": "",
+      "evidence": [],
+      "assignment": {},
+      "planned_assignment": {
+        "execution_mode": "main_session"
+      },
+      "responsibility_version": 1,
+      "reassignment_history": [],
+      "dispatch": null,
+      "submission": null,
+      "review": null,
+      "review_status": null,
+      "profile": null,
+      "attempt": 0,
+      "attempt_id": null,
+      "attempts": [],
+      "started_at": null,
+      "finished_at": null,
+      "responsibility_legacy": false,
+      "status": "decomposing",
+      "ready": false,
+      "blocked_by": [],
+      "dependencies": [],
+      "records_included": true,
+      "attempt_count": 0,
+      "review_record_count": 0,
+      "invalidated_result_count": 0,
+      "reassignment_count": 0
+    },
+    {
+      "id": "same",
+      "title": "主任务工作",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": [],
+      "dependency_policy": "resolved",
+      "execution_status": "pending",
+      "outcome": null,
+      "summary": "",
+      "evidence": [],
+      "assignment": {},
+      "planned_assignment": {
+        "self_execution_reason": "Inspect isolated archive fixture",
+        "execution_mode": "main_session"
+      },
+      "responsibility_version": 1,
+      "reassignment_history": [],
+      "dispatch": null,
+      "submission": null,
+      "review": null,
+      "review_status": null,
+      "profile": null,
+      "attempt": 0,
+      "attempt_id": null,
+      "attempts": [],
+      "started_at": null,
+      "finished_at": null,
+      "responsibility_legacy": false,
+      "status": "ready",
+      "ready": true,
+      "blocked_by": [],
+      "dependencies": [],
+      "records_included": true,
+      "attempt_count": 0,
+      "review_record_count": 0,
+      "invalidated_result_count": 0,
+      "reassignment_count": 0
+    }
+  ],
+  "ready_tasks": [
+    "same"
+  ],
+  "next_actions": [
+    "主会话执行 same：update_task(running)，记录具体 self_execution_reason。",
+    "返回主任务 仍在执行的主任务（564eebb7-a41e-4a3b-a456-c67b866ce53a）；插入请求结束不代表原任务完成。"
+  ],
+  "history": [],
+  "history_summary": {
+    "task_count": 2,
+    "plan_count": 0,
+    "legacy_task_count": 0
+  },
+  "history_included": true,
+  "session_work": {
+    "foreground": {
+      "request_id": "foreground:564eebb7-a41e-4a3b-a456-c67b866ce53a",
+      "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+      "task_title": "仍在执行的主任务",
+      "goal": "仍在执行的主任务",
+      "request_text": null,
+      "context_source": "request_text_unrecorded",
+      "mode": "foreground",
+      "reason": "恢复已有主任务，不补造历史请求原文。",
+      "acceptance_criteria": [],
+      "constraints": [],
+      "context_brief": {
+        "goal": "仍在执行的主任务",
+        "constraints": [],
+        "acceptance_criteria": [],
+        "resume_note": ""
+      },
+      "return_to": null,
+      "created_at": "2026-10-28T17:00:32+08:00",
+      "origin_return_to": null,
+      "status": "active",
+      "summary": "",
+      "revisions": []
+    },
+    "requests": [
+      {
+        "request_id": "foreground:564eebb7-a41e-4a3b-a456-c67b866ce53a",
+        "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+        "task_title": "仍在执行的主任务",
+        "goal": "仍在执行的主任务",
+        "request_text": null,
+        "context_source": "request_text_unrecorded",
+        "mode": "foreground",
+        "reason": "恢复已有主任务，不补造历史请求原文。",
+        "acceptance_criteria": [],
+        "constraints": [],
+        "context_brief": {
+          "goal": "仍在执行的主任务",
+          "constraints": [],
+          "acceptance_criteria": [],
+          "resume_note": ""
+        },
+        "return_to": null,
+        "created_at": "2026-10-28T17:00:32+08:00",
+        "origin_return_to": null,
+        "status": "active",
+        "summary": "",
+        "revisions": []
+      },
+      {
+        "request_text": "Independent archive fixture",
+        "task_title": "并行归档 P",
+        "mode": "parallel",
+        "reason": "Separate result",
+        "acceptance_criteria": [
+          "Retain each acceptance"
+        ],
+        "constraints": [],
+        "context_brief": {
+          "goal": "并行归档 P",
+          "constraints": [],
+          "acceptance_criteria": [
+            "Retain each acceptance"
+          ],
+          "resume_note": "",
+          "provided_context": {}
+        },
+        "goal": "并行归档 P",
+        "request_id": "parallel",
+        "task_instance_id": "6864e1b5-6cef-4970-9eec-0a9d54f9124d",
+        "status": "completed",
+        "created_at": "2026-10-28T17:00:32+08:00",
+        "return_to": {
+          "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+          "task_id": "root",
+          "resume_note": ""
+        },
+        "origin_return_to": {
+          "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+          "task_id": "root"
+        },
+        "summary": "completion-two synthesis",
+        "revisions": []
+      }
+    ],
+    "can_finish_session": false,
+    "return_to": {
+      "task_instance_id": "564eebb7-a41e-4a3b-a456-c67b866ce53a",
+      "task_id": "root",
+      "resume_note": ""
+    },
+    "next_actions": [
+      "返回主任务 仍在执行的主任务（564eebb7-a41e-4a3b-a456-c67b866ce53a）；插入请求结束不代表原任务完成。"
+    ],
+    "verification": "caller_declared_not_host_authenticated"
+  },
+  "parallel_tasks": [],
+  "task_context": {
+    "goal": "仍在执行的主任务",
+    "constraints": [],
+    "acceptance_criteria": [],
+    "resume_note": ""
+  },
+  "context_revisions": [],
+  "records_included": true
+}
