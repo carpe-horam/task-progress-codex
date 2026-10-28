@@ -174,7 +174,7 @@ class LegacyHistoryTests(unittest.TestCase):
             return result["structuredContent"]["progress"]
 
         with patch.object(server, "SESSION_DIR", sessions), patch.object(server, "LEGACY_DB_PATH", self.db):
-            archive = progress(server.get_progress(sid, include_history=True))
+            archive = progress(server.get_progress_view(sid, include_history=True))
             self.assertEqual(archive["mode"], "legacy_archive")
             self.assertTrue(archive["read_only"])
             self.assertEqual(archive["legacy_history"]["task_count"], 2)
@@ -185,21 +185,21 @@ class LegacyHistoryTests(unittest.TestCase):
             instance = current["task_instance_id"]
             server.update_task(sid, "root", "running", task_instance_id=instance,
                                assignment={"execution_mode": "main_session", "self_execution_reason": "Fixture"})
-            compact = progress(server.get_progress(sid))
+            compact = progress(server.get_progress_view(sid))
             self.assertEqual(compact["task_instance_id"], instance)
             self.assertEqual(compact["status"], "in_progress")
             self.assertEqual(compact["history_summary"]["legacy_task_count"], 2)
             self.assertNotIn("legacy_history", compact)
-            full = progress(server.get_progress(sid, include_history=True))
+            full = progress(server.get_progress_view(sid, include_history=True))
             self.assertEqual(full["task_title"], "Current JSON task")
             self.assertEqual(full["legacy_history"]["records"][0]["status"], "resolved")
             self.assertNotEqual(instance, full["legacy_history"]["current_task_id"])
 
             server.clear_progress(sid)
-            self.assertIsNone(progress(server.get_progress(sid, include_history=True)))
+            self.assertIsNone(progress(server.get_progress_view(sid, include_history=True)))
             self.assertTrue(server._read_order(sid)["legacy_history_cleared"])
             server.init_task_network("After clear", sid, atomic_reason="One fresh fixture")
-            after = progress(server.get_progress(sid, include_history=True))
+            after = progress(server.get_progress_view(sid, include_history=True))
             self.assertNotIn("legacy_history", after)
             self.assertEqual(after["history_summary"]["legacy_task_count"], 0)
         self.assertEqual(before, self.db.read_bytes())

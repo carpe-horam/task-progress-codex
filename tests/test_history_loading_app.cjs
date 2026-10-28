@@ -10,7 +10,7 @@ async function push(page,r){await page.evaluate(snapshot=>document.getElementByI
 async function configure(page,full){await page.evaluate(full=>{
   const real=window.hostRpc;window.fixture={full,fail:false,held:null,hold:false};
   window.hostRpc=async(name,args)=>{
-    if(name!=='get_progress')return real(name,args);
+    if(name!=='get_progress_view')return real(name,args);
     if(args.include_history){
       if(window.fixture.fail)throw new Error('fixture full history unavailable');
       const captured=structuredClone(window.fixture.full);
@@ -29,15 +29,15 @@ async function main(){
  const archived=clone(data);archived.task_instance_id='archived-one';archived.task_title='ARCHIVE_COMPLETE';archived.archived_at=data.updated_at;delete archived.task_history;
  const round=clone(data);round.task_title='PLAN_COMPLETE';round.closed_at=data.updated_at;round.epoch=0;delete round.history;delete round.task_history;
  data.task_history=[archived];data.history=[round];data.epoch=1;fs.writeFileSync(file,JSON.stringify(data));
- const full=await host.rpc('get_progress',{session_id:sid,include_history:true});
+ const full=await host.rpc('get_progress_view',{session_id:sid,include_history:true});
  assert.equal(progress(full).history_summary.task_count,1);assert.equal(progress(full).history_summary.plan_count,1);
  const page=await host.page();await configure(page,full);const frame=await host.mount(page,'main',compact(full));
  assert((await frame.locator('#task-history-title').textContent()).includes('1 项'));
- assert.equal(await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress'&&c.args.include_history).length),0,'initial compact card never loads full history');
+ assert.equal(await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress_view'&&c.args.include_history).length),0,'initial compact card never loads full history');
  await frame.locator('#task-history-title').click();await frame.locator('#task-history-list').filter({hasText:'ARCHIVE_COMPLETE'}).waitFor();
  await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();
  assert((await frame.locator('#task-history-list').textContent()).includes('ARCHIVE_COMPLETE'),'same binding compact refresh retains history');
- assert((await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress'))).some(c=>c.args.include_history===false),'refresh explicitly requests compact state');
+ assert((await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress_view'))).some(c=>c.args.include_history===false),'refresh explicitly requests compact state');
  // A newer compact snapshot increases history count. It must invalidate the cache and reject the held old full response.
  await frame.locator('#task-history-title').click();
  const newer=clone(full);newer.structuredContent.state_revision=progress(full).state_revision+2;progress(newer).state_revision=newer.structuredContent.state_revision;progress(newer).epoch=2;progress(newer).revision+=2;
@@ -71,7 +71,7 @@ async function main(){
  const {execFileSync}=require('node:child_process');const workbook=execFileSync('python3',['-c',"import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(z.read('xl/workbook.xml').decode()); print(z.read('xl/worksheets/sheet7.xml').decode())",xlsx],{encoding:'utf8'});assert(workbook.includes('SQLite只读历史')&&workbook.includes('SQLITE_ORIGINAL_SUMMARY'));
  await dualExport.report.close();await dualPage.close();
  const only=clone(dual);Object.assign(progress(only),{mode:'legacy_archive',schema_version:3,read_only:true,task_title:'SQLite-only fixture',status:'legacy_archive'});delete progress(only).nodes;delete progress(only).steps;delete progress(only).task_instance_id;progress(only).task_history=[];progress(only).history=[];progress(only).history_summary={task_count:0,plan_count:0,legacy_task_count:1};
- const onlyPage=await host.page();await configure(onlyPage,only);const onlyFrame=await host.mount(onlyPage,'main',compact(only));
+ const onlyPage=await host.page();await configure(onlyPage,only);const onlyBootstrap={structuredContent:{session_id:only.structuredContent.session_id,state_revision:only.structuredContent.state_revision,view_sequence:only.structuredContent.view_sequence,acknowledged:true,bootstrap:true,view_tool:'get_progress_view'}};const onlyFrame=await host.mount(onlyPage,'main',onlyBootstrap);await onlyFrame.locator('#task-title').filter({hasText:'SQLite-only fixture'}).waitFor();
  assert.equal(await onlyFrame.locator('#empty').isVisible(),false);assert.equal(await onlyFrame.locator('#task-status-label').textContent(),'旧版只读记录');assert.equal(await onlyFrame.locator('#steps-section').isVisible(),false);assert(!(await onlyFrame.locator('#summary').textContent()).includes('0 / 0'));
  await onlyFrame.locator('#legacy-history-title').click();await onlyFrame.locator('#legacy-history-list').filter({hasText:'SQLITE_OLD_TASK'}).waitFor();
  assert((await onlyFrame.locator('#legacy-history-list').textContent()).includes('无当前 JSON 任务'));

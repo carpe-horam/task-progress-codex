@@ -33,11 +33,11 @@ class CoreStorageIsolationTests(unittest.TestCase):
                 core = service.load_core(isolated_sessions)
             self.assertEqual(core.LEGACY_DB_PATH, isolated_sessions.parent / "progress-v3.sqlite3")
             # A broken default archive must not appear as an isolation warning.
-            self.assertIsNone(core.get_progress(sid)["structuredContent"]["progress"])
+            self.assertIsNone(core.get_progress_view(sid)["structuredContent"]["progress"])
             self.assertEqual(default_db.read_bytes(), b"unrelated default-store sentinel")
             # The explicitly selected sibling archive is the only legacy source.
             core.LEGACY_DB_PATH.write_bytes(b"isolated broken archive")
-            archive = core.get_progress(sid)["structuredContent"]["progress"]
+            archive = core.get_progress_view(sid)["structuredContent"]["progress"]
             self.assertEqual(archive["mode"], "legacy_archive")
             self.assertEqual(archive["legacy_history_warning"], "legacy_history_unavailable")
             self.assertEqual(core.LEGACY_DB_PATH.read_bytes(), b"isolated broken archive")
@@ -122,14 +122,14 @@ class SharedServiceTests(unittest.TestCase):
             # Independent clients deliberately reuse JSON-RPC ID 1.
             result = self.rpc("init_task_network", {"task_title": f"Client {index}",
                 "atomic_reason": "One operation", "request_id": f"client-{index}"})
-            sid = result["session_id"]; instance = result["progress"]["task_instance_id"]
+            sid = result["session_id"]; instance = result["task_instance_id"]
             run = self.rpc("update_task", {"session_id": sid, "task_instance_id": instance,
                 "task_id": "root", "execution_status": "running", "assignment": {"execution_mode": "main_session"}})
-            attempt = run["progress"]["nodes"][0]["attempt_id"]
+            attempt = run["attempt_id"]
             self.rpc("update_task", {"session_id": sid, "task_instance_id": instance, "task_id": "root",
                 "execution_status": "finished", "outcome": "resolved", "attempt_id": attempt,
                 "summary": f"Result {index}"})
-            final = self.rpc("get_progress", {"session_id": sid})["progress"]
+            final = self.rpc("get_progress", {"session_id": sid, "view": "full"})["progress"]
             self.assertEqual(final["task_title"], f"Client {index}")
             self.assertEqual(final["nodes"][0]["summary"], f"Result {index}")
             return sid
@@ -148,7 +148,7 @@ class SharedServiceTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(initialize, range(8)))
         self.assertEqual(len({r["session_id"] for r in results}), 1)
-        self.assertEqual(len({r["progress"]["task_instance_id"] for r in results}), 1)
+        self.assertEqual(len({r["task_instance_id"] for r in results}), 1)
 
     def test_http_tools_dispatch_submit_review_and_main_only_synthesis(self):
         main = {"execution_mode": "main_session", "self_execution_reason": "Coordinator checks one integration decision"}
@@ -157,15 +157,15 @@ class SharedServiceTests(unittest.TestCase):
         init = self.rpc("init_task_network", {"task_title": "HTTP responsibility contract", "tasks": [
             {"id": "worker", "title": "Delegated operation", "assignment": sub},
             {"id": "coord", "title": "Coordinator operation", "assignment": main}]})
-        base = {"session_id": init["session_id"], "task_instance_id": init["progress"]["task_instance_id"]}
+        base = {"session_id": init["session_id"], "task_instance_id": init["task_instance_id"]}
         self.rpc("reassign_task", {**base, "task_id": "coord", "assignment": main,
                                    "reason": "Confirm bounded integration responsibility", "reviewer": main})
         started = self.rpc("update_task", {**base, "task_id": "worker", "execution_status": "running", "assignment": sub})
-        aid = next(node["attempt_id"] for node in started["progress"]["nodes"] if node["id"] == "worker")
+        aid = started["attempt_id"]
         self.rpc("bind_task_agent", {**base, "task_id": "worker", "attempt_id": aid, "agent_name": "http-fixture-agent"})
         submitted = self.rpc("update_task", {**base, "task_id": "worker", "attempt_id": aid,
             "execution_status": "finished", "outcome": "resolved", "summary": "Worker output", "evidence": ["fixture://worker"]})
-        node = next(node for node in submitted["progress"]["nodes"] if node["id"] == "worker")
+        node = submitted["affected"]
         self.assertEqual(node["review_status"], "pending")
         review = {**base, "task_id": "worker", "attempt_id": aid, "decision": "accept",
                   "summary": "Checked independently", "evidence": ["fixture://review"], "reviewer": sub}
@@ -175,7 +175,7 @@ class SharedServiceTests(unittest.TestCase):
         self.assertTrue(result["result"]["isError"])
         self.rpc("review_task", {**review, "reviewer": main})
         started = self.rpc("update_task", {**base, "task_id": "coord", "execution_status": "running", "assignment": main})
-        coord_aid = next(node["attempt_id"] for node in started["progress"]["nodes"] if node["id"] == "coord")
+        coord_aid = started["attempt_id"]
         self.rpc("update_task", {**base, "task_id": "coord", "attempt_id": coord_aid,
                                  "execution_status": "finished", "outcome": "resolved"})
         synthesis = {**base, "task_id": "root", "execution_status": "finished", "outcome": "resolved",
@@ -185,7 +185,7 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(result["result"]["isError"])
         finished = self.rpc("update_task", {**synthesis, "assignment": main})
-        self.assertEqual(finished["progress"]["status"], "completed")
+        self.assertEqual(finished["status"], "completed")
 
     def test_streamable_handshake_notifications_and_resource_version(self):
         status, headers, message = self.http(payload={"jsonrpc": "2.0", "id": "init", "method": "initialize",
@@ -236,10 +236,10 @@ class SharedServiceTests(unittest.TestCase):
         self.assertFalse((self.state / "daemon.json").exists())
         self.start(port=port)
         self.assertNotEqual(self.proc.pid, pid)
-        self.assertEqual(self.rpc("get_progress", {"session_id": sid})["progress"]["task_title"], "Survives restart")
+        self.assertEqual(self.rpc("get_progress", {"session_id": sid, "view": "full"})["progress"]["task_title"], "Survives restart")
         self.proc.kill(); self.proc.communicate(timeout=3); self.proc = None
         self.start(port=port)
-        self.assertEqual(self.rpc("get_progress", {"session_id": sid})["progress"]["task_instance_id"], result["progress"]["task_instance_id"])
+        self.assertEqual(self.rpc("get_progress", {"session_id": sid, "view": "full"})["progress"]["task_instance_id"], result["task_instance_id"])
 
     def test_client_disconnect_does_not_stop_global_service(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)

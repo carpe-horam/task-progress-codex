@@ -34,7 +34,7 @@ class ResponseProtocolTests(unittest.TestCase):
         self.sid, self.instance = p["session_id"], p["task_instance_id"]
 
     def node(self):
-        return next(n for n in progress(server.get_progress(self.sid))["nodes"] if n["id"] == "work")
+        return next(n for n in progress(server.get_progress_view(self.sid))["nodes"] if n["id"] == "work")
 
     def start(self, assignment=None):
         server.update_task(self.sid, "work", "running", assignment=assignment or SUB)
@@ -55,8 +55,8 @@ class ResponseProtocolTests(unittest.TestCase):
         self.assertEqual(p["history_summary"], {"task_count": 1, "plan_count": 0, "legacy_task_count": 0})
         for key in ("task_history", "history"):
             self.assertNotIn(key, p)
-            self.assertNotIn(key, progress(server.get_progress(self.sid)))
-        full = progress(server.get_progress(self.sid, include_history=True))
+            self.assertNotIn(key, progress(server.get_progress_view(self.sid)))
+        full = progress(server.get_progress_view(self.sid, include_history=True))
         self.assertTrue(full["history_included"])
         self.assertEqual(len(full["task_history"][0]["history"]), 1)
         self.assertIn("remains unresolved", full["task_history"][0]["archive_reason"])
@@ -74,7 +74,7 @@ class ResponseProtocolTests(unittest.TestCase):
         server.bind_task_agent(self.sid, "work", aid, "/root/actual")
         server.update_task(self.sid, "work", "finished", "resolved", "Output", ["fixture://output"], aid)
         self.unchanged_error(lambda: server.init_task_network("New", self.sid, new_task_reason="New user target"), "待验收")
-        p = progress(server.get_progress(self.sid))
+        p = progress(server.get_progress_view(self.sid))
         self.assertEqual(p["pending_review_count"], 1)
         action = next(x for x in p["next_actions"] if "review_task(work)" in x)
         for token in (aid, "decision=accept|reject", "summary", "evidence", "main_session"):
@@ -97,7 +97,7 @@ class ResponseProtocolTests(unittest.TestCase):
         server._session_file(self.sid).unlink()
         server.LEGACY_DB_PATH.write_bytes(b"corrupt fixture database")
         before = server.LEGACY_DB_PATH.read_bytes()
-        compact_result = server.get_progress(self.sid)
+        compact_result = server.get_progress_view(self.sid)
         compact = progress(compact_result)
         self.assertEqual(compact["mode"], "legacy_archive")
         self.assertTrue(compact["read_only"])
@@ -106,7 +106,7 @@ class ResponseProtocolTests(unittest.TestCase):
         self.assertFalse(compact["history_included"])
         self.assertNotIn("legacy_history", compact)
         self.assertIn("均未知", compact_result["content"][0]["text"])
-        full = progress(server.get_progress(self.sid, include_history=True))
+        full = progress(server.get_progress_view(self.sid, include_history=True))
         self.assertEqual(full["legacy_history"]["status"], "unavailable")
         self.assertEqual(full["legacy_history"]["records"], [])
         self.assertEqual(server.LEGACY_DB_PATH.read_bytes(), before)
@@ -115,14 +115,14 @@ class ResponseProtocolTests(unittest.TestCase):
     def test_legacy_failure_is_isolated_and_clear_tombstone_survives_new_init(self):
         server.LEGACY_DB_PATH.write_bytes(b"corrupt")
         before = server._session_file(self.sid).read_bytes()
-        p = progress(server.get_progress(self.sid, include_history=True))
+        p = progress(server.get_progress_view(self.sid, include_history=True))
         self.assertEqual(p["legacy_history"]["status"], "unavailable")
         self.assertEqual(server._session_file(self.sid).read_bytes(), before)
         server.clear_progress(self.sid)
         self.assertTrue(server._read_order(self.sid)["legacy_history_cleared"])
-        self.assertIsNone(progress(server.get_progress(self.sid, True)))
+        self.assertIsNone(progress(server.get_progress_view(self.sid, True)))
         server.init_task_network("New after clear", self.sid)
-        self.assertNotIn("legacy_history", progress(server.get_progress(self.sid, True)))
+        self.assertNotIn("legacy_history", progress(server.get_progress_view(self.sid, True)))
 
 
 if __name__ == "__main__":

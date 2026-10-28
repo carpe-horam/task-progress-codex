@@ -21,7 +21,8 @@ readline.createInterface({input:python.stdout}).on('line', line => {
   const r=JSON.parse(line), waiter=pending.get(r.id); if(!waiter)return; pending.delete(r.id);clearTimeout(waiter.timer);
   if(r.error||r.result?.isError)waiter.reject(new Error(JSON.stringify(r.error||r.result.content)));else waiter.resolve(r.result);
 });
-function rpc(name,args){const id=++sequence;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Backend timeout: '+name)),5000);pending.set(id,{resolve,reject,timer});python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
+const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
+function rawRpc(name,args){const id=++sequence;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Backend timeout: '+name)),5000);pending.set(id,{resolve,reject,timer});python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
 const assignment={execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation',model:'audit-fixture',reasoning_effort:'high'};
 const add=(name,observed)=>results.push({case:name,observed});
 async function main(){
@@ -33,7 +34,7 @@ async function main(){
       for(const file of args.files)fs.writeFileSync(path.join(temp,file.name),file.encoding==='base64'?Buffer.from(file.content,'base64'):file.content);
       return {structuredContent:{saved:true,output_directory:temp,files:args.files.map(f=>({path:path.join(temp,f.name)}))}};
     }
-    return rpc(name,args);
+    return rawRpc(name,args);
   });
   await page.setContent('<!doctype html><body style="margin:0;background:#fff"><main id="frames"></main></body>');
   await page.evaluate(()=>{
@@ -47,7 +48,7 @@ async function main(){
       if(m.method==='ui/download-file'){window.audit.calls.push({frame:frame.id,name:m.method});reply({});}
       if(m.method==='tools/call'){
         window.audit.calls.push({frame:frame.id,name:m.params.name});
-        if((m.params.name==='get_progress'&&window.audit.failReads)||(m.params.name==='register_ui_view'&&window.audit.failRegister)){reply({isError:true,content:[{type:'text',text:'Injected transient unavailable'}]});return;}
+        if((m.params.name==='get_progress_view'&&window.audit.failReads)||(m.params.name==='register_ui_view'&&window.audit.failRegister)){reply({isError:true,content:[{type:'text',text:'Injected transient unavailable'}]});return;}
         try{reply(await window.auditRpc(m.params.name,m.params.arguments));}catch(err){e.source.postMessage({jsonrpc:'2.0',id:m.id,error:{code:-32603,message:err.message}},'*');}
       }
     });
@@ -73,8 +74,8 @@ async function main(){
     return {focus:document.activeElement.parentElement.dataset.key,selection:selection.toString(),scrollTop:scroll.scrollTop};
   };
   const before=await card.locator('body').evaluate(openAndSelect);
-  const readCount=await page.evaluate(()=>window.audit.calls.filter(c=>c.name==='get_progress').length);
-  await page.waitForFunction(n=>window.audit.calls.filter(c=>c.name==='get_progress').length>n,readCount,{timeout:8500});
+  const readCount=await page.evaluate(()=>window.audit.calls.filter(c=>c.name==='get_progress_view').length);
+  await page.waitForFunction(n=>window.audit.calls.filter(c=>c.name==='get_progress_view').length>n,readCount,{timeout:8500});
   await card.locator('body').evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const after=await card.locator('body').evaluate(()=>({focusTag:document.activeElement.tagName,focusKey:document.activeElement.parentElement?.dataset.key||null,selection:getSelection().toString(),scrollTop:document.querySelector('li.step > details[data-key$=":a"] .dispatch .detail-value').scrollTop,expanded:document.querySelector('li.step > details[data-key$=":a"]').open}));
   assert.equal(after.focusKey,before.focus);assert.equal(after.selection,before.selection);assert.equal(after.scrollTop,before.scrollTop);assert.equal(after.expanded,true);
@@ -97,8 +98,8 @@ async function main(){
   add('unchanged_header_preserves_selection',selectedHeader);
   await card.locator('#refresh').focus();
   await page.evaluate(()=>{window.audit.failReads=true;});
-  const failedReadCount=await page.evaluate(()=>window.audit.calls.filter(c=>c.name==='get_progress').length);
-  await page.waitForFunction(n=>window.audit.calls.filter(c=>c.name==='get_progress').length>n,failedReadCount,{timeout:8500});
+  const failedReadCount=await page.evaluate(()=>window.audit.calls.filter(c=>c.name==='get_progress_view').length);
+  await page.waitForFunction(n=>window.audit.calls.filter(c=>c.name==='get_progress_view').length>n,failedReadCount,{timeout:8500});
   await card.locator('body').evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   assert((await card.locator('#auto-refresh-label').textContent()).includes('同步失败'));
   assert.equal(await card.locator('#auto-refresh-status').evaluate(e=>e.classList.contains('failed')),true);
@@ -158,11 +159,11 @@ async function main(){
   add('task_switch_keeps_existing_full_view','same full view shows the new task without a second iframe');
   // A transient registration error retries with the original source token, then yields to a newer view.
   await page.evaluate(()=>{window.audit.failRegister=true;});
-  const recovery=await mount('registration-recovery',await rpc('get_progress',{session_id:sid}));
+  const recovery=await mount('registration-recovery',await rpc('get_progress_view',{session_id:sid}));
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view'));
   await page.evaluate(()=>{window.audit.failRegister=false;});
   await page.waitForFunction(()=>window.audit.calls.filter(c=>c.frame==='registration-recovery'&&c.name==='register_ui_view').length>=2,{},{timeout:5000});
-  const newest=await mount('newest',await rpc('get_progress',{session_id:sid}));
+  const newest=await mount('newest',await rpc('get_progress_view',{session_id:sid}));
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.frame==='newest'&&c.name==='register_ui_view'));
   await recovery.locator('.card.inline-stale').waitFor({timeout:8500});
   assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);

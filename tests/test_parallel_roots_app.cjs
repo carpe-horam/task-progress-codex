@@ -33,7 +33,7 @@ async function main(){
  await host.rpc('update_task',{...b2,task_id:'work',attempt_id:p2Attempt,execution_status:'finished',outcome:'resolved',summary:'P2 独立产出完成',evidence:['fixture://p2-output']});
  await host.rpc('review_task',{...b2,task_id:'work',attempt_id:p2Attempt,decision:'accept',summary:'P2 独立产出已核验',evidence:['fixture://p2-review'],reviewer:mainAssignment});
  await host.rpc('update_task',{...b2,task_id:'root',execution_status:'finished',outcome:'resolved',assignment:mainAssignment,summary:'P2 综合验收通过',evidence:['fixture://p2-root']});
- r=await host.rpc('get_progress',{session_id:sid});
+ r=await host.rpc('get_progress_view',{session_id:sid});
  const page=await host.page(),frame=await host.mount(page,'main',r);
  const roots=frame.locator('#steps > .step');
  assert.deepEqual(await roots.evaluateAll(elements=>elements.map(e=>e.dataset.taskInstance)),[aid,p1,p2]);
@@ -50,15 +50,17 @@ async function main(){
  assert.equal(await frame.getByRole('button',{name:'只读查看',exact:true}).count(),0);
  const p1Root=frame.locator('#steps > .step[data-task-instance="'+p1+'"]'),p2Root=frame.locator('#steps > .step[data-task-instance="'+p2+'"]');
  assert.match(await p1Root.innerText(),/待主会话验收/);assert.match(await p2Root.innerText(),/已解决 \/ 已验收完成/);
+ assert.deepEqual(await frame.locator('#steps > .step > details').evaluateAll(elements=>elements.map(element=>element.open)),[true,true,true]);
  await capture(page,'01-peer-roots-pending-accepted',r);
  // Preserve root expansion, leaf expansion, DOM identity and unchanged selected text.
  await p1Root.locator(':scope > details > .children > .step > details > summary').click();
+ await p1Root.locator(':scope > details > .children > .step > details > .task-details > summary').click();
  await p2Root.locator(':scope > details > summary').click();
- await p1Root.locator('.step-result').evaluate(element=>{window.peerSelected=element.firstChild;const range=document.createRange();range.selectNodeContents(element);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);window.peerText=selection.toString();});
- const selection=await p1Root.locator('.step-result').evaluate(()=>window.peerText);
+ await p1Root.locator('.responsibility-record .detail-value').filter({hasText:'P1 产出已提交'}).first().evaluate(element=>{window.peerSelected=element.firstChild;const range=document.createRange();range.selectNodeContents(element);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);window.peerText=selection.toString();});
+ const selection=await p1Root.locator('.responsibility-record .detail-value').filter({hasText:'P1 产出已提交'}).first().evaluate(()=>window.peerText);
  await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();
- assert.equal(await p1Root.locator('.step-result').evaluate(element=>element.firstChild===window.peerSelected),true);
- assert.equal(await p1Root.locator('.step-result').evaluate(()=>getSelection().toString()),selection);
+ assert.equal(await p1Root.locator('.responsibility-record .detail-value').filter({hasText:'P1 产出已提交'}).first().evaluate(element=>element.firstChild===window.peerSelected),true);
+ assert.equal(await p1Root.locator('.responsibility-record .detail-value').filter({hasText:'P1 产出已提交'}).first().evaluate(()=>getSelection().toString()),selection);
  assert.equal(await p1Root.locator(':scope > details > .children > .step > details').getAttribute('open'),'');
  assert.equal(await p2Root.locator(':scope > details').getAttribute('open'),null);
  await host.rpc('review_task',{...b1,task_id:'work',attempt_id:attempt,decision:'accept',summary:'P1 产出已核验',evidence:['fixture://p1-review'],reviewer:mainAssignment});
@@ -72,12 +74,12 @@ async function main(){
  await frame.locator('#task-history-section > summary').click();await frame.locator('#task-history-list').filter({hasText:'主任务 A'}).waitFor();
  assert.equal(await frame.locator('#steps > .step[data-task-instance="'+aid+'"]').count(),0);
  assert.equal(await frame.locator('#percent').textContent(),'0');
- r=await host.rpc('get_progress',{session_id:sid,include_history:true});
+ r=await host.rpc('get_progress_view',{session_id:sid,include_history:true});
  await capture(page,'02-activated-queue-retains-completed-peer-roots',r);
  await page.close();
  // An old cache has named roots but no details: do not invent empty child trees.
  const old=structuredClone(r);delete old.structuredContent.progress.parallel_tasks;
- const oldPage=await host.page();await oldPage.evaluate(old=>{const real=window.hostRpc;window.hostRpc=(name,args)=>name==='get_progress'?Promise.resolve(structuredClone(old)):real(name,args);},old);
+ const oldPage=await host.page();await oldPage.evaluate(old=>{const real=window.hostRpc;window.hostRpc=(name,args)=>name==='get_progress_view'?Promise.resolve(structuredClone(old)):real(name,args);},old);
  const oldFrame=await host.mount(oldPage,'main',old);
  assert.equal(await oldFrame.locator('#steps > .parallel-placeholder').count(),2);assert.equal(await oldFrame.locator('#steps > .parallel-placeholder .children').count(),0);
  await push(oldPage,r);await oldFrame.locator('#steps > .parallel-placeholder').waitFor({state:'detached'});

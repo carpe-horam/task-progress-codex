@@ -5,27 +5,28 @@ import sys
 
 
 RESPONSIBILITY = (
-    " Complex analysis, implementation, multi-file changes, specialist validation and review default "
-    "to subagents even when sequential; assign a dependency chain to one agent or serialize file owners. "
-    "The main session coordinates, decides and accepts results; record a specific self_execution_reason "
-    "for a main-session leaf (except an explicitly atomic root). Start the attempt, spawn, then bind the "
-    "returned agent ID; a subagent submits only its assigned node, and the main session reviews it separately. "
-    "For awaiting_review use review_task, not repeated finished updates or duplicate nodes. "
-    "A new phase of the same goal keeps the current task_instance_id; re-plan instead of initializing again. "
-    "Check the executor's actual completion before retaining running status or handing work over."
+    " Complex work defaults to subagents even when sequential; serialize shared file owners. "
+    "The main session plans and accepts; record self_execution_reason for its leaf work. "
+    "Start the attempt, spawn, then bind the returned ID. A subagent submits only its assigned node; "
+    "the main session reviews it separately using queried submission/evidence and review_task."
 )
 
 REQUEST_ROUTING = (
-    " The main session owns planning, editing and re-planning; Task Progress stores decisions and guides next actions. "
-    "On a new user message, distinguish a current-goal correction, a brief question, an independent request, "
-    "and an explicit stop/replacement. Keep corrections in the current instance. Answer brief questions and return "
-    "to the original work. Register independent requests with route_request as queue or isolated parallel work "
-    "for subagents, recording the reason; do not replace unfinished work or assume registration dispatched an agent. "
-    "Persist the goal, constraints, acceptance criteria and resume location with update_task_context. "
-    "On resume/compaction or after an inserted request completes, read get_progress, task_context and session_work; "
-    "return to unfinished foreground work, or explicitly activate the FIFO queue after foreground closure. "
-    "Before concluding, check remaining session work: one request completing does not finish the session. "
-    "Honor explicit user stops; the queue does not override them. Follow only your assigned scope as a subagent."
+    " Keep corrections in the current instance; answer brief questions then return. "
+    "Use route_request for independent queue/parallel work; registration is not dispatch. "
+    "Save goal, constraints, acceptance and resume location with update_task_context. "
+    "Resume via get_progress overview, then context for task_context and session_work, and needed tree/tasks. "
+    "Before concluding read all request pages; one request completing does not finish the session. "
+    "Return to unfinished foreground work or explicitly activate FIFO after closure. "
+    "Honor explicit user stops. Follow only your assigned scope as a subagent."
+)
+
+SELECTIVE_QUERY = (
+    " Writes return identity/status receipts only; save top-level IDs/attempt_id, not a progress tree. "
+    "Query on demand: overview first, tree by depth, tasks by ID, records/context/history by page; "
+    "full only when needed. Pin expected_state_revision across pages; restart if changed. "
+    "Do not query full after every write or copy task trees/history into messages. "
+    "Render only when the user wants a panel or display is needed; App reads its data independently."
 )
 
 
@@ -36,24 +37,24 @@ def context_for(event: dict) -> str:
         if source in ("resume", "compact"):
             return (
                 "Task Progress: this is a resumed Codex session. Before continuing, read the current "
-                "task network with get_progress and reuse its task_instance_id; do not initialize a "
+                "overview with get_progress and reuse its task_instance_id; do not initialize a "
                 "duplicate task. If there is no active task and the new request is substantive, plan first. "
                 "For multi-stage work, submit a coarse task tree before editing, running checks, or delegation. "
                 "Resuming does not transfer parent ownership; keep any explicitly assigned node scope."
-                + RESPONSIBILITY + REQUEST_ROUTING
+                + RESPONSIBILITY + REQUEST_ROUTING + SELECTIVE_QUERY
             )
         if source == "fork":
             return (
                 "Task Progress: this session was forked. Do not assume the parent's task ownership or "
                 "create a second main-session root. Follow the explicit assignment; otherwise make a "
                 "coarse plan before substantive work. Do not accept your own submission or synthesize the parent."
-                + RESPONSIBILITY + REQUEST_ROUTING
+                + RESPONSIBILITY + REQUEST_ROUTING + SELECTIVE_QUERY
             )
         return (
             "Task Progress: before substantive work, classify scope. Simple questions need no task tree; "
             "a truly atomic task needs an explicit atomic_reason; multi-stage work must start with a coarse "
             "HTN plan. Read the track-progress skill and use init_task_network with initial tasks where possible."
-            + RESPONSIBILITY + REQUEST_ROUTING
+            + RESPONSIBILITY + REQUEST_ROUTING + SELECTIVE_QUERY
         )
     if name == "UserPromptSubmit":
         return (
@@ -61,7 +62,7 @@ def context_for(event: dict) -> str:
             "existing network for continuation, add newly requested scope to it, and use a concise atomic "
             "reason for genuinely single-step work. Do not start editing, verification, or agent dispatch "
             "before the plan is recorded. Simple conversational answers do not need a task tree."
-            + RESPONSIBILITY + REQUEST_ROUTING
+            + RESPONSIBILITY + REQUEST_ROUTING + SELECTIVE_QUERY
         )
     return ""
 

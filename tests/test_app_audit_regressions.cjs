@@ -116,7 +116,7 @@ async function main(){
     if(linearMode)await host.rpc('update_step',{...task,step_index:0,status:'in_progress',assignment});
     else await host.rpc('update_task',{...task,task_id:'root',execution_status:'running',assignment});
     await pause(1100);
-    const archivedTask=(await host.rpc('get_progress',{session_id:task.session_id,include_history:true})).structuredContent.progress;
+    const archivedTask=(await host.rpc('get_progress_view',{session_id:task.session_id,include_history:true})).structuredContent.progress;
     archivedTask.archived_at=new Date().toISOString();
     // Pre-protocol archives may contain running records. Install a historical
     // snapshot in a different private session; current APIs must never archive live work.
@@ -127,7 +127,7 @@ async function main(){
     const currentFile=path.join(host.temp,'sessions',r.structuredContent.session_id+'.json');
     const fixture=JSON.parse(fs.readFileSync(currentFile,'utf8'));fixture.task_history=[archivedTask];fs.writeFileSync(currentFile,JSON.stringify(fixture));
     const historicalBytes=fs.readFileSync(currentFile,'utf8');
-    r=await host.rpc('get_progress',{session_id:r.structuredContent.session_id,include_history:true});
+    r=await host.rpc('get_progress_view',{session_id:r.structuredContent.session_id,include_history:true});
     assert.equal(linearMode?archivedTask.steps[0].status:archivedTask.nodes[0].execution_status,linearMode?'in_progress':'running');
     const page=await host.page(),frame=await host.mount(page,'main',r);
     await frame.locator('#task-history-section > summary').click();
@@ -172,7 +172,7 @@ async function main(){
   const sid=r.structuredContent.session_id;
   page=await host.page();await host.mount(page,'tab',r,'fullscreen');
   await page.waitForFunction(()=>window.host.calls.some(c=>c.frame==='tab'&&c.name==='register_ui_view'&&c.result));
-  const main=await host.mount(page,'main',await host.rpc('get_progress',{session_id:sid}));
+  const main=await host.mount(page,'main',await host.rpc('get_progress_view',{session_id:sid}));
   await main.locator('.card.tab-hidden').waitFor({state:'attached'});
   await page.evaluate(()=>window.host.holdExecution={frame:'tab',name:'register_ui_view',mode:'fullscreen'});
   await page.waitForFunction(()=>window.host.heldExecution.length>0,null,{timeout:12000});

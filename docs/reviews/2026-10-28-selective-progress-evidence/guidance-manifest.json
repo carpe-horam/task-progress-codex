@@ -1,0 +1,71 @@
+{
+  "tests": [
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_hook_runtime.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/task-progress-selective-20261028/guidance/test_hook_runtime.py.log"
+    },
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_delegation_policy.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "log": "/tmp/task-progress-selective-20261028/guidance/test_delegation_policy.py.log"
+    }
+  ],
+  "files": {
+    "README.md": "48a739cfc658d2f0e18cd4d765d448562cd637160a6ff751c392cb34ec86c4b3",
+    "README.en.md": "3b63753d23052fd4ff95392e7355feb1be199fac6e22acee3d2269a0cb7c5519",
+    "CHANGELOG.md": "17b77da1e4991d0e1ee41209dcc05af739a4ec81c4aae6113e14ac77e586b390",
+    "tests/README.md": "d40f5a43b6813a3eb7c894b807a496340b1504a72a30757387fb9696d0e49f8c",
+    "plugins/task-progress/skills/track-progress/SKILL.md": "631c49362d82f2d19e8ff41c01441c4bad75923c441c10510b3f8851b8450aba",
+    "plugins/task-progress/skills/track-progress/references/request-routing.md": "e8db34b4474b060254fe1a57b6d6afbe29d7496ea15d7fe9328591b41d67f390",
+    "plugins/task-progress/skills/cleanup-task-progress-history/SKILL.md": "bc471aa304857f8e72edb446ad7066bba390ada688d60dec56fec4046f7b6a24",
+    "plugins/task-progress/hooks/task_progress_hook.py": "5b20ea907dbc37f8082556f96dc06b9e7d72852b82655d846a6e4ac19ee51751",
+    "plugins/task-progress/.codex-plugin/plugin.json": "e39ecb3f36ff89e441028028d207af2827d4e2c7266ae9ba4ef80ab6a054aa65",
+    "tests/test_hook_runtime.py": "27e8b23fc0cecc4f858cef02dd4f39f03a91b327b933a81f638b7920a89b1c77",
+    "tests/test_delegation_policy.py": "dc47d826289656e820435b6a4709871bfd3b00c9be46df12607305a0c1469bd3"
+  },
+  "server_sha256": "09d9205ad1aaf9e5d05813f213fbecd724b882c252ae7c90cbdc69c47b698f3a",
+  "version": "0.2.0",
+  "scope": "Documentation/hooks/public-wire examples only; no installation or git submission; browser/native acceptance separate.",
+  "diff_check": {
+    "scope": [
+      "README.md",
+      "README.en.md",
+      "CHANGELOG.md",
+      "tests/README.md",
+      "plugins/task-progress/skills/track-progress/SKILL.md",
+      "plugins/task-progress/skills/track-progress/references/request-routing.md",
+      "plugins/task-progress/skills/cleanup-task-progress-history/SKILL.md",
+      "plugins/task-progress/hooks/task_progress_hook.py",
+      "plugins/task-progress/.codex-plugin/plugin.json",
+      "tests/test_hook_runtime.py",
+      "tests/test_delegation_policy.py"
+    ],
+    "exit_code": 0,
+    "log": "/tmp/task-progress-selective-20261028/guidance/diff-check.log"
+  },
+  "test_count": 11,
+  "verification": "7 hook runtime checks plus 4 public JSON-RPC delegation example checks passed. Scoped diff check passed; server frozen hash unchanged. UI/Chrome/native installation are outside this delegated verification."
+}

@@ -79,7 +79,7 @@ class StateRevisionFixTests(unittest.TestCase):
         server.update_task(sid, "root", "running", assignment=ASSIGNMENT, task_instance_id=second["task_instance_id"])
         self.unchanged_on_rejection(sid, lambda: self.initialize(sid))
         self.unchanged_on_rejection(sid, lambda: self.initialize())
-        current = progress(server.get_progress(sid))
+        current = progress(server.get_progress_view(sid))
         self.assertEqual(current["task_instance_id"], second["task_instance_id"])
         self.assertEqual(current["nodes"][0]["execution_status"], "running")
 
@@ -89,7 +89,7 @@ class StateRevisionFixTests(unittest.TestCase):
         server.clear_progress(sid)
         self.unchanged_on_rejection(sid, lambda: self.initialize(title="Sensitive task title"))
         self.unchanged_on_rejection(sid, lambda: self.initialize(sid, title="Sensitive task title"))
-        self.assertIsNone(progress(server.get_progress(sid)))
+        self.assertIsNone(progress(server.get_progress_view(sid)))
         ledger_text = (server.SESSION_DIR / ".init-request-ledger.json").read_text()
         self.assertNotIn("Sensitive task title", ledger_text)
         self.assertNotIn("request-A", ledger_text)
@@ -190,7 +190,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
             self.unchanged_on_rejection(sid, lambda status=status: server.update_step(sid, 0, status, attempt_id=a["attempt_id"], task_instance_id=instance))
         final = progress(server.update_step(sid, 0, "completed", attempt_id=b["attempt_id"], note="Executor B completed"))
         self.assertEqual(final["status"], "completed")
-        history = final["steps"][0]["attempts"]
+        history = progress(server.get_progress_view(sid, include_history=True))["steps"][0]["attempts"]
         self.assertEqual([h["execution_status"] for h in history], ["cancelled", "finished"])
         self.assertEqual(history[0]["summary"], "Cancelled executor A")
         self.assertEqual(history[1]["assignment"]["model"], "executor-B")
@@ -209,7 +209,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
         self.unchanged_on_rejection(sid, lambda: server.update_step(sid, 0, "completed"))
         self.unchanged_on_rejection(sid, lambda: server.update_step(sid, 0, "completed", attempt_id=old["attempt_id"]))
         final = progress(server.update_step(sid, 0, "completed", attempt_id=new["attempt_id"]))
-        self.assertEqual(len(final["steps"][0]["attempts"]), 2)
+        self.assertEqual(len(progress(server.get_progress_view(sid, include_history=True))["steps"][0]["attempts"]), 2)
 
     def test_linear_completed_reopen_preserves_finished_attempt(self):
         sid, _ = self.linear()
@@ -218,8 +218,9 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
         self.unchanged_on_rejection(sid, lambda: server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT))
         second = progress(server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT, attempt_id=a["attempt_id"]))["steps"][0]
         self.assertNotEqual(a["attempt_id"], second["attempt_id"])
-        self.assertEqual(second["attempts"][0]["execution_status"], "finished")
-        self.assertEqual(second["attempts"][0]["summary"], "First finished result")
+        history = progress(server.get_progress_view(sid, include_history=True))["steps"][0]["attempts"]
+        self.assertEqual(history[0]["execution_status"], "finished")
+        self.assertEqual(history[0]["summary"], "First finished result")
 
     def test_legacy_completion_accepts_once_then_requires_returned_token(self):
         sid, _ = self.linear()
@@ -228,7 +229,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
         server._write(sid, data)
         finished = progress(server.update_step(sid, 0, "completed"))["steps"][0]
         self.assertFalse(finished["legacy_attempt"])
-        self.assertTrue(finished["attempts"][0]["legacy_attempt"])
+        self.assertTrue(progress(server.get_progress_view(sid, include_history=True))["steps"][0]["attempts"][0]["legacy_attempt"])
         self.unchanged_on_rejection(sid, lambda: server.update_step(sid, 0, "completed", note="Late old result"))
         reopened = progress(server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT, attempt_id=finished["attempt_id"]))["steps"][0]
         self.assertNotEqual(finished["attempt_id"], reopened["attempt_id"])
@@ -254,7 +255,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
 
     def test_owner_recovery_preserves_historical_mount_rejection(self):
         sid, old_source = self.register_fixture()
-        newer = content(server.get_progress(sid))
+        newer = content(server.get_progress_view(sid))
         new_source = dict(view_sequence=newer["view_sequence"], state_revision=newer["state_revision"], task_instance_id=newer["progress"]["task_instance_id"])
         server.register_ui_view(sid, "new", **new_source, mode_generation=0)
         self.assertEqual(content(server.register_ui_view(sid, "historical", **old_source, mode_generation=0))["status"], "superseded")
@@ -275,7 +276,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
     def test_stale_demotion_releases_lease_with_new_generation(self):
         sid, args = self.register_fixture()
         server.register_ui_view(sid, "tab", **args, display_mode="fullscreen", mode_generation=0)
-        newer = content(server.get_progress(sid))
+        newer = content(server.get_progress_view(sid))
         new_source = dict(view_sequence=newer["view_sequence"], state_revision=newer["state_revision"], task_instance_id=newer["progress"]["task_instance_id"])
         server.register_ui_view(sid, "new", **new_source, mode_generation=0)
         self.assertEqual(content(server.register_ui_view(sid, "tab", **args, mode_generation=1))["status"], "superseded")

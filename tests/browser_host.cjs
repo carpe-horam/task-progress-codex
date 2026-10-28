@@ -31,7 +31,8 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
     pending.set(id, {resolve,reject,timer});
     python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');
   }));
-  const rpc = (name, args) => request('tools/call', {name,arguments:args});
+  const rawRpc = (name, args) => request('tools/call', {name,arguments:args});
+  const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
   // Reading the actual resource also checks manifest-to-app version injection.
   const resource = await request('resources/read', {uri:'ui://task-progress/progress-inspector/v3'});
   const html = resource.contents[0].text;
@@ -41,7 +42,7 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
     const page = await browser.newPage({viewport:{width:1150,height:1200}});
     page.setDefaultTimeout(8000);
     page.on('pageerror', error => errors.push(error.message));
-    await page.exposeFunction('hostRpc', rpc);
+    await page.exposeFunction('hostRpc', rawRpc);
     await page.setContent('<main id="frames"></main>');
     await page.evaluate(() => {
       window.host = {snapshots:{},modes:{},calls:[],sizes:[],initializations:[],holdExecution:null,heldExecution:[]};
@@ -88,7 +89,8 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
       document.getElementById('frames').append(frame);
     },{id,snapshot,mode,html});
     const frame=page.frameLocator('#'+id);
-    await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.task_title}).waitFor();
+    if (snapshot.structuredContent.progress) await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.task_title}).waitFor();
+    else await frame.locator('#refresh').waitFor({state:'attached'});
     return frame;
   }
   const mode=(page,id,displayMode)=>page.evaluate(({id,displayMode})=>document.getElementById(id).contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{displayMode}},'*'),{id,displayMode});
@@ -101,7 +103,7 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
     await report.goto('file://'+call.result.structuredContent.files.find(f=>f.name.endsWith('.html')).path);
     return {hostPage,frame,report};
   }
-  return {temp,browser,html,rpc,page,mount,mode,exportReport,errors,
+  return {temp,browser,html,rpc,rawRpc,page,mount,mode,exportReport,errors,
     registry:sid=>JSON.parse(fs.readFileSync(path.join(sessionDir || path.join(temp,'sessions'),sid+'.view.json'),'utf8')),
     async close(){await browser.close();python?.stdin.end();python?.kill();for(const item of pending.values())clearTimeout(item.timer);fs.rmSync(temp,{recursive:true,force:true});}};
 }

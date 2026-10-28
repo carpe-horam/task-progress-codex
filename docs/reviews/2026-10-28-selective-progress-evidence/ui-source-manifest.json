@@ -1,0 +1,96 @@
+{
+  "verification": "Actual isolated Python server + installed Chrome via Playwright; simulated MCP Apps parent. Native Codex acceptance, installation and Git delivery not performed.",
+  "cwd": "/Users/machengling/.codex/worktrees/3e36/task-process",
+  "head": "e5bab2f76517415bb52952866e408b5f632e252e",
+  "suites": [
+    {
+      "name": "test_selective_view_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_selective_view_app/output.log"
+    },
+    {
+      "name": "test_record_loading_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_record_loading_app/output.log"
+    },
+    {
+      "name": "test_request_queue_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_request_queue_app/output.log"
+    },
+    {
+      "name": "test_parallel_roots_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_parallel_roots_app/output.log"
+    },
+    {
+      "name": "test_history_loading_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_history_loading_app/output.log"
+    },
+    {
+      "name": "test_responsibility_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_responsibility_app/output.log"
+    },
+    {
+      "name": "test_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_app/output.log"
+    },
+    {
+      "name": "test_interaction",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_interaction/output.log"
+    },
+    {
+      "name": "test_export",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_export/output.log"
+    },
+    {
+      "name": "test_view_mode_regressions",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_view_mode_regressions/output.log"
+    },
+    {
+      "name": "test_app_audit_regressions",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_app_audit_regressions/output.log"
+    },
+    {
+      "name": "test_shared_service_app",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_shared_service_app/output.log"
+    },
+    {
+      "name": "test_view_lifecycle",
+      "passed": true,
+      "log": "/tmp/task-progress-selective-20261028/ui/test_view_lifecycle/output.log"
+    }
+  ],
+  "hashes": {
+    "plugins/task-progress/app.html": "f9c85d66a5d494dfe330a2c00e0df72cb11539bbf36251111af3d677b7f72c9e",
+    "plugins/task-progress/server.py": "09d9205ad1aaf9e5d05813f213fbecd724b882c252ae7c90cbdc69c47b698f3a",
+    "tests/browser_host.cjs": "4c456b948a7f643cecbf02188488c6d31966df3a651105dde3c24bde7eda784b",
+    "tests/snapshot_rpc.cjs": "c1a8297f8f6d5f097c8a33d413713a313d1a44827385c1873422c34067236270",
+    "tests/test_app.cjs": "8ba5f9430fb4c1ed8ad53584f5fc5b833ea60864e6ae735c32d42a00d9831dc1",
+    "tests/test_app_audit_regressions.cjs": "3af4f070d74a01d099fed5b86b8b8ecbc0bee28e8a8b61fefae1baa95a34e510",
+    "tests/test_export.cjs": "9f7c477403a8e615b7661e9ebccd356ab61cfc185e69c17fc7c9e8918d922439",
+    "tests/test_history_loading_app.cjs": "186f49980483755726b0e09fc5e4ed6c1ccdbb222c6c14821c1c2b63b917faff",
+    "tests/test_interaction.cjs": "a93baf4f517e510c055601f09e16c0cf957cfc9c59caad1e9a497305fec5ba55",
+    "tests/test_parallel_roots_app.cjs": "e3054b0e92bbc1b9c0f32841602feb72dd2084b073a320b00997a0e0b622e32c",
+    "tests/test_record_loading_app.cjs": "eaf5096fffa5c618ee7382ce93116d780ae87f931613fd9884de52e9e432759a",
+    "tests/test_request_queue_app.cjs": "efc3daf8d06e010eaaa39f9c7212cb8d996bc408986e7598b9d9c2f78137d337",
+    "tests/test_responsibility_app.cjs": "b73304b9e85ced0f26e7050e432142a3d9027d6d740b68a97feb81539a9b7d73",
+    "tests/test_selective_view_app.cjs": "1d03cc4410585be7bd9630b27760e155453ed675919095723e0f14156548e3cd",
+    "tests/test_shared_service_app.cjs": "197154546d7fe65939b2fa1cb7e8ed60d3428cc97bc90be6c55ba22dea3d8933",
+    "tests/test_view_lifecycle.cjs": "98527d508d088bab8e77d976fc087222cf761636a51acaa46fba77d7df670d76",
+    "tests/test_view_mode_regressions.cjs": "2f4f99401dc76c157ee05b5bc6dace09e01c5fab31179420ae84f5d8700b56b3"
+  },
+  "screenshots": [
+    "/tmp/task-progress-selective-20261028/ui/test_selective_view_app/01-default-identity-collapsed.png",
+    "/tmp/task-progress-selective-20261028/ui/test_selective_view_app/02-expanded-execution-records.png",
+    "/tmp/task-progress-selective-20261028/ui/test_record_loading_app/peer-records.png"
+  ]
+}

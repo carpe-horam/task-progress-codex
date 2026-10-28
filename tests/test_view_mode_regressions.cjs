@@ -29,7 +29,8 @@ readline.createInterface({input: python.stdout}).on('line', line => {
   else waiter.resolve(response.result);
 });
 
-function rpc(name, args) {
+const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
+function rawRpc(name, args) {
   const id = ++seq;
   return new Promise((resolve, reject) => {
     pending.set(id, {resolve, reject});
@@ -42,7 +43,7 @@ async function main() {
   const page = await browser.newPage({viewport:{width:1100,height:1200}});
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.exposeFunction('auditRpc', rpc);
+  await page.exposeFunction('auditRpc', rawRpc);
   await page.exposeFunction('readViewRegistry', sessionId => {
     const file = path.join(temp,`${sessionId}.view.json`);
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file,'utf8')) : {};

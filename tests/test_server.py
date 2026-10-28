@@ -44,10 +44,10 @@ class ProgressTests(unittest.TestCase):
         self.temp.cleanup()
 
     def progress(self):
-        return server.get_progress(self.sid)["structuredContent"]["progress"]
+        return server.get_progress_view(self.sid)["structuredContent"]["progress"]
 
     def node(self, node_id):
-        return next(n for n in self.progress()["nodes"] if n["id"] == node_id)
+        return next(n for n in server.get_progress_view(self.sid, include_history=True)["structuredContent"]["progress"]["nodes"] if n["id"] == node_id)
 
     def add(self, *tasks, parent="root", **kwargs):
         planned = [
@@ -300,7 +300,7 @@ class ProgressTests(unittest.TestCase):
             atomic_reason="The fixture is a single tracked operation",
         )
         sid = result["structuredContent"]["session_id"]
-        current = server.get_progress(sid)["structuredContent"]["progress"]
+        current = server.get_progress_view(sid)["structuredContent"]["progress"]
         self.assertEqual(current["main_session"]["model"], "gpt-fixture")
         self.assertIsNone(current["main_session"]["reasoning_effort"])
         provenance = current["main_session"]["metadata_provenance"]
@@ -315,7 +315,8 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn("model", node["assignment"])
         self.assertNotIn("reasoning_effort", node["assignment"])
         self.assertEqual(node["assignment"]["metadata_provenance"]["model_source"], "unknown")
-        self.assertEqual(node["attempts"][0]["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")
+        history_node = server.get_progress_view(sid, include_history=True)["structuredContent"]["progress"]["nodes"][0]
+        self.assertEqual(history_node["attempts"][0]["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")
 
     def test_caller_cannot_claim_codex_verified_assignment_provenance(self):
         server.init_task_network("Atomic provenance fixture", self.sid, new_task_reason="New provenance target; prior pending fixture archived",
@@ -361,8 +362,8 @@ class ProgressTests(unittest.TestCase):
                                        s["progress"]["task_instance_id"])["structuredContent"]["status"]
 
     def test_newer_result_wins_independent_of_mount_order(self):
-        older = server.get_progress(self.sid)
-        newer = server.get_progress(self.sid)
+        older = server.get_progress_view(self.sid)
+        newer = server.get_progress_view(self.sid)
         self.assertEqual(self.register(newer, "new"), "registered")
         self.assertEqual(self.register(older, "old-remount"), "superseded")
         self.assertEqual(server.check_ui_view(self.sid, "new")["structuredContent"]["status"], "latest")
@@ -370,7 +371,7 @@ class ProgressTests(unittest.TestCase):
     def test_fullscreen_progress_does_not_supersede_inline_view(self):
         server.init_task_network("Atomic view fixture", self.sid, new_task_reason="New view target; prior pending fixture archived",
                                  atomic_reason="One view-lease regression")
-        inline_result = server.get_progress(self.sid)
+        inline_result = server.get_progress_view(self.sid)
         self.assertEqual(self.register(inline_result, "conversation"), "registered")
         snapshot = inline_result["structuredContent"]
         fullscreen = server.register_ui_view(
@@ -381,7 +382,7 @@ class ProgressTests(unittest.TestCase):
 
         server.update_task(self.sid, "root", "running", assignment=ASSIGNMENT,
                            task_instance_id=self.progress()["task_instance_id"])
-        updated_fullscreen = server.get_progress(self.sid)["structuredContent"]
+        updated_fullscreen = server.get_progress_view(self.sid)["structuredContent"]
         updated = server.register_ui_view(
             self.sid, "tab", updated_fullscreen["view_sequence"], updated_fullscreen["state_revision"],
             updated_fullscreen["progress"]["task_instance_id"], "fullscreen",
@@ -399,7 +400,7 @@ class ProgressTests(unittest.TestCase):
         )
 
     def test_second_fullscreen_view_is_rejected_while_first_lease_is_active(self):
-        source = server.get_progress(self.sid)["structuredContent"]
+        source = server.get_progress_view(self.sid)["structuredContent"]
         task_instance_id = source["progress"]["task_instance_id"]
         self.assertEqual(server.register_ui_view(
             self.sid, "tab-1", source["view_sequence"], source["state_revision"], task_instance_id, "fullscreen",
@@ -415,14 +416,14 @@ class ProgressTests(unittest.TestCase):
     def test_older_snapshot_cannot_win_even_if_response_was_issued_later(self):
         old = self.progress()
         self.add({"id": "a", "title": "A"})
-        new_result = server.get_progress(self.sid)
+        new_result = server.get_progress_view(self.sid)
         late_result = server._tool_result("Delayed snapshot", old, self.sid)
         self.assertGreater(late_result["structuredContent"]["view_sequence"], new_result["structuredContent"]["view_sequence"])
         self.register(new_result, "new")
         self.assertEqual(self.register(late_result, "old"), "superseded")
 
     def test_archived_task_and_legacy_cards_cannot_reclaim_view(self):
-        old = server.get_progress(self.sid)
+        old = server.get_progress_view(self.sid)
         new = server.init_task_network("Next", self.sid, new_task_reason="New test target; prior pending fixture intentionally archived")
         self.register(new, "new")
         self.assertEqual(self.register(old, "old"), "superseded")
@@ -430,7 +431,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(server.check_ui_view(self.sid, "new")["structuredContent"]["status"], "latest")
 
     def test_task_switch_waits_for_actual_replacement_view(self):
-        old = server.get_progress(self.sid)
+        old = server.get_progress_view(self.sid)
         self.register(old, "existing")
         new = server.init_task_network("Next", self.sid, new_task_reason="New test target; prior pending fixture intentionally archived")
         self.assertEqual(server.check_ui_view(self.sid, "existing")["structuredContent"]["status"], "latest")
@@ -439,7 +440,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(server.check_ui_view(self.sid, "existing")["structuredContent"]["status"], "superseded")
 
     def test_fullscreen_view_hides_inline_view_until_released(self):
-        source = server.get_progress(self.sid)
+        source = server.get_progress_view(self.sid)
         self.assertEqual(self.register(source, "conversation"), "registered")
         snapshot = source["structuredContent"]
         full = server.register_ui_view(
@@ -458,7 +459,7 @@ class ProgressTests(unittest.TestCase):
         )
 
     def test_expired_fullscreen_lease_does_not_keep_inline_hidden(self):
-        source = server.get_progress(self.sid)
+        source = server.get_progress_view(self.sid)
         self.register(source, "conversation")
         snapshot = source["structuredContent"]
         server.register_ui_view(
@@ -475,10 +476,10 @@ class ProgressTests(unittest.TestCase):
         )
 
     def test_state_order_survives_task_switch_and_clear(self):
-        initial = server.get_progress(self.sid)["structuredContent"]["state_revision"]
+        initial = server.get_progress_view(self.sid)["structuredContent"]["state_revision"]
         second = server.init_progress(["Legacy fixture"], session_id=self.sid, new_task_reason="New linear target; prior pending fixture archived")["structuredContent"]["state_revision"]
         cleared = server.clear_progress(self.sid)["structuredContent"]["state_revision"]
-        empty = server.get_progress(self.sid)["structuredContent"]
+        empty = server.get_progress_view(self.sid)["structuredContent"]
         recreated = server.init_task_network("Recreated", self.sid)["structuredContent"]["state_revision"]
         self.assertLess(initial, second)
         self.assertLess(second, cleared)
@@ -514,7 +515,7 @@ class ProgressTests(unittest.TestCase):
                 server.update_step(sid, 0, status, assignment=ASSIGNMENT, attempt_id=first_attempt)
         server.update_step(sid, 1, "pending", attempt_id=second_attempt)
         server.update_step(sid, 0, "in_progress", assignment=ASSIGNMENT, attempt_id=first_attempt)
-        self.assertEqual([step["status"] for step in server.get_progress(sid)["structuredContent"]["progress"]["steps"]], ["in_progress", "pending"])
+        self.assertEqual([step["status"] for step in server.get_progress_view(sid)["structuredContent"]["progress"]["steps"]], ["in_progress", "pending"])
 
     def test_legacy_deadlocked_plan_can_still_be_read_and_replanned(self):
         self.add({"id": "g", "title": "G"})
@@ -524,7 +525,7 @@ class ProgressTests(unittest.TestCase):
         server._session_file(self.sid).write_text(json.dumps(data))
         self.assertEqual(self.progress()["ready_tasks"], [])
         server.rebuild_task_network(self.sid, "Repair legacy deadlock")
-        self.assertEqual(len(server.get_progress(self.sid, include_history=True)["structuredContent"]["progress"]["history"]), 1)
+        self.assertEqual(len(server.get_progress_view(self.sid, include_history=True)["structuredContent"]["progress"]["history"]), 1)
 
     @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "Process lock check uses POSIX fork")
     def test_concurrent_writes_preserve_nodes_and_order(self):
@@ -554,7 +555,7 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 22)
+        self.assertEqual(len(replies[1]["tools"]), 23)
         manifest_version = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
         self.assertEqual(replies[0]["serverInfo"]["version"], manifest_version)
         self.assertEqual(replies[2]["contents"][0]["text"], server._resource_html())

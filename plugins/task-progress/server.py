@@ -418,7 +418,7 @@ def route_request(session_id: str, task_instance_id: str, request_id: str, reque
                 state["instances"][_task_instance_id(network)] = network
             state["requests"].append(item)
             _write(sid, data)
-    return get_progress(sid)
+    return get_progress_view(sid)
 
 
 def activate_request(session_id: str, task_instance_id: str, request_id: str) -> dict[str, Any]:
@@ -432,7 +432,7 @@ def activate_request(session_id: str, task_instance_id: str, request_id: str) ->
         replay = bool(current and item and item.get("activated_from") == task_instance_id
                       and item.get("task_instance_id") == _task_instance_id(current))
     if replay:
-        return get_progress(sid)
+        return get_progress_view(sid)
     with _session_lock(sid):
         data, state = _foreground_request(sid, task_instance_id)
         queued = [r for r in state["requests"] if r.get("status") == "queued"]
@@ -455,7 +455,7 @@ def activate_request(session_id: str, task_instance_id: str, request_id: str) ->
                     activated_from=task_instance_id)
         replacement["session_work_state"] = state
         _write(sid, replacement)
-    return get_progress(sid)
+    return get_progress_view(sid)
 
 
 def update_request(session_id: str, task_instance_id: str, request_id: str, reason: str,
@@ -483,7 +483,7 @@ def update_request(session_id: str, task_instance_id: str, request_id: str, reas
             "previous": {key: deepcopy(item.get(key)) for key in changes}})
         item.update(changes)
         _write(sid, data)
-    return get_progress(sid)
+    return get_progress_view(sid)
 
 
 def cancel_request(session_id: str, task_instance_id: str, request_id: str, reason: str) -> dict[str, Any]:
@@ -503,7 +503,7 @@ def cancel_request(session_id: str, task_instance_id: str, request_id: str, reas
             network["request_cancelled"] = True
             network["nodes"][network["root_id"]].update(execution_status="cancelled", summary=why)
         _write(sid, data)
-    return get_progress(sid)
+    return get_progress_view(sid)
 
 
 def update_task_context(session_id: str, task_instance_id: str, goal: str, constraints: list[str],
@@ -534,7 +534,7 @@ def update_task_context(session_id: str, task_instance_id: str, goal: str, const
             "reason": why, "changed_at": _now()})
         data["task_context"] = {**data.get("task_context", {}), **context}
         _write(sid, data)
-    return get_progress(sid, task_instance_id=task_instance_id)
+    return get_progress_view(sid, task_instance_id=task_instance_id)
 
 
 def _stats(data: dict[str, Any]) -> tuple[int, int, int, str]:
@@ -1745,7 +1745,7 @@ def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, s
 
 
 def get_ready_tasks(session_id: str, task_instance_id: str | None = None) -> dict[str, Any]:
-    result = get_progress(session_id, task_instance_id=task_instance_id)
+    result = get_progress_view(session_id, task_instance_id=task_instance_id)
     structured = result.get("structuredContent", {})
     progress = structured.get("progress")
     if not isinstance(progress, dict) or progress.get("schema_version") != 2:
@@ -1845,54 +1845,7 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
                 f"主会话设置：model={main_session.get('model') or '未记录'}；"
                 f"reasoning={main_session.get('reasoning_effort') or '未记录'}；{verification}"
             )
-        by_id = {node["id"]: node for node in progress["nodes"]}
-
-        def visit(node_id: str, depth: int = 0) -> None:
-            node = by_id[node_id]
-            prefix = "  " * depth
-            lines.append(f"{prefix}- [{node['id']}] {node['title']} — {node['status']}")
-            if node.get("depends_on"):
-                lines.append(f"{prefix}  依赖：{', '.join(node['depends_on'])}（{node['dependency_policy']}）")
-            planned = node.get("planned_assignment") or {}
-            if planned:
-                role = "子智能体" if planned.get("execution_mode") == "subagent" else "主会话"
-                lines.append(f"{prefix}  计划执行者：{role}")
-            elif node.get("responsibility_legacy"):
-                lines.append(f"{prefix}  旧记录：独立计划/主会话接受信息未记录，未补造验收。")
-            assignment = node.get("assignment", {})
-            if assignment:
-                execution_mode = assignment.get("execution_mode")
-                if execution_mode == "main_session":
-                    executor = "主会话"
-                elif execution_mode == "subagent":
-                    executor = "子智能体"
-                elif assignment.get("agent_name") or assignment.get("tool_identifier") or assignment.get("tool_name"):
-                    executor = "子智能体"
-                else:
-                    executor = "执行者未记录"
-                provenance = assignment.get("metadata_provenance", {})
-                verification = "调用方填报，未经 Codex 宿主核验" if provenance.get("verification") == "not_verified_by_codex_host" else "来源未标注"
-                lines.append(f"{prefix}  执行：{executor}；model={assignment.get('model') or '未记录'}；reasoning={assignment.get('reasoning_effort') or '未记录'}；{verification}")
-                if assignment.get("self_execution_reason"):
-                    lines.append(f"{prefix}  主会话自执行原因：{assignment['self_execution_reason']}")
-            dispatch = node.get("dispatch") or {}
-            if dispatch:
-                lines.append(f"{prefix}  派发绑定：{dispatch.get('status')}；agent={dispatch.get('agent_name') or '未记录'}；未经宿主核验")
-            submission = node.get("submission") or {}
-            if submission:
-                lines.append(f"{prefix}  执行上报：{submission.get('outcome')}；主会话验收={node.get('review_status')}；{submission.get('summary', '')}")
-            review = node.get("review") or {}
-            if review:
-                lines.append(f"{prefix}  主会话验收：{review.get('decision')}；{review.get('summary', '')}")
-                lines.extend(f"{prefix}  验收证据：{item}" for item in review.get("evidence", []))
-            if node.get("summary"):
-                lines.append(f"{prefix}  结果：{node['summary']}")
-            for evidence in node.get("evidence", []):
-                lines.append(f"{prefix}  证据：{evidence}")
-            for child_id in node.get("children", []):
-                visit(child_id, depth + 1)
-
-        visit(progress["root_id"])
+        lines.append("当前节点状态、执行提交与验收证据见 structuredContent.progress；历史记录按需读取 include_history=true。")
         return "\n".join(lines)
     lines = [
         f"📋 任务：{progress['task_title']}",
@@ -1904,11 +1857,39 @@ def _format_detail(progress: dict[str, Any] | None) -> str:
             f"⚠️ 拆分复核到期：步骤 [{task['id']}] {task['title']} 已运行 {task['elapsed_minutes']} 分钟。"
             "请现在检查并拆分可独立阶段；若不拆，在步骤备注记录“拆分复核：无需拆分—原因”。"
         )
-    for step in progress["steps"]:
-        icon = STATUS_ICONS.get(step["status"], "⬜")
-        note = f" — {step['note']}" if step.get("note") else ""
-        lines.append(f"  {icon} [{step['index']}] {step['description']}{note}")
+    lines.append("步骤状态与备注见 structuredContent.progress.steps；历史记录按需读取 include_history=true。")
     return "\n".join(lines)
+
+
+def _project_execution_records(progress: dict[str, Any], include_records: bool) -> dict[str, Any]:
+    """Keep current execution evidence; load append-only execution logs on demand.
+
+    Work on shallow projection copies: arrays in storage/snapshots are immutable
+    here and must remain available to explicit include_history reads and exports.
+    """
+    projected = dict(progress)
+    field = "nodes" if progress.get("schema_version") == 2 else "steps"
+    if field not in progress:
+        return projected
+    records = []
+    for source in progress[field]:
+        record = dict(source)
+        attempts = source.get("attempts", [])
+        reviews = [attempt for attempt in attempts if attempt.get("review_status") in ("pending", "accepted", "rejected")
+                   or attempt.get("submission") or attempt.get("review") or attempt.get("kind") == "synthesis"]
+        if (source.get("review_status") in ("pending", "accepted", "rejected") or source.get("submission") or source.get("review")) and not any(
+                attempt.get("attempt_id") == source.get("attempt_id") for attempt in reviews):
+            reviews.append(source)
+        record.update(records_included=include_records, attempt_count=len(attempts), review_record_count=len(reviews),
+                      invalidated_result_count=len(source.get("invalidated_results", [])),
+                      reassignment_count=len(source.get("reassignment_history", [])))
+        if not include_records:
+            for key in ("attempts", "invalidated_results", "reassignment_history"):
+                record.pop(key, None)
+        records.append(record)
+    projected[field] = records
+    projected["records_included"] = include_records
+    return projected
 
 
 def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -> list[dict[str, Any]]:
@@ -1945,7 +1926,7 @@ def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -
                 node["ready"] = False
                 if node.get("execution_status") == "pending":
                     node.update(status="blocked", request_cancelled=True)
-        projections.append(progress)
+        projections.append(_project_execution_records(progress, False))
     return projections
 
 
@@ -2012,6 +1993,8 @@ def _tool_result(
         progress["next_actions"] = list(progress.get("next_actions", [])) + session_work["next_actions"]
         if session_work["next_actions"]:
             text += "\n会话下一步：\n" + "\n".join(session_work["next_actions"])
+    if progress is not None:
+        progress = _project_execution_records(progress, include_history)
     if state_revision is None:
         state_revision = progress.get("state_revision", 0) if progress is not None else 0
     return {
@@ -2211,7 +2194,7 @@ def update_step(
     return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
-def get_progress(session_id: str, include_history: bool = False, task_instance_id: str | None = None) -> dict[str, Any]:
+def get_progress_view(session_id: str, include_history: bool = False, task_instance_id: str | None = None) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     if not isinstance(include_history, bool):
         raise ProgressError("include_history 必须是布尔值。")
@@ -2233,7 +2216,218 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
 def render_progress(session_id: str) -> dict[str, Any]:
     # The host must associate this tool's result with the UI template from the
     # tool descriptor so the rendered view receives structuredContent.
-    return get_progress(session_id)
+    return _wire_receipt("render_progress", {}, get_progress_view(session_id))
+
+
+
+# Public query responses are selective. The app-only reader above retains its
+# complete current snapshot so UI/export traffic never enters model tool results.
+_QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
+_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history")
+_HISTORY_KINDS = ("history", "task_history", "context_revisions", "legacy_history")
+_OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
+                    "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
+                    "percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
+                    "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included")
+_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "attempt_id")
+_MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
+                           "bind_task_agent", "review_task", "reassign_task", "rebuild_task_network", "route_request",
+                           "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress"))
+
+
+def _query_integer(value: Any, name: str, minimum: int, maximum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum or (maximum is not None and value > maximum):
+        raise ProgressError(f"{name} 必须是 {minimum}..{maximum if maximum is not None else '无限'} 范围的整数。")
+    return value
+
+
+def _page(items: list[Any], offset: int, limit: int) -> dict[str, Any]:
+    end = min(offset + limit, len(items))
+    return {"offset": offset, "limit": limit, "total": len(items), "has_more": end < len(items),
+            "next_offset": end if end < len(items) else None}
+
+
+def _brief_node(node: dict[str, Any]) -> dict[str, Any]:
+    title = node.get("title", "")
+    return {**{key: node[key] for key in _TREE_FIELDS if key in node},
+            "title": title[:200], "title_truncated": len(title) > 200,
+            "child_count": len(node.get("children", [])),
+            "dependency_count": len(node.get("dependencies", [])),
+            "execution_mode": (node.get("assignment") or node.get("planned_assignment") or {}).get("execution_mode")}
+
+
+def get_progress(session_id: str, include_history: bool = False, task_instance_id: str | None = None,
+                 *, view: str | None = None, task_id: str | None = None, task_ids: list[str] | None = None,
+                 depth: int = 1, offset: int = 0, limit: int = 50, record_kind: str = "attempts",
+                 history_kind: str = "history", expected_state_revision: int | None = None) -> dict[str, Any]:
+    """Read one explicit layer from one captured revision; never persist task changes.
+
+    Full means the selected instance and its archives/records, plus compact peers
+    and the session request registry. Peer histories require their own iid read.
+    Pagination is stable within a revision; callers can pin subsequent pages.
+    """
+    if not isinstance(include_history, bool):
+        raise ProgressError("include_history 必须是布尔值。")
+    if include_history and view not in (None, "full"):
+        raise ProgressError("include_history=true 仅兼容 view=full；请勿与分层视图混用。")
+    view = "full" if include_history else (view or "overview")
+    if view not in _QUERY_VIEWS:
+        raise ProgressError("view 必须是 overview/tree/tasks/records/context/history/full。")
+    _query_integer(offset, "offset", 0)
+    _query_integer(limit, "limit", 1, 200)
+    _query_integer(depth, "depth", 0, 8)
+    if expected_state_revision is not None:
+        _query_integer(expected_state_revision, "expected_state_revision", 0)
+    if task_id is not None and (not isinstance(task_id, str) or not task_id):
+        raise ProgressError("task_id 必须是非空字符串。")
+    if view == "tasks" and (not isinstance(task_ids, list) or not 1 <= len(task_ids) <= 20
+                            or any(not isinstance(x, str) or not x for x in task_ids)):
+        raise ProgressError("tasks 视图须提供 1..20 个非空 task_ids。")
+    if view == "records" and (not task_id or record_kind not in _RECORD_KINDS):
+        raise ProgressError("records 视图须提供 task_id 和有效 record_kind。")
+    if view == "history" and history_kind not in _HISTORY_KINDS:
+        raise ProgressError("history_kind 必须是 history/task_history/context_revisions/legacy_history。")
+    # Include append-only arrays only in views that explicitly request them.
+    result = get_progress_view(session_id, view in ("full", "records", "history"), task_instance_id)
+    source = result["structuredContent"]
+    if expected_state_revision is not None and source["state_revision"] != expected_state_revision:
+        raise ProgressError("state_revision 已改变；请从第一页重新读取，不能混合不同版本的分页。")
+    metadata = {key: source[key] for key in ("session_id", "state_revision", "view_sequence")}
+    metadata.update(view=view, scope="instance", consistency="pin expected_state_revision across pages")
+    p = source.get("progress")
+    if p is None:
+        return {"content": [{"type": "text", "text": "当前会话没有进度数据。"}],
+                "structuredContent": {**metadata, "progress": None}}
+    if view == "full":
+        source.update(view="full", scope="instance", peer_records_included=False,
+                      full_scope="Selected instance records and archives; peers are current compact snapshots. Read each peer iid for its history.")
+        return {"content": [{"type": "text", "text": "已按显式请求返回目标实例完整数据；并行实例历史须分别读取。"}], "structuredContent": source}
+    output = {key: p[key] for key in _OVERVIEW_FIELDS if key in p}
+    output.update(task_title=p.get("task_title", "")[:200], title_truncated=len(p.get("task_title", "")) > 200,
+                  records_included=False, history_included=False)
+    metadata.update(task_instance_id=p.get("task_instance_id"), epoch=p.get("epoch"), root_id=p.get("root_id"))
+    nodes = p.get("nodes", p.get("steps", []))
+    indexed = {n.get("id", str(i)): n for i, n in enumerate(nodes)}
+    output["node_count"] = len(nodes)
+    due = {item["id"]: item for item in p.get("split_review_due", [])}
+    output["split_review_due_count"] = len(due)
+    output["split_review_due_ids"] = list(due)[:20]
+    output["split_review_due_ids_has_more"] = len(due) > 20
+    if p.get("legacy_history_warning"):
+        output["legacy_history_warning"] = p["legacy_history_warning"][:500]
+    work = source.get("session_work") or {}
+    requests = work.get("requests", [])
+    output["session_work_summary"] = {
+        "foreground_task_instance_id": (work.get("foreground") or {}).get("task_instance_id"),
+        "request_count": len(requests), "queued_count": sum(r.get("status") == "queued" for r in requests),
+        "pending_review_count": sum(r.get("status") == "pending_review" for r in requests),
+        "can_finish_session": work.get("can_finish_session", p.get("status") in ("completed", "open", "failed", "cancelled"))}
+    if view == "tree":
+        selected_id = task_id or p.get("root_id")
+        if p.get("schema_version") == 2:
+            if selected_id not in indexed:
+                raise ProgressError("task_id 不存在于目标实例当前 epoch。")
+            frontier, traversed = [(selected_id, 0)], []
+            for node_id, level in frontier:
+                n = indexed[node_id]
+                traversed.append({**_brief_node(n), "depth": level, "split_review_due": node_id in due})
+                if level < depth:
+                    frontier.extend((child, level + 1) for child in n.get("children", []))
+            depth_limited = any(n["depth"] == depth and n["child_count"] for n in traversed)
+        else:
+            if task_id is not None:
+                raise ProgressError("线性任务 tree 不接受 task_id；使用 tasks 的步骤索引。")
+            traversed = [{**_brief_node(n), "id": str(i), "depth": 0} for i, n in enumerate(nodes)]
+            depth_limited = False
+        output.update(nodes=traversed[offset:offset + limit], pagination=_page(traversed, offset, limit),
+                      depth=depth, depth_limited=bool(depth_limited), task_id=selected_id)
+    elif view == "tasks":
+        missing = [key for key in task_ids if key not in indexed]
+        if missing:
+            raise ProgressError("task_ids 含目标实例当前 epoch 不存在的节点。")
+        output["nodes"] = [{**deepcopy(indexed[key]), "split_review_due": key in due,
+                            **({"split_review": deepcopy(due[key])} if key in due else {})} for key in dict.fromkeys(task_ids)]
+    elif view == "records":
+        if task_id not in indexed:
+            raise ProgressError("task_id 不存在于目标实例当前 epoch。")
+        records = indexed[task_id].get(record_kind, [])
+        output.update(task_id=task_id, record_kind=record_kind, records=deepcopy(records[offset:offset + limit]),
+                      pagination=_page(records, offset, limit), records_included=True)
+    elif view == "context":
+        output["task_context"] = deepcopy(p.get("task_context", {}))
+        output["session_work"] = {key: deepcopy(work[key]) for key in ("foreground", "return_to", "can_finish_session", "verification") if key in work}
+        output["session_work"].update(requests=deepcopy(requests[offset:offset + limit]), pagination=_page(requests, offset, limit))
+    elif view == "history":
+        records = p.get(history_kind, [])
+        if history_kind == "legacy_history":
+            legacy = records if isinstance(records, dict) else {}
+            records = legacy.get("records", [])
+            output["legacy_history_status"] = {key: deepcopy(value) for key, value in legacy.items() if key != "records"}
+        output.update(history_kind=history_kind, records=deepcopy(records[offset:offset + limit]),
+                      pagination=_page(records, offset, limit), history_included=True)
+    text = f"已读取 {view}；按需查询 tree/tasks/records/context/history，完整数据显式使用 full。"
+    return {"content": [{"type": "text", "text": text}], "structuredContent": {**metadata, "progress": output}}
+
+
+def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    source = result.get("structuredContent", {})
+    p = source.get("progress") or {}
+    ack = {key: source[key] for key in ("session_id", "state_revision", "view_sequence") if key in source}
+    ack.update({key: p[key] for key in ("task_instance_id", "epoch", "revision", "root_id", "planning_status", "status") if key in p})
+    ack["acknowledged"] = True
+    ack["receipt"] = True
+    if name == "render_progress":
+        ack.update(bootstrap=True, view_tool="get_progress_view")
+    task_id = args.get("task_id")
+    nodes = p.get("nodes", [])
+    if name == "update_step":
+        index = args.get("step_index")
+        steps = p.get("steps", [])
+        target = steps[index] if isinstance(index, int) and 0 <= index < len(steps) else None
+    else:
+        target = next((node for node in nodes if node["id"] == task_id), None)
+    if target:
+        ack["affected"] = {key: target[key] for key in ("id", "attempt_id", "execution_status", "status", "outcome", "review_status") if key in target}
+        if target.get("attempt_id"):
+            ack["attempt_id"] = target["attempt_id"]
+    if name == "update_step":
+        ack["step_index"] = args.get("step_index")
+    if args.get("request_id"):
+        ack["request_id"] = args["request_id"]
+        request = next((item for item in source.get("session_work", {}).get("requests", []) if item["request_id"] == args["request_id"]), None)
+        if request:
+            ack.update(request_task_instance_id=request.get("task_instance_id"), request_status=request.get("status"))
+    ack["split_review_due_count"] = len(p.get("split_review_due", []))
+    ack["next_query"] = {"tool": "get_progress", "view": "overview"}
+    return {"content": [{"type": "text", "text": "已打开进度面板入口。" if name == "render_progress" else "已记录。"}], "structuredContent": ack}
+
+
+def _wire_result(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if result.get("isError"):
+        return result
+    if name in _MUTATION_TOOLS:
+        return _wire_receipt(name, args, result)
+    if name == "get_ready_tasks":
+        offset = _query_integer(args.get("offset", 0), "offset", 0)
+        limit = _query_integer(args.get("limit", 50), "limit", 1, 200)
+        source = result["structuredContent"]
+        tasks = source.get("ready_tasks", [])
+        # This is an explicit dependency read. Current dependency evidence is
+        # preserved once, without attaching the whole tree or repeating in text.
+        selected = deepcopy(tasks[offset:offset + limit])
+        dependency_evidence = {}
+        for task in selected:
+            for dependency in task.get("dependencies", []):
+                dependency_evidence.setdefault(dependency["id"], {key: dependency.get(key) for key in
+                    ("id", "title", "execution_status", "outcome", "summary", "evidence")})
+                dependency.pop("summary", None)
+                dependency.pop("evidence", None)
+        return {"content": [{"type": "text", "text": "已读取可执行任务及必要依赖证据。"}],
+                "structuredContent": {**{key: source[key] for key in ("session_id", "state_revision", "view_sequence")},
+                    "task_instance_id": (source.get("progress") or {}).get("task_instance_id"),
+                    "ready_tasks": selected, "dependency_evidence": dependency_evidence,
+                    "pagination": _page(tasks, offset, limit)}}
+    return result
 
 
 def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any]:
@@ -2751,7 +2945,7 @@ TOOLS = [
     {
         "name": "init_task_network",
         "title": "初始化任务网络",
-        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。返回 task_instance_id、planning_status、ready_tasks 和 next_actions。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
+        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；首次展示调用 render_progress。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -2870,19 +3064,38 @@ TOOLS = [
     },
     {
         "name": "get_progress",
-        "title": "读取任务进度",
-        "description": "读取当前态及 history_summary，默认不返回历史大数组；include_history=true 按需读取完整历史。HTN history 仅表示当前任务的计划轮次。超过 10 分钟的运行中节点会在 split_review_due 中列出并返回强制拆分复核提示；读取后必须立即评估并拆分可独立阶段，或记录不拆分的具体原因。此工具只读数据；首次展示请调用一次 render_progress，完整进度默认内嵌在会话中。",
+        "title": "按需读取任务进度",
+        "description": "显式读取目标实例。默认overview仅概览；优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。",
         "inputSchema": {
             "type": "object",
-            "properties": {"session_id": _session_property(), "include_history": {"type": "boolean", "default": False, "description": "默认只返回当前态及 history_summary；true 返回完整 task_history、当前任务的 history 轮次及只读旧版历史。"}},
-            "required": ["session_id"],
-        },
-        "_meta": _data_tool_meta(),
+            "properties": {
+                "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+                "view": {"type": "string", "enum": list(_QUERY_VIEWS), "default": "overview"},
+                "include_history": {"type": "boolean", "default": False, "description": "兼容显式full读取；不可与其他view混用。"},
+                "task_id": {"type": "string", "description": "tree子树根或records节点ID；旧线性records用步骤索引字符串。"},
+                "task_ids": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string"}, "description": "tasks视图的节点ID；旧线性任务用步骤索引字符串。"},
+                "depth": {"type": "integer", "minimum": 0, "maximum": 8, "default": 1},
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                "record_kind": {"type": "string", "enum": list(_RECORD_KINDS), "default": "attempts"},
+                "history_kind": {"type": "string", "enum": list(_HISTORY_KINDS), "default": "history"},
+                "expected_state_revision": {"type": "integer", "minimum": 0},
+            }, "required": ["session_id"],
+        }, "_meta": _data_tool_meta(),
+    },
+    {
+        "name": "get_progress_view",
+        "title": "读取进度面板数据",
+        "description": "仅供App主动读取当前完整面板快照；默认省略追加执行记录，include_history=true加载目标实例完整记录和历史用于展开/导出。并行实例历史分别读取。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+            "include_history": {"type": "boolean", "default": False}}, "required": ["session_id"]},
+        "_meta": {"ui": {"visibility": ["app"]}},
     },
     {
         "name": "render_progress",
         "title": "展示任务进度",
-        "description": "首次在会话内展示指定会话的完整任务进度，并返回最新数据。只有用户点击面板入口切换到 fullscreen 后，进度标签页才会打开并暂时隐藏会话内卡片；关闭标签页后会话内卡片恢复。不要把本工具用于普通更新。",
+        "description": "打开进度面板入口，仅返回bootstrap身份；App通过get_progress_view主动读取数据。只有用户点击面板入口切换到 fullscreen 后，进度标签页才会打开并暂时隐藏会话内卡片；关闭标签页后会话内卡片恢复。不要把本工具用于普通更新。",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": _session_property()},
@@ -2965,9 +3178,14 @@ for _name, _title, _description, _properties, _required in [
         "inputSchema": {"type": "object", "properties": _properties, "required": _required}, "_meta": _data_tool_meta()})
 
 for _tool in TOOLS:
+    if _tool["name"] in _MUTATION_TOOLS:
+        _tool["description"] += " 仅返回身份与状态回执；详情按需 get_progress。"
     if _tool["name"] in ("get_progress", "get_ready_tasks"):
         _tool["inputSchema"]["properties"]["task_instance_id"] = _task_instance_property()
-        _tool["description"] += " 可选task_instance_id读取隔离并行实例；省略仍读取当前主任务。session_work返回全会话请求和返回锚点。"
+        _tool["description"] += " 可选task_instance_id读取隔离并行实例；省略读取当前主任务。"
+        if _tool["name"] == "get_ready_tasks":
+            _tool["description"] += " 仅返回分页ready_tasks；dependencies保留依赖ID、状态、dependency_policy和inherited_from，完整summary/evidence在dependency_evidence[依赖ID]去重返回。"
+            _tool["inputSchema"]["properties"].update(offset={"type": "integer", "minimum": 0, "default": 0}, limit={"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
 
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -3035,7 +3253,8 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("task_instance_id"),
         args.get("attempt_id"),
     ),
-    "get_progress": lambda args: get_progress(args.get("session_id"), args.get("include_history", False), args.get("task_instance_id")),
+    "get_progress": lambda args: get_progress(**args),
+    "get_progress_view": lambda args: get_progress_view(**args),
     "render_progress": lambda args: render_progress(args.get("session_id")),
     "save_export_files": lambda args: save_export_files(args.get("files")),
     "clear_progress": lambda args: clear_progress(args.get("session_id")),
@@ -3171,7 +3390,7 @@ def handle(message: Any) -> str | None:
         if handler is None:
             return _err(message_id, -32601, f"未知工具：{name}")
         try:
-            return _ok(message_id, handler(args))
+            return _ok(message_id, _wire_result(name, args, handler(args)))
         except ProgressError as exc:
             return _ok(
                 message_id,

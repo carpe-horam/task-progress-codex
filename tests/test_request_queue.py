@@ -39,7 +39,7 @@ class RequestQueueTests(unittest.TestCase):
         self.temp.cleanup()
 
     def p(self, iid=None, history=False):
-        return server.get_progress(self.sid, history, iid)["structuredContent"]["progress"]
+        return server.get_progress_view(self.sid, history, iid)["structuredContent"]["progress"]
 
     def raw(self):
         return json.loads(server._session_file(self.sid).read_text())
@@ -151,7 +151,7 @@ class RequestQueueTests(unittest.TestCase):
         self.assertEqual(self.item("B")["request_text"], "  user original\nB  ")
         other = load_server()
         other.SESSION_DIR = server.SESSION_DIR
-        recovered = other.get_progress(self.sid)["structuredContent"]
+        recovered = other.get_progress_view(self.sid)["structuredContent"]
         self.assertEqual(recovered["session_work"], self.p()["session_work"])
         self.assertFalse(recovered["session_work"]["can_finish_session"])
         self.assert_rejected(lambda: server.update_task(self.sid, "same", "finished", outcome="resolved", attempt_id=aid, task_instance_id=self.a))
@@ -221,7 +221,7 @@ class RequestQueueTests(unittest.TestCase):
         b = self.item("B")["task_instance_id"]
         result = server.TOOL_HANDLERS["get_progress"]({"session_id": self.sid, "task_instance_id": b})
         self.assertEqual(result["structuredContent"]["progress"]["task_instance_id"], b)
-        self.assertEqual(result["structuredContent"]["session_work"]["foreground"]["task_instance_id"], self.a)
+        self.assertEqual(result["structuredContent"]["progress"]["session_work_summary"]["foreground_task_instance_id"], self.a)
 
     def test_explicit_original_and_context_revisions_are_recoverable(self):
         server.update_task_context(self.sid, self.a, "A", ["limit"], ["accepted"], "same task", "Record explicit context", request_text="  Original A user text  ")
@@ -338,7 +338,7 @@ class RequestQueueTests(unittest.TestCase):
         self.route("B")
         self.route("P", mode="parallel")
         self.finish_a()
-        self._late_response_during_activation(lambda: server.get_progress(self.sid))
+        self._late_response_during_activation(lambda: server.get_progress_view(self.sid))
 
     def test_concurrent_mutation_response_uses_same_snapshot_as_saved_result(self):
         self.route("B")

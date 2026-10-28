@@ -1,0 +1,7 @@
+{
+  "passed": [
+    "A delayed peer record reply cannot overwrite the newer peer revision or foreground identity.",
+    "New attempts invalidate the instance cache; failed record reads retry once when reopened."
+  ],
+  "verification": "Isolated Python + Chrome, simulated MCP Apps host"
+}

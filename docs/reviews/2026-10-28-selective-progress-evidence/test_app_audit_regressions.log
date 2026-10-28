@@ -1,0 +1,13 @@
+{
+  "browser": "156.0.8078.73",
+  "host": "simulated MCP Apps host; real current app/server; native Codex scheduling frequency not measured",
+  "cases": [
+    "F03: partial/running/completed linear reports use overall task status and normalized counts",
+    "F04/F05: failed and cancelled roots preserve delivery, termination evidence and attempts",
+    "F05: current and archived HTML include root acceptance summary/evidence/synthesis attempts without counting the root as an extra leaf",
+    "F06: HTN and linear archived running durations freeze across real wait/refresh and a one-hour page clock advance; source status stays running",
+    "R01/R02: mode_generation starts at zero, changes only with mode, and served appInfo matches manifest version",
+    "R01: a real fullscreen request executed after the 15-second timeout and successful inline registration cannot revive its lease or hide the card",
+    "R01 cross-task: stale-source inline generation 2 releases the lease and blocks delayed current-source fullscreen generation 1"
+  ]
+}

@@ -53,11 +53,12 @@ async function main() {
   await host.rpc('update_task',{...args,execution_status:'finished',outcome:'resolved',attempt_id:running.structuredContent.progress.nodes[0].attempt_id,summary:'SESSION_B_ONLY_RESULT'});
   await frameB.getByText('SESSION_B_ONLY_RESULT',{exact:true}).first().waitFor({state:'attached',timeout:12000});
   await frameB.locator('#steps details > summary.step-main').first().click();
+  await frameB.locator('#steps .execution-review > summary').first().click();
   await frameB.getByText('SESSION_B_ONLY_RESULT',{exact:true}).first().waitFor();
   assert(!(await frameA.locator('body').textContent()).includes('SESSION_B_ONLY_RESULT'));
   // A closed chat does not own the backend. The surviving chat can still read.
   await pageA.close();
-  const fresh=await host.rpc('get_progress',{session_id:b.structuredContent.session_id});
+  const fresh=await host.rpc('get_progress_view',{session_id:b.structuredContent.session_id});
   assert.equal(fresh.structuredContent.progress.nodes[0].summary,'SESSION_B_ONLY_RESULT');
   assert.deepEqual([...pids],[service.pid]); assert.deepEqual(host.errors,[]);
   const artifacts=process.env.TASK_PROGRESS_BROWSER_ARTIFACTS;

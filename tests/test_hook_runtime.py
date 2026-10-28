@@ -84,6 +84,21 @@ class HookRuntimeTests(unittest.TestCase):
                 self.assertIn("Honor explicit user stops", context)
                 self.assertIn("Follow only your assigned scope as a subagent", context)
 
+    def test_all_entry_points_prefer_selective_queries_and_small_receipts(self):
+        for event, source in (("SessionStart", "startup"), ("SessionStart", "resume"),
+                              ("SessionStart", "compact"), ("SessionStart", "fork"),
+                              ("UserPromptSubmit", "startup")):
+            with self.subTest(event=event, source=source):
+                result = self.invoke(event, "CODEX_MCP_PYTHON_PATH", source)
+                context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+                for instruction in ("identity/status receipts only", "overview first",
+                                    "expected_state_revision", "full only when needed",
+                                    "queried submission/evidence", "all request pages",
+                                    "Do not query full after every write", "Render only when"):
+                    self.assertIn(instruction, context)
+                self.assertNotIn("get_progress_view", context)
+                self.assertLess(len(context.encode("utf-8")), 2700)
+
     def test_malformed_hook_input_still_fails_open_through_launcher(self):
         env = {**os.environ, "PATH": str(self.empty_path), "PLUGIN_ROOT": str(self.plugin),
                "CODEX_MCP_PYTHON_PATH": sys.executable}

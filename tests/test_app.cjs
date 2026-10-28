@@ -25,7 +25,8 @@ readline.createInterface({input:python.stdout}).on('line', line => {
   if (response.error || response.result?.isError) waiter.reject(new Error(response.error?.message || JSON.stringify(response.result.content)));
   else waiter.resolve(response.result);
 });
-function rpc(name, args) {
+const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
+function rawRpc(name, args) {
   const id = ++seq;
   return new Promise((resolve,reject) => { pending.set(id,{resolve,reject}); python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n'); });
 }
@@ -43,7 +44,7 @@ async function main() {
       }
       return {structuredContent:{saved:true,output_directory:temp,files:args.files.map(f=>({path:path.join(temp,f.name)}))}};
     }
-    return rpc(name,args);
+    return rawRpc(name,args);
   });
   await page.setContent('<!doctype html><title>Task Progress audit host</title><main id="frames"></main>');
   await page.evaluate(() => {
@@ -59,7 +60,7 @@ async function main() {
       if (m.method==='tools/call') {
         window.audit.calls.push(m.params.name);
         const result=await window.auditRpc(m.params.name,m.params.arguments);
-        if (m.params.name==='get_progress' && window.audit.holdRead) window.audit.held.push({source:event.source,id:m.id,result});
+        if (m.params.name==='get_progress_view' && window.audit.holdRead) window.audit.held.push({source:event.source,id:m.id,result});
         else reply(result);
       }
     });
@@ -102,7 +103,10 @@ async function main() {
   const running=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:fixtureAssignment});
   const aid=running.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   await notify('current',running);
-  assert.match(await card.locator('details[data-key$=":a"] > summary .step-execution-meta').innerText(),/未由 Codex 核实/);
+  const inlineMeta=await card.locator('details[data-key$=":a"] > summary .step-execution-meta').innerText();
+  assert.match(inlineMeta,/主会话[\s\S]*audit-fixture[\s\S]*思考 high/);
+  assert(!inlineMeta.includes('未由 Codex 核实'));
+  assert.match(await card.locator('details[data-key$=":a"] > .task-details > .step-execution-meta').textContent(),/未由 Codex 核实/);
   await page.evaluate(()=>{window.audit.holdRead=true;});
   await card.locator('#refresh').click();
   await page.waitForFunction(()=>window.audit.held.length===1);
@@ -155,7 +159,7 @@ async function main() {
 
   // Cross-task late notifications cannot restore an archived task.
   let next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
-  next=await rpc('get_progress',{session_id:sid,include_history:true});
+  next=await rpc('get_progress_view',{session_id:sid,include_history:true});
   const archivedC=next.structuredContent.progress.task_history[0].nodes.find(n=>n.id==='c');
   assert.deepEqual(archivedC.attempts.map(attempt=>attempt.attempt),[1,2]);
   await notify('current',next);

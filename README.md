@@ -43,6 +43,8 @@ Task Progress 默认用 HTN（分层任务网络）表达多步骤工作：父�
 
 并行任务与主任务在同一个任务网络中显示为同级 root，按登记顺序接在主任务后，各自展开子任务与验收记录。它们仍是隔离实例，同级展示不建立额外父子依赖。未启动请求留在队列区，顶部百分比只统计主任务。
 
+首屏显示任务标题、状态和耗时，并保留角色、真实绑定 agent、模型与思考强度的简洁行。任务上下文默认折叠，有排队请求时在折叠标题旁显示数量；展开任务先见一份结果摘要；执行、绑定、验收与证据位于默认关闭的「执行与验收详情」中，按需再展开。刷新会保留当前任务中用户选择的开闭状态。
+
 ```mermaid
 flowchart LR
     A[任务目标] --> B[拆分子任务]
@@ -131,7 +133,7 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 
 > 请梳理这个问题，按依赖拆分实现和验证步骤，并持续更新任务进度。
 
-你也可以明确要求 Codex 使用 Task Progress。首次展示由主会话调用一次 `render_progress`，完整进度默认显示在会话内；普通任务更新只更新数据，不会重复弹出面板。用户将面板切换到 fullscreen 标签页后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
+你也可以明确要求 Codex 使用 Task Progress。进度内容默认不附在会话的更新回执里；模型需要时显式查询。用户明确要看面板或需要展示时，主会话调用一次 `render_progress`；该入口只返回 bootstrap 身份，面板独立读取并默认显示在会话内。普通任务更新与查询不自动展示。用户将面板切换到 fullscreen 标签页后，会话内卡片暂时隐藏；关闭标签页后，会话内卡片恢复。旧来源的卡片会折叠，避免展示过期数据。当前公开的 MCP Apps 上下文未定义历史/归档会话状态，因此插件不能可靠判断并主动隐藏已保存在历史会话中的卡片。主会话面板会显示当前任务网络、执行状态、完成比例、任务摘要和历史计划。点击“刷新”可立即同步状态；点击“导出”可将当前任务记录保存为 Excel 与 HTML 文件。在主会话任务树中执行的子智能体只更新派发节点，不另开一份主会话面板。
 
 默认规则：
 
@@ -145,10 +147,32 @@ python3 plugins/task-progress/service_manager.py uninstall # 移除 LaunchAgent�
 - 自动刷新保留键盘焦点、文本选择和阅读位置，显示同步失败及恢复状态；卡片适配窄窗口和宿主明暗主题。
 - 对不确定的模型或思考强度不猜测；未知值会显示为未记录。调用方填写的配置会标注采集时间，并明确显示“未经 Codex 宿主核验”。
 
+## 按需查询
+
+写操作回执在 `structuredContent` 顶层返回 `session_id`、`task_instance_id`、`root_id`、`epoch` 等身份；启动后的 `attempt_id` 也在顶层，单个目标状态位于 `affected`。回执不包含任务树、摘要、证据或请求正文。并行请求登记后，使用 `request_task_instance_id` 定位新实例。
+
+`get_progress` 的视图元数据在 `structuredContent`，数据在 `structuredContent.progress`：
+
+| 需求 | view 与参数 |
+|---|---|
+| 概览与计数（默认） | `overview`；不含完整上下文或节点 |
+| 按层读取子树 | `tree`, `task_id`, `depth=0..8`；广度优先分页，注意 `depth_limited` 和标题截断标志 |
+| 指定当前节点和提交证据 | `tasks`, `task_ids`（1–20 个）；不含追加历史数组 |
+| 节点历史记录 | `records`, `task_id`, `record_kind=attempts/invalidated_results/reassignment_history` |
+| 恢复上下文和分页请求 | `context`；读取 `task_context` 与 `session_work` |
+| 某类历史 | `history`, `history_kind=history/task_history/context_revisions/legacy_history` |
+| 完整目标实例 | 显式 `full`，或兼容 `include_history=true`（不能与其他 view 混用） |
+
+分页使用 `offset`、`limit`（默认 50，上限 200）及返回的 `pagination.has_more/next_offset`。后续页用第一页的 `state_revision` 填入 `expected_state_revision`；版本变化时从第一页重读。恢复先 overview → context → 必要 tree/tasks；验收查询指定节点的 submission/evidence，不能只看回执；结束前读完 context 的请求分页。不要在每次写入后机械地读取全量。
+
+`full` 保留完整目标 JSON 实例及其记录、归档和会话请求登记；其他并行实例只有精简当前快照，其历史须按各自实例 ID 另取。旧 SQLite 仍是有上限的只读摘录，不代表完整数据库。`get_ready_tasks` 仅返回分页的 `structuredContent.ready_tasks`，依赖摘要和证据按 ID 去重位于 `dependency_evidence[id]`，不附整树。
+
+新协议不会追溯缩小旧消息；旧 iframe 需重新打开以加载新版资源。测试中的 UTF-8 字节数不等于 token 数，也不能证明原生 Codex 消息展开耗时。
+
 ## 数据与运行要求
 
 - MCP 服务使用本机认证 HTTP，由同一操作系统用户的会话共享。当前任务保存在 `~/.cache/task-progress/sessions`；旧 `progress-v3.sqlite3` 中的记录作为独立只读历史摘录展示，不覆盖当前状态，不需要迁移，也不会随 GitHub 仓库上传。
-- 普通读取只返回当前任务和历史计数；展开历史或导出时按需读取历史正文。面板与报告分别显示执行结束、待复核和已解决，执行结束 100% 不代表交付已验收。
+- 普通写入仅返回身份与状态回执；默认查询为 overview，节点、记录、上下文和历史按需读取。面板通过 app-only `get_progress_view` 独立轮询、懒加载记录和导出；模型不主动调用该 App 工具。面板与报告分别显示执行结束、待复核和已解决，执行结束 100% 不代表交付已验收。
 - 需要 Python 3 和支持 Streamable HTTP、`http_headers_helper` 的 Codex 客户端；自动安装后台服务目前面向 macOS。`server.py` 保留 stdio 入口供兼容与隔离测试使用，默认插件连接不再启动它。
 - 导出的 `.xlsx` 与 `.html` 文件写入当前用户的 `~/Downloads/Task Progress Exports`。
 - Task Progress 记录与展示工作状态；Codex 的实际模型运行仍由用户自己的 Codex 账号和服务连接提供。

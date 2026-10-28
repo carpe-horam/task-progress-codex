@@ -43,6 +43,8 @@ The primary percentage counts resolved leaves accepted under the current protoco
 
 Parallel tasks appear as sibling roots after the foreground root in the same task network, in registration order, with their own children and acceptance records. This is a display relationship; instances and dependencies remain isolated. Unstarted requests stay in the queue, and the headline percentage covers only the foreground task.
 
+The initial view shows titles, status and elapsed time, plus a concise role, bound agent, model and reasoning-effort line. Task context starts collapsed, with any queued request count in its heading. Expanding a task first shows one result summary. Execution, binding, review and evidence remain in a separate, initially closed details section. Refreshes preserve the user's disclosure choices within the current task instance.
+
 ```mermaid
 flowchart LR
     A[Task goal] --> B[Decompose into subtasks]
@@ -131,7 +133,7 @@ After installing and enabling the plugin, Codex receives a reminder to plan befo
 
 > Break this issue into implementation and verification steps based on their dependencies, and keep the task progress up to date.
 
-You can also explicitly ask Codex to use Task Progress. The main session calls `render_progress` once; the full progress view appears inline in the conversation by default. Ordinary task updates change the data without repeatedly opening the panel. When the user switches the panel to a fullscreen tab, the inline card is temporarily hidden and returns after that tab closes. Cards from older task results collapse so they cannot show stale progress. The public MCP Apps context currently does not define a historical or archived conversation flag, so the plugin cannot reliably detect and proactively hide cards already saved in historical conversations. The main-session panel shows the current task network, execution status, completion percentage, summaries, and planning history. Use **Refresh** to sync the latest status, or **Export** to save the current task as an Excel workbook and HTML report. Subagents working in the main session's task tree update only their assigned nodes and do not open another main-session panel.
+You can also explicitly ask Codex to use Task Progress. Updates return identity/status receipts; the model explicitly queries progress when needed. When the user requests a panel or a display is needed, the main session calls `render_progress` once. It returns bootstrap identity only; the panel reads its own data and appears inline by default. Ordinary updates and queries do not automatically display a panel. When the user switches the panel to a fullscreen tab, the inline card is temporarily hidden and returns after that tab closes. Cards from older task results collapse so they cannot show stale progress. The public MCP Apps context currently does not define a historical or archived conversation flag, so the plugin cannot reliably detect and proactively hide cards already saved in historical conversations. The main-session panel shows the current task network, execution status, completion percentage, summaries, and planning history. Use **Refresh** to sync the latest status, or **Export** to save the current task as an Excel workbook and HTML report. Subagents working in the main session's task tree update only their assigned nodes and do not open another main-session panel.
 
 Default behavior:
 
@@ -141,10 +143,32 @@ Default behavior:
 - Use a new planning round when the task network needs to change. Retries keep a separate record for each attempt.
 - Do not guess an unknown model or reasoning effort; unknown values are shown as “Not recorded.” Caller-supplied values include a capture time and are labeled as unverified by the Codex host.
 
+## Selective queries
+
+Mutation receipts put identity fields such as `session_id`, `task_instance_id`, `root_id` and `epoch` at the top of `structuredContent`. A started attempt returns top-level `attempt_id`; `affected` holds the single target's status. Receipts contain no tree, summaries, evidence or request bodies. Use `request_task_instance_id` for the new instance after registering parallel work.
+
+`get_progress` returns view metadata in `structuredContent` and data in `structuredContent.progress`:
+
+| Need | View and parameters |
+|---|---|
+| Overview and counts (default) | `overview`; no complete context or nodes |
+| One or more subtree levels | `tree`, `task_id`, `depth=0..8`; breadth-first pagination; check `depth_limited` and title truncation |
+| Specific current nodes and submission evidence | `tasks`, `task_ids` (1–20); excludes append-only record arrays |
+| Node records | `records`, `task_id`, `record_kind=attempts/invalidated_results/reassignment_history` |
+| Recovery context and paginated requests | `context`; includes `task_context` and `session_work` |
+| One history category | `history`, `history_kind=history/task_history/context_revisions/legacy_history` |
+| Complete selected instance | Explicit `full`, or compatible `include_history=true` (cannot be combined with other views) |
+
+Pages use `offset`, `limit` (default 50, maximum 200) and returned `pagination.has_more/next_offset`. Pin the first page's `state_revision` as `expected_state_revision` on later pages; restart at page one if it changes. Resume with overview → context → needed tree/tasks. Query a node's submission/evidence before acceptance; a receipt is insufficient. Before concluding, read all context request pages. Do not read full after every write.
+
+Full preserves the selected JSON instance, records, archives and complete session request registry. Peers contain compact current snapshots; read each peer instance separately for its history. Legacy SQLite remains a bounded read-only excerpt, not a complete database. `get_ready_tasks` returns only paginated `structuredContent.ready_tasks`; dependency summaries/evidence are deduplicated by ID in `dependency_evidence[id]`, without a whole tree.
+
+Old messages do not shrink retroactively. Reopen old iframes to load the new resource. Measured UTF-8 bytes are neither tokens nor native Codex message-expansion timing.
+
 ## Data and requirements
 
 - The MCP server uses authenticated local HTTP shared by chats belonging to the same OS user. Current tasks remain under `~/.cache/task-progress/sessions`. Records in the retired `progress-v3.sqlite3` store appear as a separate read-only archive excerpt; they do not overwrite current state or require migration, and are not uploaded with this repository.
-- Normal reads return the current task and history counts. Expanding history or exporting loads the historical bodies on demand. Execution ended, awaiting review, and resolved remain separate: 100% execution ended does not mean delivery accepted.
+- Writes return identity/status receipts only. Reads default to overview; nodes, records, context and history are queried on demand. The panel independently uses app-only `get_progress_view` for polling, lazy records and exports; the model should not call that App tool. Execution ended, awaiting review, and resolved remain separate: 100% execution ended does not mean delivery accepted.
 - Continue or re-plan the same task for another phase of its goal. Initializing a new goal cannot archive running or pending-review work; replacing other unfinished work requires an explicit reason.
 - Python 3 and a Codex client supporting Streamable HTTP and `http_headers_helper` are required. Automatic service installation currently targets macOS. The `server.py` stdio entry point remains for compatibility and isolated testing; the default plugin connection no longer launches it.
 - Exported `.xlsx` and `.html` files are written to `~/Downloads/Task Progress Exports`.

@@ -58,9 +58,11 @@ class ProgressViewModeTests(unittest.TestCase):
             self.assertNotIn("_meta", read)
             self.assertNotIn("_meta", rendered)
             self.assertEqual(rendered["structuredContent"]["session_id"], session_id)
+            self.assertTrue(rendered["structuredContent"]["bootstrap"])
+            self.assertNotIn("progress", rendered["structuredContent"])
             self.assertEqual(
-                rendered["structuredContent"]["progress"]["task_title"],
-                "Display metadata fixture",
+                rendered["structuredContent"]["root_id"],
+                "root",
             )
         finally:
             server.clear_progress(session_id)

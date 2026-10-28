@@ -1,0 +1,27 @@
+{
+  "cwd": "/Users/machengling/.codex/worktrees/3e36/task-process",
+  "head": "e5bab2f76517415bb52952866e408b5f632e252e",
+  "scope": "Leaf summary before collapsed execution metadata; retain inline identity, full historical evidence, independent view reads and peer roots.",
+  "verification": "Actual isolated Python server + Chrome with simulated MCP Apps parent; no native Codex host acceptance, installation or Git delivery.",
+  "passed_suites": [
+    "test_request_queue_app",
+    "test_selective_view_app",
+    "test_record_loading_app"
+  ],
+  "hashes": {
+    "plugins/task-progress/app.html": "6968c46551a8344339eac9bca86ed499b1742b7142e10c6abf24300354c643b5",
+    "plugins/task-progress/server.py": "09d9205ad1aaf9e5d05813f213fbecd724b882c252ae7c90cbdc69c47b698f3a",
+    "tests/test_request_queue_app.cjs": "9942342f6faacdfd2cdff13d2bb6e558578be9410a6f9ea4534f0268b06f244f",
+    "tests/test_selective_view_app.cjs": "1d03cc4410585be7bd9630b27760e155453ed675919095723e0f14156548e3cd",
+    "tests/test_record_loading_app.cjs": "eaf5096fffa5c618ee7382ce93116d780ae87f931613fd9884de52e9e432759a",
+    "tests/browser_host.cjs": "4c456b948a7f643cecbf02188488c6d31966df3a651105dde3c24bde7eda784b",
+    "tests/snapshot_rpc.cjs": "c1a8297f8f6d5f097c8a33d413713a313d1a44827385c1873422c34067236270"
+  },
+  "screenshots": [
+    "queue/leaf-open-records-collapsed.png",
+    "queue/summary-expanded-fields-collapsed.png",
+    "queue/output-and-responsibility-on-demand.png",
+    "queue/focus-after-leaf-open.png"
+  ],
+  "source_note": "Only trailing whitespace in the queue test was removed after the successful run; app source is unchanged."
+}

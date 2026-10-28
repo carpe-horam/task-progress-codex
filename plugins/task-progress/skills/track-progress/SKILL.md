@@ -15,11 +15,35 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 
 主会话负责理解目标、拆分和编辑任务、调整计划及验收；Task Progress 持久保存这些决策与执行事实，并引导下一步，不能替主会话猜测用户意图。新消息先区分当前目标补充、简短问答、独立请求和明确停止/替换。独立请求不能覆盖仍在处理的主任务：使用 `route_request` 排队，或建立隔离的并行实例交给子智能体。具体流程见 [请求分流与压缩恢复](references/request-routing.md)。
 
-使用 `update_task_context` 保存目标、约束、验收条件、具体恢复位置和修改理由；原文只记录实际收到的内容，不从摘要补造。压缩恢复、等待返回或插入请求完成后，先读取 `get_progress` 中的 `task_context`、`session_work` 和待验收项，再继续当前主任务或显式激活队首。一个插入请求完成不表示整个会话工作完成；结束前检查剩余工作。用户明确停止或取消时服从该指令，不以队列要求强行继续。
+使用 `update_task_context` 保存目标、约束、验收条件、具体恢复位置和修改理由；原文只记录实际收到的内容，不从摘要补造。压缩恢复、等待返回或插入请求完成后，先查 `get_progress(view="overview")`，再用 `view="context"` 读取 `task_context` 和分页的 `session_work`，按需查指定节点，再继续当前主任务或显式激活队首。一个插入请求完成不表示整个会话工作完成；结束前读完请求分页，检查剩余工作。用户明确停止或取消时服从该指令，不以队列要求强行继续。
 
 “继续”“下一轮”“补做验证”通常仍属于原目标；阶段变化用追加任务或 `rebuild_task_network` 表达。旧版初始化兼容字段 `new_task_reason` 只能记录用户确实改变目标的事实，不能绕过重规划、未收束工作或队列。存在 running 或待复核提交时，先核对真实执行状态、收束尝试并完成复核，不能直接归档。
 
 插件 hooks 会在会话启动和用户提交新指令时提醒这套规则。hooks 需经 Codex 信任审核才会生效，并且宿主覆盖不完整；服务端规划校验才是插件内的硬约束。
+
+## 按需读取与小回执
+
+进度内容默认不附在写操作或展示入口的会话消息里；仅显式查询才返回对应数据。优先读最小范围，不在每次 mutation 后机械地查询整树或全量。
+
+- 写操作的身份与状态位于 `structuredContent` 顶层：保存 `session_id`、`task_instance_id`、`root_id`、`epoch`；启动返回的 `attempt_id` 也在顶层，单个目标状态在 `affected`。回执无 `progress`、节点摘要、证据或 `session_work`，不能从中读取完整结果。请求回执另含 `request_id`、`request_task_instance_id`、`request_status`；`route_request` 创建并行实例后使用 `request_task_instance_id`，不要误用当前主任务 ID。
+- `get_progress` 默认 `view="overview"`，只含计数、`history_summary`、`session_work_summary` 和至多 20 个 `split_review_due_ids`，没有完整上下文或节点。查询元数据在 `structuredContent` 顶层，数据在 `structuredContent.progress`。
+
+| 需要的数据 | 显式查询参数 |
+|---|---|
+| 一层或多层子树 | `view="tree", task_id="<起点>", depth=1`；深度 0–8，广度优先分页；注意 `depth_limited`、`child_count` 和 `title_truncated`，不可把简要节点当完整文本。 |
+| 指定当前节点、派发、submission、review 和证据 | `view="tasks", task_ids=["<节点 ID>"]`；每次 1–20 个，不附历史记录数组。 |
+| 指定节点的追加记录 | `view="records", task_id="<节点 ID>", record_kind="attempts"`；另可选 `invalidated_results`、`reassignment_history`。 |
+| 恢复上下文与会话请求 | `view="context"`；完整 `task_context` 与 `session_work`，其中 requests 分页。 |
+| 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`context_revisions`、`legacy_history`。 |
+| 确需完整目标实例 | `view="full"`；兼容 `include_history=true`，不能与其他 view 混用。 |
+
+分页的 `pagination` 包含 `offset`、`limit`、`total`、`has_more`、`next_offset`；默认 limit=50，可选 1–200。保留第一页的 `state_revision`，后续页传 `expected_state_revision`，版本变化报错时从第一页重读，不混合不同版本。线性步骤在 tasks/records 中使用字符串索引，如 `"0"`。
+
+`full` 不截断目标 JSON 实例的当前状态、执行记录和归档，包含完整会话请求登记；其他并行实例仅有精简当前快照，其历史须指定各自 `task_instance_id` 单独读取。旧 SQLite 仍受既定只读摘录上限约束，`full` 不表示完整旧数据库。恢复按 overview → context → 必要 tree/tasks；验收前用 tasks 查询目标 submission/evidence，必要时再读 records，不能仅凭小回执接受结果。overview 提示拆分复核时，用 tree/tasks 定位全部相关节点；IDs 的 has_more 不可忽略。
+
+`get_ready_tasks` 是显式分页读取，只返回 `structuredContent.ready_tasks` 与分页元数据，不带整树或 `session_work`。`dependencies` 保留前驱状态、策略和 `inherited_from`；完整依赖摘要/证据按前驱 ID 去重放在 `structuredContent.dependency_evidence[id]`，派发时一并读取和传递。
+
+只有用户明确要看面板或确需展示时调用一次 `render_progress`；它只返回 `bootstrap` 身份，面板自行调用 app-only `get_progress_view`。模型不要主动调用该 App 工具，普通读取和更新也不自动展示。旧消息不会追溯缩小，旧 iframe 需重新打开才能加载新版资源；UTF-8 字节测量不能当作 token 数或原生宿主消息展开耗时。
 
 ## 何时使用与模式选择
 
@@ -35,7 +59,7 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 
 - 任务有子任务分解、依赖、并行、委派或重规划时，继续使用 HTN 任务网络表达结构与状态。
 - 仅当用户明确要求线性步骤，或恢复已有旧版线性任务时，使用 `init_progress` → `update_step`；恢复时先 `get_progress`，再按原数据模式继续，不要求把旧状态迁移成网络。需要按步骤显示执行者、模型和思考强度时，在启动步骤的 `update_step` 调用中附上 `assignment`。
-- **10 分钟拆分复核点：**任一仍在执行的 HTN 叶节点或线性步骤超过 **10 分钟**时，主会话必须明确评估“是否应拆成更细的任务展示”，不能只更新耗时而跳过评估。检查其中是否已有可独立执行、并行推进、存在依赖边界或可单独验收的阶段：有则把未完成工作拆成子任务并记录依赖；若当前仍是线性步骤且任务已适合分层展示，则按线性转 HTN 的规则重规划。评估后若没有自然任务边界，或细分不会改善执行与进度可见性，就保留原粒度，并在进度摘要中记下“拆分复核：无需拆分—原因”。`get_progress` / `update_task` 返回 `split_review_due` 提醒时，必须在继续常规工作或再次等待前处理：拆出可独立阶段，或记录具体的不拆理由。长命令/Dagu/CI 正在运行且不能安全中断时，不要为了拆分而终止它；保留原 attempt，同时拆出不会干扰它的独立阶段，或说明当前没有安全边界。**超过 10 分钟是强制评估点，不是自动拆分条件**；任务范围后来变复杂时，即使尚未达到 10 分钟也应重新评估。
+- **10 分钟拆分复核点：**任一仍在执行的 HTN 叶节点或线性步骤超过 **10 分钟**时，主会话必须明确评估“是否应拆成更细的任务展示”，不能只更新耗时而跳过评估。检查其中是否已有可独立执行、并行推进、存在依赖边界或可单独验收的阶段：有则把未完成工作拆成子任务并记录依赖；若当前仍是线性步骤且任务已适合分层展示，则按线性转 HTN 的规则重规划。评估后若没有自然任务边界，或细分不会改善执行与进度可见性，就保留原粒度，并在进度摘要中记下“拆分复核：无需拆分—原因”。overview 返回 `split_review_due_ids` 或写回执的 `split_review_due_count` 提示到期时，按需读取 tree/tasks 核对范围后，必须在继续常规工作或再次等待前处理：拆出可独立阶段，或记录具体的不拆理由。长命令/Dagu/CI 正在运行且不能安全中断时，不要为了拆分而终止它；保留原 attempt，同时拆出不会干扰它的独立阶段，或说明当前没有安全边界。**超过 10 分钟是强制评估点，不是自动拆分条件**；任务范围后来变复杂时，即使尚未达到 10 分钟也应重新评估。
 - 线性任务转 HTN 时，不要在同一任务实例混用 `update_step` 与 `update_task`。在同一 `session_id` 下初始化 HTN 网络会把旧线性任务归档为历史；新网络沿用原目标，摘要已完成工作并保留其证据，只将未完成工作分解为新节点，避免把已完成部分伪装成待重做。若不值得转换，就继续原线性任务。
 - 每个 Codex 会话复用一个 `session_id`。首次初始化可让工具生成并返回 ID；保存它，之后本会话的新任务必须显式传入同一个 ID，不为每个任务生成新 ID。插件按 `session_id` 隔离历史，换成新 ID 就会新建另一套任务记录，旧任务不会出现在新卡片的历史中。
 - 恢复当前任务时调用 `get_progress({"session_id":"<本会话 ID>"})`，根据返回的数据模式继续执行，并保存当前 `task_instance_id`；不要调用初始化工具来恢复。
@@ -58,7 +82,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 - **状态变化时立即更新。**开始一个工作块、实际派发子智能体、切换到另一叶任务、收到阶段结果、启动/完成较长命令或门禁、遇到阻塞、改变计划时，及时更新对应节点的状态与摘要。不要等到整项工作结束才一次性补记，也不要只在普通消息里汇报而不更新任务树。
 - **切换主会话焦点时收束旧尝试。**主会话是单一执行者；开始处理另一个 `main_session` 叶任务前，先判断当前运行中的主会话节点是否仍有真实工作在继续。若只是暂时搁置、准备稍后回来，或主会话已经转去推进兄弟任务，就结束当前 attempt 并标记 `finished/open`，摘要写清已完成部分、剩余工作和恢复条件；恢复时用 `retry=true` 创建新 attempt。只有命令、Dagu/CI 或其他可独立继续的实际工作仍在运行时，才保留 `running`，并在摘要中记录运行 ID、等待结果和下一检查点。不能仅因计划稍后续做，就让主会话节点一直显示 `running`。子智能体的确切执行仍在后台时可保持其节点运行，并注明执行者和等待对象。
 - **等待期间如实留痕。**Dagu、CI、构建或子智能体仍在运行时，节点保持 `running`；摘要记录当前运行 ID、已完成阶段和正在等待的结果。收到有意义的新阶段或终态后再更新，等待中不要反复写没有变化的摘要，也不能把“已排队/仍运行”记成完成。
-- **继续执行前重新锚定。**长时间等待返回、上下文压缩/恢复、用户补充要求或插入请求结束后，先 `get_progress` 读取当前主任务、上下文和 `session_work`，再继续或调整计划。不要因此另建重复根任务；独立新目标排队或建立并行实例，明确替换则先按用户要求收束旧工作。
+- **继续执行前重新锚定。**长时间等待返回、上下文压缩/恢复、用户补充要求或插入请求结束后，先查 overview，再用 context 读取上下文与分页的 `session_work`，按需读取 tree/tasks，再继续或调整计划。不要因此另建重复根任务；独立新目标排队或建立并行实例，明确替换则先按用户要求收束旧工作。
 - **执行提交与接受结果分开。**子智能体只更新获派节点并提交结果；`finished` 上报进入 `awaiting_review`，主会话复核证据后另用 `review_task` 接受或退回。主会话负责派发、协调、验收及根节点。未解决、失败或被阻塞时如实保留 `open`/`failed`/`cancelled`。
 - **按真实执行回执收束。**子智能体返回终态后核对获派范围并提交其结果；主会话后续接手的独立工作另建明确分工的节点，不能把原子智能体的 running 摘要改成主会话正在执行的其他工作。缺少回执时保留未知并查询，不根据经过时长自动判定完成或取消。遇到待复核保护错误，读取 `review_status` 后调用 `review_task`，不要重复提交 finished 或另建无依赖的同范围节点绕过门禁。
 - **汇报简洁但账本完整。**对用户只在关键变化时说明进展，避免重复播报；任务卡片则应保留足以恢复工作的当前动作、阻塞、验证状态和证据路径。
@@ -109,7 +133,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 ### 1. 初始化与分解
 
-首次建立任务，或原任务已收尾且没有待处理独立请求时，调用 `init_task_network`；本会话已有 ID 则传入 `session_id`，同时传 `task_title`，保存响应的 `session_id`、`task_instance_id`、`epoch` 和 `root_id`。只附加当前上下文明确提供的 `main_session` 字段；未知字段省略。处理中收到独立请求改用 `route_request`，队列项用 `activate_request`；两者都复用本会话 ID。用实际返回的根 ID 分解；以下以首轮 `root` 为例：
+首次建立任务，或原任务已收尾且没有待处理独立请求时，调用 `init_task_network`；本会话已有 ID 则传入 `session_id`，同时传 `task_title`，保存响应 `structuredContent` 顶层的 `session_id`、`task_instance_id`、`epoch` 和 `root_id`。只附加当前上下文明确提供的 `main_session` 字段；未知字段省略。处理中收到独立请求改用 `route_request`，队列项用 `activate_request`；两者都复用本会话 ID。用实际返回的根 ID 分解；以下以首轮 `root` 为例：
 
 <!-- delegation-example:plan -->
 ```json
@@ -139,7 +163,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 实际调用 `collaboration.spawn_agent` 前，先将任务挂到父节点、分配 `subagent`，再调用 `get_ready_tasks`；只启动 ready 叶节点。复杂工作即使只能串行仍委派，同一依赖链可顺序交给同一 agent；共享文件明确 owner 并串行交接。Task Progress 不会自动创建子智能体。
 
-**顺序是 start → spawn → bind。**派发前展示协作表格，先用 `update_task` 开始 attempt，保存返回的 `attempt_id`，再调用真实协作工具。新 subagent attempt 要有非空 `tool_identifier`、完整 `dispatch_text`、模型及思考强度。agent ID 尚未返回时省略 `agent_name`，不得填虚构占位 ID；不可变 assignment 与可补充的 dispatch 绑定分开保存。
+**顺序是 start → spawn → bind。**派发前展示协作表格，先用 `update_task` 开始 attempt，保存回执 `structuredContent.attempt_id`，再调用真实协作工具。新 subagent attempt 要有非空 `tool_identifier`、完整 `dispatch_text`、模型及思考强度。agent ID 尚未返回时省略 `agent_name`，不得填虚构占位 ID；不可变 assignment 与可补充的 dispatch 绑定分开保存。
 
 调用 `update_task`（启动示例）：
 
@@ -215,7 +239,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 此调用保存原始 `submission`，节点为 `execution_status=finished`、`outcome=null`、`review_status=pending`，显示 `awaiting_review`。执行结束计数可以增加，已解决计数和依赖不得提前放行。不能用通用 `update_task` 覆盖待验收提交、直接接受或跳过 review 重试。
 
-主会话对照范围、文件、验证及风险复核后调用 `review_task`：
+主会话先用 `get_progress(view="tasks", task_ids=["inspect"])` 读取当前 submission、attempt 和 evidence，核对获派范围、文件、验证及风险；需要旧尝试时再分页读取 records。小回执只证明状态写入，不能替代证据复核。完成后调用 `review_task`：
 
 <!-- delegation-example:review -->
 ```json
@@ -233,7 +257,7 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 `decision=accept` 采用提交的原始 outcome，不能把 open 升级成 resolved；`reject` 保存退回理由和证据，节点为 `finished/open`，将具体修改反馈给原 agent，再依计划重试或重规划。两种决策都须非空 summary/evidence，绑定当前待复核 attempt；旧 attempt 或冲突的重复复核被拒绝。review 另存，不能覆盖执行配置、submission 或派发回执。
 
-继续执行时对照 `next_actions` 和实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
+继续执行时按需读取 context、tree/tasks 或 ready 列表核对实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
 
 `pending` 是新节点初始状态，`update_task` 不接受 pending。叶任务必须先启动再完成；只有 `finished` 须传 `outcome=resolved|open`。主会话自执行叶任务可直接结束，但要保留自执行原因。失败/取消也记录 summary/evidence。结果复核后再次 `get_ready_tasks`，将未解决前驱的证据传给能够处理它的后继。
 
@@ -257,11 +281,11 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 {"session_id":"<本会话 ID>","task_title":"简短任务标题","legacy_linear":true,"steps":["步骤一","步骤二","步骤三"]}
 ```
 
-将以上对象传给 `init_progress`，保存响应的 `session_id` 和 `task_instance_id`。首次初始化尚无会话 ID 时可省略 `session_id`；已有 ID 时必须复用。重复调用会归档当前任务并创建新任务；恢复旧版清单只调用 `get_progress`。
+将以上对象传给 `init_progress`，保存响应 `structuredContent` 顶层的 `session_id` 和 `task_instance_id`。首次初始化尚无会话 ID 时可省略 `session_id`；已有 ID 时必须复用。重复调用会归档当前任务并创建新任务；恢复旧版清单只调用 `get_progress`。
 
 开始主会话步骤时至少传 `assignment: {"execution_mode":"main_session"}`；只有当前上下文明确提供的模型、思维强度、thread ID 和 turn ID 才附加，不能从初始化快照或旧任务复制。子智能体步骤将 `execution_mode` 设为 `subagent`，并记录该次派发明确指定的 `agent_name`、`fork_turns`、`model` 和 `reasoning_effort`。未知的主会话元数据不阻止步骤启动。
 
-开始步骤后，保存响应中该步骤的 `attempt_id`；运行中的备注更新、完成、重置和重开都须传回当前 ID。完成步骤：`update_step({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","step_index":0,"attempt_id":"<当前尝试 ID>","status":"completed","note":"验收结果"})`；执行元数据会保留，无需重复传入。
+开始步骤后，保存响应 `structuredContent` 顶层的 `attempt_id`（步骤索引为 `step_index`）；运行中的备注更新、完成、重置和重开都须传回当前 ID。完成步骤：`update_step({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","step_index":0,"attempt_id":"<当前尝试 ID>","status":"completed","note":"验收结果"})`；执行元数据会保留，无需重复传入。
 
 重置为 `pending` 会结束当前尝试并保留历史；下一次启动返回新的 `attempt_id`，旧 ID 不得继续使用。重开已完成步骤时先传其当前 ID，再保存启动响应中的新 ID。旧存储中尚无 ID 的既有尝试允许兼容收尾或重置，之后的新尝试严格校验 ID。
 
@@ -271,19 +295,19 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 
 ## 展示、恢复与清理
 
-`init_task_network` 与 `init_progress` 只创建或更新任务数据，不触发展示。主会话首次建立多步骤任务后，紧接着调用一次 `render_progress`；完整面板默认显示在会话内。同一会话的新任务复用原会话 ID；已打开的视图通过轮询读取最新任务。只有用户将面板切换到 fullscreen 标签页时，会话内卡片才隐藏；标签页关闭后卡片恢复。普通状态更新、读取和后台轮询不得调用展示入口。恢复任务时按需要先 `get_progress` 读取状态。子智能体若在主会话任务树中执行，只更新获派节点，不调用展示入口，不另开主会话面板。纯文本客户端没有交互面板时，继续使用工具返回的文本摘要。不要手工拼接假进度，或把任务卡片描述成日志面板。
+`init_task_network` 与 `init_progress` 只返回身份与状态小回执，不触发展示。只有用户明确要看面板或需要展示时，主会话调用一次 `render_progress`；面板通过 app-only 读取独立加载完整视图，默认显示在会话内。同一会话的新任务复用原会话 ID；已打开的视图通过轮询读取最新任务。只有用户将面板切换到 fullscreen 标签页时，会话内卡片才隐藏；标签页关闭后卡片恢复。普通状态更新、读取和后台轮询不得调用展示入口。恢复任务时按需要先 `get_progress` 读取状态。子智能体若在主会话任务树中执行，只更新获派节点，不调用展示入口，不另开主会话面板。纯文本客户端没有交互面板时，按需显式查询并简洁汇报。不要手工拼接假进度，或把任务卡片描述成日志面板。
 
 - `session_id` 是 Codex 会话的数据边界；所有读取、更新、渲染、重规划和清理操作显式传入它。本会话内多个任务复用同一个 ID，以 `task_instance_id` 区分任务实例。
 - 每个 Codex 会话使用自己生成并保存的 ID，不能把其他会话的 ID 复制为本会话身份。用户授权的跨会话审查可以读取明确关联的 ID，但不转移任务所有权。其他会话的任务不得阻止本会话初始化。
-- 恢复先调用 `get_progress`，读取当前任务、`task_context` 和 `session_work`；继续原任务或按队列显式激活，不用初始化恢复。若已知 ID 的本会话数据不存在，说明实际情况，确需开始新任务时仍使用该会话 ID 初始化；首次没有已知 ID 时让初始化工具生成并保存。
+- 恢复先调用 overview，再用 context 读取 `task_context` 和分页的 `session_work`，按需读取 tree/tasks；继续原任务或按队列显式激活，不用初始化恢复。若已知 ID 的本会话数据不存在，说明实际情况，确需开始新任务时仍使用该会话 ID 初始化；首次没有已知 ID 时让初始化工具生成并保存。
 - `init_task_network` 的同一次初始化重试可复用稳定的 `request_id`；首次省略 `session_id` 时使用全局唯一键（建议 UUID），收到会话 ID 后可带该 ID 重试。同一任务重规划后重试返回当前计划；绑定任务已归档或清除时旧键会被拒绝，不能用它恢复旧任务或覆盖当前任务。清理任务内容仍保留请求哈希和身份墓碑，以防迟到请求重建已清除任务。
 - fullscreen 标签页每 10 秒续租；关闭时释放登记，宿主未发 teardown 时租约 35 秒后过期。会话内卡片在标签页打开期间隐藏，关闭后恢复；普通更新只改数据，不应为了刷新卡片重复调用 `render_progress`。不要用清理进度来关闭或重开面板。
 - 任务数据按插件 `session_id` 隔离。当前公开 MCP Apps 上下文未定义“当前会话是历史/归档会话”的状态标志，因此不要声称插件能主动隐藏已经保存的历史会话卡片；若宿主后续提供该标志，应再增加历史会话抑制。
 - `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。
-- `get_progress` 默认返回当前状态及 `history_summary`，`history_included=false` 表示历史正文尚未加载，不表示没有历史。查阅历史或生成完整导出时使用 `include_history=true`；普通更新与轮询使用精简响应。
+- `get_progress` 默认只返回 overview；`history_included=false` 表示未加载历史正文，不表示没有历史。查询历史优先分页 history，需要完整目标实例时才用 full；面板轮询和导出由 App 独立读取，模型无需代其加载。
 - 旧 SQLite v3 记录通过独立只读来源展示，不能当作当前 JSON 任务的验收结果。两种存储中的标题或状态冲突须保留来源并核对证据；仅存在旧库记录时也不可误报“从未建立任务”。兼容读取不迁移数据、不补造 review，也不授权清理旧库。
 - 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`bind_task_agent`、`review_task`、`reassign_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度；清空后首次及后续新任务的写操作都必须传当前 `task_instance_id`，以拒绝清空前不带实例 ID 的迟到请求。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。
-- 完成后读取并确认最终状态及会话剩余工作，在最终回复说明结果及未解决项；有队列则继续显式激活，除非用户要求停止。任务完成、开始新任务或关闭视图都不触发清理；未归档 Codex 会话的当前任务、历史、计划与证据必须保留。所有已登记工作收尾后开始新目标，才用同一 `session_id` 初始化。
+- 完成后用 tasks 核对根结果，用 context 读完所有请求分页并确认会话剩余工作，在最终回复说明结果及未解决项；有队列则继续显式激活，除非用户要求停止。任务完成、开始新任务或关闭视图都不触发清理；未归档 Codex 会话的当前任务、历史、计划与证据必须保留。所有已登记工作收尾后开始新目标，才用同一 `session_id` 初始化。
 - `clear_progress` 仅用于已归档 Codex 会话的全量数据清理。当前插件没有 Codex 归档事件或归档状态与插件 `session_id` 的可信映射，不能自行确认某个会话已归档，也不会自动响应归档。仅有插件 ID、任务完成状态、`task_history` 或用户提出删除请求，都不构成已归档依据。用户明确要求清理时，按 [cleanup-task-progress-history](../cleanup-task-progress-history/SKILL.md) 核对用户或宿主提供的明确归档依据、目标插件 ID、保留期限与删除范围；归档状态或对应关系无法确认就不调用清理工具。
 - `clear_progress({"session_id":"<已确认归档会话的插件 ID>"})` 会清除该 ID 下的当前任务与 `task_history`，不支持仅删除某个历史任务。不要迁移或删除旧版全局状态，也不要扩大到其他未明确指定且未确认归档的会话。
 

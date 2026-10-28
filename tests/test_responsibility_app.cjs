@@ -21,6 +21,7 @@ async function checkApp(r,expected) {
   // IDs are displayed as text; select the task's own detail rather than an ancestor group.
   const detail=frame.locator('#steps .step > details').filter({has:frame.locator(':scope > summary .step-id').filter({hasText:/^worker$/})});
   await detail.locator(':scope > summary').click();
+  await detail.locator(':scope > .task-details > summary').click();
   const text=await detail.textContent();
   if(node(r).review_status==='pending') {
     const rootResponsibility=frame.locator('#steps > .step > details > .task-details > .responsibility-record');
@@ -82,7 +83,7 @@ async function checkKnownRoleLegacy(synthesis) {
     record.attempts=[{attempt:1,attempt_id:record.attempt_id,assignment,kind,execution_status:'finished',outcome:'resolved',summary:record.summary,evidence:record.evidence}];
   }
   fs.writeFileSync(file,JSON.stringify(legacy)); const original=fs.readFileSync(file,'utf8');
-  r=await host.rpc('get_progress',{session_id:r.structuredContent.session_id});
+  r=await host.rpc('get_progress_view',{session_id:r.structuredContent.session_id,include_history:true});
   assert.equal(fs.readFileSync(file,'utf8'),original);
   assert(r.structuredContent.progress.nodes.every(record=>record.review_status==='legacy_unrecorded'));
   const page=await host.page(),frame=await host.mount(page,'main',r);
@@ -217,7 +218,7 @@ async function main() {
   for(const key of ['planned_assignment','responsibility_version','reassignment_history','dispatch','submission','review','review_status']) delete legacyNode[key];
   Object.assign(legacyNode,{assignment:{},execution_status:'finished',outcome:'resolved',summary:'OLD_EXECUTION_ONLY',evidence:['OLD_EXECUTION_EVIDENCE'],attempts:[],attempt:0,attempt_id:null});
   fs.writeFileSync(legacyPath,JSON.stringify(legacy)); const originalLegacy=fs.readFileSync(legacyPath,'utf8');
-  r=await host.rpc('get_progress',{session_id:r.structuredContent.session_id});
+  r=await host.rpc('get_progress_view',{session_id:r.structuredContent.session_id,include_history:true});
   assert.equal(fs.readFileSync(legacyPath,'utf8'),originalLegacy,'legacy read never backfills acceptance');
   const legacyPage=await host.page(),legacyFrame=await host.mount(legacyPage,'main',r);
   assert((await legacyFrame.locator('#steps').textContent()).includes('旧执行记录不代表主会话已接受'));

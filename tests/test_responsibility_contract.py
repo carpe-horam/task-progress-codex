@@ -37,10 +37,10 @@ class ResponsibilityContractTests(unittest.TestCase):
         self.instance = result["progress"]["task_instance_id"]
 
     def progress(self):
-        return server.get_progress(self.sid)["structuredContent"]["progress"]
+        return server.get_progress_view(self.sid)["structuredContent"]["progress"]
 
     def node(self, task_id):
-        return next(node for node in self.progress()["nodes"] if node["id"] == task_id)
+        return next(node for node in server.get_progress_view(self.sid, include_history=True)["structuredContent"]["progress"]["nodes"] if node["id"] == task_id)
 
     def update(self, task_id, status, **kwargs):
         return server.update_task(self.sid, task_id, status, task_instance_id=self.instance, **kwargs)

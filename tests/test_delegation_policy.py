@@ -23,20 +23,23 @@ class DelegationPolicyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="task-progress-policy-")
         self.old_dir = server.SESSION_DIR
+        self.old_legacy = server.LEGACY_DB_PATH
+        server.LEGACY_DB_PATH = Path(self.temp.name) / "absent.sqlite3"
         server.SESSION_DIR = Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(setattr, server, "SESSION_DIR", self.old_dir)
+        self.addCleanup(setattr, server, "LEGACY_DB_PATH", self.old_legacy)
         self.examples = {
             name: json.loads(body) for name, body in re.findall(
                 r"<!-- delegation-example:(\w+) -->\s*```json\s*(.*?)\s*```",
                 SKILL.read_text(), re.S,
             )
         }
-        initialized = server.init_task_network("Exercise published delegation workflow")
+        initialized = self.rpc("init_task_network", task_title="Exercise published delegation workflow")
         self.sid = initialized["structuredContent"]["session_id"]
-        self.instance = initialized["structuredContent"]["progress"]["task_instance_id"]
+        self.instance = initialized["structuredContent"]["task_instance_id"]
         self.attempt = None
-        server.decompose_task(**self.example("plan"))
+        self.rpc("decompose_task", **self.example("plan"))
 
     def example(self, name):
         replacements = {
@@ -56,14 +59,29 @@ class DelegationPolicyTests(unittest.TestCase):
             return replacements.get(value, value) if isinstance(value, str) else value
         return replace(self.examples[name])
 
+    def rpc(self, name, **args):
+        response = json.loads(server.handle({"jsonrpc": "2.0", "id": 1,
+            "method": "tools/call", "params": {"name": name, "arguments": args}}))
+        self.assertNotIn("error", response)
+        result = response["result"]
+        if result.get("isError"):
+            raise server.ProgressError(result["content"][0]["text"])
+        if name in server._MUTATION_TOOLS:
+            receipt = result["structuredContent"]
+            self.assertTrue(receipt["receipt"])
+            for key in ("progress", "session_work", "nodes", "summary", "evidence"):
+                self.assertNotIn(key, receipt)
+        return result
+
     def node(self, task_id):
-        progress = server.get_progress(self.sid)["structuredContent"]["progress"]
-        return next(node for node in progress["nodes"] if node["id"] == task_id)
+        result = self.rpc("get_progress", session_id=self.sid, task_instance_id=self.instance,
+                          view="tasks", task_ids=[task_id])
+        return result["structuredContent"]["progress"]["nodes"][0]
 
     def start_and_bind(self):
-        server.update_task(**self.example("start"))
-        self.attempt = self.node("inspect")["attempt_id"]
-        server.bind_task_agent(**self.example("bind"))
+        started = self.rpc("update_task", **self.example("start"))
+        self.attempt = started["structuredContent"]["attempt_id"]
+        self.rpc("bind_task_agent", **self.example("bind"))
 
     def test_complex_sequential_example_keeps_implementation_and_validation_delegated(self):
         for task_id in ("inspect", "fix", "verify"):
@@ -77,23 +95,23 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertEqual(accept["execution_mode"], "main_session")
         self.assertTrue(accept["self_execution_reason"])
         with self.assertRaises(server.ProgressError):
-            server.update_task(self.sid, "inspect", "running", task_instance_id=self.instance,
+            self.rpc("update_task", session_id=self.sid, task_id="inspect", execution_status="running", task_instance_id=self.instance,
                                assignment={"execution_mode": "main_session",
                                            "self_execution_reason": "Has dependencies"})
 
     def test_published_start_bind_submit_review_sequence_controls_dependency(self):
-        server.update_task(**self.example("start"))
-        self.attempt = self.node("inspect")["attempt_id"]
+        started = self.rpc("update_task", **self.example("start"))
+        self.attempt = started["structuredContent"]["attempt_id"]
         self.assertEqual(self.node("inspect")["dispatch"]["status"], "pending")
         started_assignment = self.node("inspect")["assignment"]
         with self.assertRaises(server.ProgressError):
-            server.update_task(**self.example("submit"))
-        server.bind_task_agent(**self.example("bind"))
+            self.rpc("update_task", **self.example("submit"))
+        self.rpc("bind_task_agent", **self.example("bind"))
         self.assertEqual(self.node("inspect")["dispatch"]["agent_name"],
                          "agent-returned-by-test-spawn")
         self.assertEqual(self.node("inspect")["assignment"], started_assignment)
         self.assertNotIn("agent_name", started_assignment)
-        server.update_task(**self.example("submit"))
+        self.rpc("update_task", **self.example("submit"))
         pending = self.node("inspect")
         self.assertEqual(pending["review_status"], "pending")
         self.assertIsNone(pending["outcome"])
@@ -101,18 +119,18 @@ class DelegationPolicyTests(unittest.TestCase):
         with self.assertRaises(server.ProgressError):
             fix_start = self.example("start")
             fix_start["task_id"] = "fix"
-            server.update_task(**fix_start)
-        server.review_task(**self.example("review"))
+            self.rpc("update_task", **fix_start)
+        self.rpc("review_task", **self.example("review"))
         self.assertEqual(self.node("inspect")["review_status"], "accepted")
-        server.update_task(**fix_start)
+        self.rpc("update_task", **fix_start)
         self.assertEqual(self.node("fix")["execution_status"], "running")
 
     def test_main_review_cannot_upgrade_an_open_submission(self):
         self.start_and_bind()
         submission = self.example("submit")
         submission["outcome"] = "open"
-        server.update_task(**submission)
-        server.review_task(**self.example("review"))
+        self.rpc("update_task", **submission)
+        self.rpc("review_task", **self.example("review"))
         accepted = self.node("inspect")
         self.assertEqual(accepted["outcome"], "open")
         self.assertEqual(accepted["review_status"], "accepted")
@@ -122,11 +140,15 @@ class DelegationPolicyTests(unittest.TestCase):
         before = self.node("assets")
         self.assertEqual(before["planned_assignment"]["execution_mode"], "subagent")
         reassignment = self.example("reassign")
-        server.reassign_task(**reassignment)
+        self.rpc("reassign_task", **reassignment)
         assets = self.node("assets")
         self.assertEqual(assets["planned_assignment"]["execution_mode"], "main_session")
-        self.assertEqual(assets["reassignment_history"][-1]["reason"], reassignment["reason"])
-        server.update_task(self.sid, "assets", "running", task_instance_id=self.instance,
+        self.assertNotIn("reassignment_history", assets)
+        records = self.rpc("get_progress", session_id=self.sid, task_instance_id=self.instance,
+                           view="records", task_id="assets", record_kind="reassignment_history")
+        self.assertEqual(records["structuredContent"]["progress"]["records"][-1]["reason"],
+                         reassignment["reason"])
+        self.rpc("update_task", session_id=self.sid, task_id="assets", execution_status="running", task_instance_id=self.instance,
                            assignment=reassignment["assignment"])
         self.assertEqual(self.node("assets")["execution_status"], "running")
 

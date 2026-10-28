@@ -77,16 +77,41 @@ def client(executable, server_name, overrides, index):
             entries = [entry for entry in status.get("data", []) if entry.get("name") == server_name]
         assert len(entries) == 1, {"requested_server": server_name, "matching_entries": len(entries)}
         entry = entries[0]
+        # app-server can report the matching server before asynchronous MCP
+        # startup has populated tools. Read status only; never create a chat.
+        startup_deadline = time.monotonic() + 15
+        retry = 0
+        while not entry.get("tools") and not entry.get("error") and time.monotonic() < startup_deadline:
+            time.sleep(0.2)
+            retry += 1
+            status = rpc(100 + retry, "mcpServerStatus/list", {"serverName": server_name, "detail": "full"})
+            matches = [item for item in status.get("data", []) if item.get("name") == server_name]
+            if matches:
+                entry = matches[0]
         tools = entry.get("tools", {})
         names = list(tools) if isinstance(tools, dict) else [tool["name"] for tool in tools]
-        required = {"get_progress", "reassign_task", "bind_task_agent", "review_task"}
+        required = {"get_progress", "get_progress_view", "reassign_task", "bind_task_agent", "review_task"}
         missing = [name for name in required if not any(discovered.endswith(name) for discovered in names)]
         assert not missing, {"server": entry.get("name"), "tool_count": len(names), "missing": missing, "error": entry.get("error")}
+        discovered_tools = list(tools.values()) if isinstance(tools, dict) else tools
+        specs = {tool.get("name", "").split("__")[-1]: tool for tool in discovered_tools}
+        query = specs["get_progress"]
+        properties = query.get("inputSchema", query.get("input_schema", {}))["properties"]
+        assert properties["view"]["default"] == "overview"
+        assert set(properties["view"]["enum"]) == {"overview", "tree", "tasks", "records", "context", "history", "full"}
+        assert "expected_state_revision" in properties
+        app_reader = specs["get_progress_view"]
+        metadata = app_reader.get("_meta", app_reader.get("meta", {}))
+        assert metadata["ui"]["visibility"] == ["app"], "App snapshot reader must not be model-visible"
+        render = specs["render_progress"]
+        assert "bootstrap" in render.get("description", "")
+        for mutation in ("init_task_network", "update_task", "route_request"):
+            assert "回执" in specs[mutation].get("description", "")
         resource = rpc(3, "mcpServer/resource/read", {"server": server_name, "uri": "ui://task-progress/progress-inspector/v3"})
         # App-server returns the MCP resource response directly or in contents.
         assert "__TASK_PROGRESS_VERSION__" not in json.dumps(resource)
         assert "version: '0.2.0'" in json.dumps(resource), list(resource)
-        return {"client": index, "server": entry.get("name"), "tool_count": len(names), "resource_version": "0.2.0"}
+        return {"client": index, "server": entry.get("name"), "tool_count": len(names), "resource_version": "0.2.0", "query_views": properties["view"]["enum"], "app_reader_visibility": ["app"], "creates_chat": False}
     finally:
         stop(process)
         process.stdin.close(); process.stdout.close()

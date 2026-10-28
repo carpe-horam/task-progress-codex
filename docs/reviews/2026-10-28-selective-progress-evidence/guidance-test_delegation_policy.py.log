@@ -1,0 +1,9 @@
+test_complex_sequential_example_keeps_implementation_and_validation_delegated (test_delegation_policy.DelegationPolicyTests.test_complex_sequential_example_keeps_implementation_and_validation_delegated) ... ok
+test_main_review_cannot_upgrade_an_open_submission (test_delegation_policy.DelegationPolicyTests.test_main_review_cannot_upgrade_an_open_submission) ... ok
+test_published_reassignment_is_explicit_and_preserves_history (test_delegation_policy.DelegationPolicyTests.test_published_reassignment_is_explicit_and_preserves_history) ... ok
+test_published_start_bind_submit_review_sequence_controls_dependency (test_delegation_policy.DelegationPolicyTests.test_published_start_bind_submit_review_sequence_controls_dependency) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.027s
+
+OK

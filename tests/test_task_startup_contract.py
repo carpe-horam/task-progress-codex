@@ -56,7 +56,7 @@ class TaskStartupContractTests(unittest.TestCase):
             {"id": "one", "title": "One", "assignment": {"execution_mode": "main_session"}},
             {"id": "two", "title": "Two", "assignment": {"execution_mode": "main_session"}},
         ], task_instance_id=task_instance_id)
-        progress = server.get_progress(sid)["structuredContent"]["progress"]
+        progress = server.get_progress_view(sid)["structuredContent"]["progress"]
         self.assertEqual(progress["planning_status"], "planned")
         self.assertEqual(progress["ready_tasks"], ["one", "two"])
 
