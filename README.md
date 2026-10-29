@@ -29,7 +29,7 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-以下说明对应包含自动启动入口的下一发布版本；已发布的 `v0.2.1` 仍需手动安装服务。源码合入默认分支后可使用以上命令获取更新。安装后**重启 Codex**。插件首次连接时自动安装或更新本机共享后台服务；每个连接仅保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。已有旧版及平台前提见[安装与升级文档](docs/installation.md)。
+Task Progress 0.2.1 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
 
 ## 开始使用
 
