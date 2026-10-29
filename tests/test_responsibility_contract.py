@@ -292,7 +292,9 @@ class ResponsibilityContractTests(unittest.TestCase):
         self.finish_main()
         self.reject_unchanged(lambda: self.update("root", "finished", outcome="resolved", assignment=MAIN, summary="Pretend done", evidence=["fixture://bad"]))
         self.update("root", "finished", outcome="open", assignment=MAIN, summary="Worker failed; user goal remains unresolved")
-        self.assertEqual(self.progress()["status"], "open")
+        self.assertEqual(self.progress()["status"], "waiting_synthesis")
+        self.assertEqual(self.node("root")["outcome"], "open")
+        self.assertTrue(any("review_task_closure" in action for action in self.progress()["next_actions"]))
 
     def test_accepted_producer_retry_invalidates_consumer_and_root_reviews_without_losing_evidence(self):
         self.new([{ "id": "work", "title": "Producer", "assignment": SUB},

@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">交互演示</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.0">安装 0.2.0</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.1">安装 0.2.1</a> ·
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
@@ -25,12 +25,12 @@
 macOS 需要支持插件的 Codex 和 Python 3。在终端执行：
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.1
 codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.1/service_manager.py" install
 ```
 
-三条命令全部完成后，**重启 Codex**。已有旧版？查看[升级命令](docs/releases/0.2.0.md#从旧版本升级)；其他平台与服务管理见[安装文档](docs/installation.md)。
+三条命令全部完成后，**重启 Codex**，加载新工具。已有旧版？查看[升级命令](docs/releases/0.2.1.md#从旧版本升级)；其他平台与服务管理见[安装文档](docs/installation.md)。
 
 ## 开始使用
 
@@ -45,10 +45,12 @@ python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-prog
 | 插入任务 | “把整理文档加入队列，当前任务完成后再做。” |
 | 并行处理 | “让子智能体并行检查文档，主任务继续。” |
 
-面板自动刷新，点击任务查看详情，点击“导出”保存报告。“待主会话验收”表示结果已提交、仍需检查。Codex 负责实际执行与协调，Task Progress 记录和展示，数据保存在本机。交互面板需要客户端支持 MCP Apps。
+0.2.1 支持移交验收归档：把并行任务剩余工作绑定到精确的承接尝试，验收后收尾；含取消子项的父任务由主会话决定继续或接受收尾。原 open/cancelled、尝试与验收历史保留，重试可以重新展开工作，HTML/Excel 同时保留审计证据。
+
+面板自动刷新，点击任务查看详情，点击“导出”保存报告。“待主会话验收”表示结果已提交、仍需检查。Codex 负责实际执行与协调，Task Progress 记录和展示，数据保存在本机；插件不会自动唤醒或控制宿主 agent。交互面板需要客户端支持 MCP Apps。
 
 <details>
-<summary><strong>查看任务面板</strong> · 实际界面，演示数据</summary>
+<summary><strong>查看任务面板</strong> · 0.2.0 历史预览，演示数据</summary>
 
 ![Task Progress 0.2.0 任务面板，使用演示数据](docs/assets/task-progress-0.2.0.png)
 

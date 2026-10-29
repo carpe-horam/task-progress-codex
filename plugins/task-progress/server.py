@@ -223,6 +223,7 @@ def _write(session_id: str, data: dict[str, Any], *, archive_before: dict[str, A
         document["updated_at"] = data["updated_at"]
         document["state_revision"] = data["state_revision"]
     if document.get("session_work_state"):
+        _reconcile_handoffs(document)
         # Instances remain addressable for explicit retry. Archives are frozen
         # snapshots, deduplicated by the completed root acceptance, not the iid.
         if archive_before and not any(item.get("archive_key") == archive_before["archive_key"]
@@ -233,15 +234,64 @@ def _write(session_id: str, data: dict[str, Any], *, archive_before: dict[str, A
     _atomic_json(path, document)
 
 
+def _result_fingerprint(data: dict[str, Any], task_id: str | None = None) -> str:
+    """Bind audit decisions to results, never to mutable display/review metadata."""
+    nodes = data.get("nodes", {})
+    ids = [task_id or data.get("root_id")]
+    for nid in ids:
+        ids.extend(child for child in nodes.get(nid, {}).get("children", []) if child not in ids)
+    fields = ("id", "children", "attempt_id", "execution_status", "outcome", "review_status", "summary", "evidence")
+    value = [data.get("epoch", 0), data.get("task_context", {}),
+             [{key: nodes[nid].get(key) for key in fields} for nid in ids if nid in nodes]]
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _closure_review(data: dict[str, Any], task_id: str | None = None) -> dict[str, Any] | None:
+    nid = task_id or data.get("root_id")
+    fingerprint = _result_fingerprint(data, nid)
+    return next((r for r in reversed(data.get("closure_reviews", []))
+                 if r["task_id"] == nid and r["source_fingerprint"] == fingerprint), None)
+
+
+def _handoff_closure(data: dict[str, Any]) -> dict[str, Any] | None:
+    fingerprint = _result_fingerprint(data)
+    return next((r for r in reversed(data.get("handoff_closures", [])) if r["source_fingerprint"] == fingerprint), None)
+
+
+def _accepted_closure(data: dict[str, Any], task_id: str | None = None) -> bool:
+    review = _closure_review(data, task_id)
+    return bool(review and review["decision"] == "accept")
+
+
+def _node_settled(data: dict[str, Any], nid: str) -> bool:
+    return _node_is_terminal(data["nodes"][nid]) or _accepted_closure(data, nid)
+
+
+def _children_settled(data: dict[str, Any], nid: str) -> bool:
+    children = data.get("nodes", {}).get(nid, {}).get("children", [])
+    return bool(children) and all(_node_settled(data, child) for child in children)
+
+
+def _closure_review_due(data: dict[str, Any]) -> bool:
+    nodes = data.get("nodes", {})
+    root = nodes.get(data.get("root_id"), {})
+    unresolved_children = any(nodes[child].get("execution_status") != "finished"
+                              or nodes[child].get("outcome") != "resolved" for child in root.get("children", []))
+    unresolved_parent = root.get("execution_status") in TERMINAL_EXECUTION_STATUSES and root.get("outcome") != "resolved"
+    return (root.get("outcome") != "resolved" and _children_settled(data, data.get("root_id"))
+            and (unresolved_children or unresolved_parent)
+            and not _accepted_closure(data) and not _handoff_closure(data))
+
+
 def _task_closed(data: dict[str, Any]) -> bool:
     if data.get("schema_version") != 2:
         return _stats(data)[3] == "completed"
     nodes = data.get("nodes", {})
     root = nodes.get(data.get("root_id"), {})
-    return (root.get("execution_status") in TERMINAL_EXECUTION_STATUSES
+    return ((root.get("execution_status") in TERMINAL_EXECUTION_STATUSES or _accepted_closure(data))
             and not any(n.get("execution_status") == "running" or n.get("review_status") == "pending"
                         for n in nodes.values())
-            and (root.get("outcome") == "resolved" or bool(root.get("summary", "").strip())))
+            and (root.get("outcome") == "resolved" or bool(root.get("summary", "").strip()) or _accepted_closure(data)))
 
 
 def _inherit_work_state(previous: dict[str, Any] | None, data: dict[str, Any]) -> None:
@@ -258,6 +308,10 @@ def _inherit_work_state(previous: dict[str, Any] | None, data: dict[str, Any]) -
 
 
 def _request_status(data: dict[str, Any]) -> str:
+    if _handoff_closure(data):
+        return "handed_off"
+    if _accepted_closure(data):
+        return "closed"
     if data.get("request_cancelled"):
         return "cancelled"
     if any(n.get("review_status") == "pending" for n in data.get("nodes", {}).values()):
@@ -303,6 +357,7 @@ def _session_work(document: dict[str, Any]) -> dict[str, Any]:
             item["summary"] = root.get("summary", "")
             item["task_title"] = instance.get("task_title", item["task_title"])
             item["context_brief"] = deepcopy(instance.get("task_context", item.get("context_brief", {})))
+            item["closure_review_due"] = _closure_review_due(instance)
             for key in ("goal", "constraints", "acceptance_criteria"):
                 if key in instance.get("task_context", {}):
                     item[key] = deepcopy(instance["task_context"][key])
@@ -314,7 +369,7 @@ def _session_work(document: dict[str, Any]) -> dict[str, Any]:
             item.pop(key, None)
         requests.append(item)
     foreground = next((r for r in requests if r.get("task_instance_id") == iid), None)
-    active = [r for r in requests if r["status"] in ("queued", "active", "pending_review")]
+    active = [r for r in requests if r["status"] in ("queued", "active", "pending_review") or r.get("closure_review_due")]
     anchor = {"task_instance_id": iid, "task_id": document.get("root_id"),
               "resume_note": document.get("task_context", {}).get("resume_note", "")}
     return_to = anchor if foreground and foreground["status"] in ("active", "pending_review") else None
@@ -326,7 +381,9 @@ def _session_work(document: dict[str, Any]) -> dict[str, Any]:
     if return_to:
         actions.append(f"返回主任务 {document.get('task_title', '')}（{iid}）；插入请求结束不代表原任务完成。")
     for item in active:
-        if item["status"] == "queued":
+        if item.get("closure_review_due"):
+            actions.append(f"请求 {item['request_id']} 的子任务已结束；主会话 review_task_closure 决定继续/重试或验收收尾，不将取消结果算作成功。")
+        elif item["status"] == "queued":
             actions.append(f"请求 {item['request_id']} 仅排队；主任务如实收尾后显式 activate_request，按 FIFO 激活。")
         elif item["status"] == "pending_review":
             actions.append(f"主会话独立验收请求 {item['request_id']} 的待复核结果。")
@@ -446,7 +503,7 @@ def activate_request(session_id: str, task_instance_id: str, request_id: str) ->
         queued = [r for r in state["requests"] if r.get("status") == "queued"]
         if not queued or queued[0]["request_id"] != request_id:
             raise ProgressError("只能显式激活 FIFO 队首的 queued 请求。")
-        if not _task_closed(data):
+        if not _task_closed(data) or _closure_review_due(data):
             raise ProgressError("原主任务尚未完成或如实收尾；排队请求不能抢占当前工作。")
         # Snapshot the settled foreground entry before replacing its network.
         summary = _session_work(data)
@@ -512,6 +569,193 @@ def cancel_request(session_id: str, task_instance_id: str, request_id: str, reas
             network["nodes"][network["root_id"]].update(execution_status="cancelled", summary=why)
         _write(sid, data)
     return get_progress_view(sid)
+
+
+def _handoff_target(document: dict[str, Any], mapping: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the effective node in a live or frozen plan; never fish old attempts."""
+    iid, epoch = mapping["target_task_instance_id"], mapping["target_epoch"]
+    instance = document if iid == _task_instance_id(document) else document.get("session_work_state", {}).get("instances", {}).get(iid)
+    if instance is None:
+        instance = next((t for t in reversed(document.get("task_history", [])) if t.get("task_instance_id") == iid), None)
+    if not instance or instance.get("schema_version") != 2 or instance.get("session_id") != document["session_id"]:
+        raise ProgressError("承接实例不存在于本会话，不能跨会话移交。")
+    plan = instance if instance.get("epoch", 0) == epoch else next(
+        (p for p in instance.get("history", []) if p.get("epoch") == epoch), None)
+    nodes = plan.get("nodes", {}) if plan else {}
+    indexed = nodes if isinstance(nodes, dict) else {n["id"]: n for n in nodes}
+    node = indexed.get(mapping["target_task_id"])
+    if not node or node.get("children") or node.get("attempt_id") != mapping["target_attempt_id"]:
+        raise ProgressError("承接叶/epoch/当前有效 attempt 不匹配；不能使用旧尝试或分组结果。")
+    if node.get("invalidated_by") or node.get("execution_status") not in ("running", "finished"):
+        raise ProgressError("承接尝试已失效、失败或取消；须显式绑定新的有效尝试。")
+    if node.get("review_status") == "rejected" or (node.get("execution_status") == "finished" and node.get("outcome") == "open"):
+        raise ProgressError("承接结果被退回或仍未解决，不能作为移交验收依据。")
+    return node
+
+
+def _handoff_target_accepted(node: dict[str, Any]) -> bool:
+    if node.get("execution_status") != "finished" or node.get("outcome") != "resolved" or not node.get("summary") or not node.get("evidence"):
+        return False
+    mode = node.get("assignment", {}).get("execution_mode")
+    if mode == "main_session":
+        return node.get("review_status") not in ("pending", "rejected")
+    submission, review = node.get("submission") or {}, node.get("review") or {}
+    return (mode == "subagent" and node.get("review_status") == "accepted"
+            and submission.get("attempt_id") == node.get("attempt_id") and submission.get("outcome") == "resolved"
+            and review.get("attempt_id") == node.get("attempt_id") and review.get("decision") == "accept"
+            and bool(review.get("summary")) and bool(review.get("evidence"))
+            and review.get("reviewer", {}).get("execution_mode") == "main_session")
+
+
+def _handoff_source_ready(source: dict[str, Any]) -> bool:
+    return (_task_closed(source) and all(_node_is_terminal(n) for n in source.get("nodes", {}).values()))
+
+
+def _reconcile_handoffs(document: dict[str, Any]) -> None:
+    """Mutation-only reconciliation. Closure proofs and earlier archives stay frozen."""
+    for source in document.get("session_work_state", {}).get("instances", {}).values():
+        if _handoff_closure(source) or not _handoff_source_ready(source):
+            continue
+        fingerprint = _result_fingerprint(source)
+        for handoff in source.get("handoffs", []):
+            if handoff["source_fingerprint"] != fingerprint:
+                continue
+            proofs = []
+            try:
+                for mapping in handoff["mappings"]:
+                    node = _handoff_target(document, mapping)
+                    if not _handoff_target_accepted(node):
+                        break
+                    proofs.append({**deepcopy(mapping), "accepted_result": deepcopy(node)})
+                else:
+                    source.setdefault("handoff_closures", []).append({
+                        "handoff_id": handoff["handoff_id"], "source_fingerprint": fingerprint,
+                        "source_epoch": source.get("epoch", 0), "closed_at": _now(),
+                        "summary": handoff["summary"], "evidence": deepcopy(handoff["evidence"]),
+                        "reviewer": deepcopy(handoff["reviewer"]), "accepted_targets": proofs})
+                    break
+            except ProgressError:
+                # Rejected/retried targets cannot close the source. A fresh explicit
+                # registration is required; no fallback to a formerly good attempt.
+                continue
+
+
+def handoff_request(session_id: str, task_instance_id: str, request_id: str, handoff_id: str,
+                    source_task_instance_id: str, source_epoch: int, source_fingerprint: str, mappings: list[dict[str, Any]],
+                    summary: str, evidence: list[str], reviewer: dict[str, Any]) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    hid = _nonempty(handoff_id, "handoff_id")
+    _query_integer(source_epoch, "source_epoch", 0)
+    _require_result_evidence(summary, evidence)
+    actor = _reviewer(reviewer, scope="handoff_review")
+    if not isinstance(mappings, list) or not 1 <= len(mappings) <= 200:
+        raise ProgressError("mappings 须逐项覆盖全部未解决来源叶（1..200项）。")
+    fields = {"source_task_id", "source_attempt_id", "target_task_instance_id", "target_epoch", "target_task_id", "target_attempt_id"}
+    normalized = []
+    for m in mappings:
+        if not isinstance(m, dict) or set(m) != fields:
+            raise ProgressError("每项mapping必须精确提供来源task/attempt及承接instance/epoch/task/attempt。")
+        for key in fields - {"source_attempt_id", "target_epoch"}:
+            _nonempty(m[key], key)
+        if m["source_attempt_id"] is not None:
+            _nonempty(m["source_attempt_id"], "source_attempt_id")
+        _query_integer(m["target_epoch"], "target_epoch", 0)
+        normalized.append(deepcopy(m))
+    normalized.sort(key=lambda m: m["source_task_id"])
+    content = dict(request_id=request_id, source_task_instance_id=source_task_instance_id, source_epoch=source_epoch,
+                   source_fingerprint=source_fingerprint,
+                   mappings=normalized, summary=summary.strip(), evidence=list(evidence), reviewer=actor)
+    with _session_lock(sid):
+        document, state = _foreground_request(sid, task_instance_id)
+        request = next((r for r in state["requests"] if r["request_id"] == request_id and r.get("mode") == "parallel"), None)
+        source = state["instances"].get(source_task_instance_id)
+        if not request or request.get("task_instance_id") != source_task_instance_id or not source or source.get("request_cancelled"):
+            raise ProgressError("必须绑定本会话已启动的来源parallel请求及其实际实例。")
+        previous = next((h for h in source.get("handoffs", []) if h["handoff_id"] == hid), None)
+        if previous:
+            if any((_normalize_assignment(previous.get(key)) != _normalize_assignment(value) if key == "reviewer"
+                    else previous.get(key) != value) for key, value in content.items()):
+                raise ProgressError("handoff_id 已用于不同移交内容。")
+            # Lost receipts are safe to replay, including after closure/retry.
+            return _tool_result("返回原移交登记回执。", _progress_payload(document), sid,
+                                response_snapshot=_capture_response_snapshot(sid))
+        if (source.get("epoch", 0) != source_epoch or source_fingerprint != _result_fingerprint(source)
+                or _parallel_is_archivable(source) or not _handoff_source_ready(source)):
+            raise ProgressError("来源轮次不匹配、已归档或尚未如实收尾；运行/待复核/未结束来源不能移交。")
+        unresolved = {nid: n for nid, n in source["nodes"].items()
+                      if not n.get("children") and not (n.get("execution_status") == "finished" and n.get("outcome") == "resolved")}
+        if not unresolved or len(normalized) != len(unresolved) or {m["source_task_id"] for m in normalized} != set(unresolved):
+            raise ProgressError("移交必须完整覆盖且仅覆盖全部未解决叶；不能遗漏或重复。")
+        edges: dict[str, set[str]] = {}
+        for instance in state["instances"].values():
+            for h in instance.get("handoffs", []):
+                edges.setdefault(_task_instance_id(instance), set()).update(m["target_task_instance_id"] for m in h["mappings"])
+        for mapping in normalized:
+            if unresolved[mapping["source_task_id"]].get("attempt_id") != mapping["source_attempt_id"]:
+                raise ProgressError("来源attempt已改变，不能移交旧结果。")
+            target_id = mapping["target_task_instance_id"]
+            seen, pending = set(), [target_id]
+            while pending:
+                iid = pending.pop()
+                if iid == source_task_instance_id:
+                    raise ProgressError("移交不能自指或形成跨实例环；闭环只采用真实已验收叶结果。")
+                if iid not in seen:
+                    seen.add(iid)
+                    pending.extend(edges.get(iid, ()))
+            _handoff_target(document, mapping)
+        source.setdefault("handoffs", []).append({**content, "handoff_id": hid,
+            "source_fingerprint": _result_fingerprint(source), "registered_at": _now()})
+        _write(sid, document)
+    return get_progress_view(sid)
+
+
+def review_task_closure(session_id: str, task_instance_id: str, task_id: str, review_id: str,
+                        source_epoch: int, source_fingerprint: str, decision: str, summary: str,
+                        evidence: list[str], reviewer: dict[str, Any]) -> dict[str, Any]:
+    sid = _normalize_session_id(session_id)
+    rid = _nonempty(review_id, "review_id")
+    _query_integer(source_epoch, "source_epoch", 0)
+    if decision not in ("continue", "accept"):
+        raise ProgressError("收尾验收decision须为continue或accept；accept不改变原outcome。")
+    _require_result_evidence(summary, evidence)
+    actor = _reviewer(reviewer, scope="closure_review")
+    content = dict(task_id=task_id, source_epoch=source_epoch, source_fingerprint=source_fingerprint,
+                   decision=decision, summary=summary.strip(), evidence=list(evidence), reviewer=actor)
+    with _session_lock(sid):
+        document = _read(sid)
+        data = _task_from_document(document, task_instance_id, writable=False)
+        if not data or task_instance_id != _task_instance_id(data):
+            raise ProgressError("收尾验收须明确指定本会话当前或并行实例。")
+        previous = next((r for r in data.get("closure_reviews", []) if r["review_id"] == rid), None)
+        if previous:
+            if any((_normalize_assignment(previous.get(key)) != _normalize_assignment(value) if key == "reviewer"
+                    else previous.get(key) != value) for key, value in content.items()):
+                raise ProgressError("review_id已用于不同收尾验收。")
+            return _tool_result("返回原收尾验收回执。", _progress_payload(data), sid,
+                                response_snapshot=_capture_response_snapshot(sid))
+        if _parallel_is_archivable(data) or data.get("request_cancelled"):
+            raise ProgressError("实例已收尾归档；只有显式重试可重开。")
+        node = data.get("nodes", {}).get(task_id)
+        if source_epoch != data.get("epoch", 0) or source_fingerprint != _result_fingerprint(data, task_id):
+            raise ProgressError("来源epoch/fingerprint已改变；重新读取结果后再验收，不能接受迟到决定。")
+        if not node or not _children_settled(data, task_id):
+            raise ProgressError("父级收尾验收要求所有直接子项已结束且无pending submission review。")
+        if node.get("execution_status") == "finished" and node.get("outcome") == "resolved":
+            raise ProgressError("父级已经resolved；不能追加矛盾的继续/收尾决定。")
+        # Check the complete subtree, not just terminal direct groups.
+        pending = [task_id]
+        for nid in pending:
+            current = data["nodes"][nid]
+            if current.get("execution_status") == "running" or current.get("review_status") == "pending":
+                raise ProgressError("仍有运行/待复核结果，不能进行收尾验收。")
+            if not current.get("children") and not _node_is_terminal(current):
+                raise ProgressError("子树仍有未执行叶，不能用父级收尾验收跳过。")
+            pending.extend(current.get("children", []))
+        data.setdefault("closure_reviews", []).append({**content, "review_id": rid, "epoch": data.get("epoch", 0),
+            "reviewed_at": _now()})
+        data["revision"] = int(data.get("revision", 0)) + 1
+        _write(sid, data)
+    return get_progress_view(sid, task_instance_id=task_instance_id)
 
 
 def update_task_context(session_id: str, task_instance_id: str, goal: str, constraints: list[str],
@@ -591,7 +835,7 @@ def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str |
     _assert_no_pending_reviews(data, "替换任务")
     if data.get("schema_version") == 2:
         running = [node["id"] for node in data.get("nodes", {}).values() if node.get("execution_status") == "running"]
-        complete = data.get("nodes", {}).get(data.get("root_id"), {}).get("outcome") == "resolved"
+        complete = data.get("nodes", {}).get(data.get("root_id"), {}).get("outcome") == "resolved" or _accepted_closure(data)
     else:
         running = [str(index) for index, step in enumerate(data.get("steps", [])) if step.get("status") == "in_progress"]
         complete = _stats(data)[3] == "completed"
@@ -621,12 +865,18 @@ def _parallel_is_archivable(data: dict[str, Any]) -> bool:
         return False
     # A terminal/open/failed/cancelled request is still unresolved. Even old
     # completed instances must have resolved every node before leaving current.
-    return bool(data.get("nodes")) and all(
+    return bool(_handoff_closure(data)) or _accepted_closure(data) or bool(data.get("nodes")) and all(
         node.get("execution_status") == "finished" and node.get("outcome") == "resolved"
         and node.get("review_status") != "pending" for node in data["nodes"].values())
 
 
 def _parallel_archive_key(data: dict[str, Any]) -> str:
+    closure = _handoff_closure(data)
+    if closure:
+        return json.dumps([_task_instance_id(data), data.get("epoch", 0), "handoff", closure["handoff_id"]], ensure_ascii=False)
+    review = _closure_review(data)
+    if review and review["decision"] == "accept":
+        return json.dumps([_task_instance_id(data), data.get("epoch", 0), "closure_review", review["review_id"]], ensure_ascii=False)
     root = data["nodes"][data["root_id"]]
     return json.dumps([_task_instance_id(data), data.get("epoch", 0),
         root.get("attempt_id") or root.get("finished_at") or data.get("revision", 0)], ensure_ascii=False)
@@ -638,6 +888,14 @@ def _parallel_archive_snapshot(data: dict[str, Any]) -> dict[str, Any]:
     snapshot.update(archive_kind="parallel", request_id=data["parallel_request_id"],
         archive_key=_parallel_archive_key(data),
         archived_at=root.get("finished_at") or data.get("updated_at") or data.get("created_at"))
+    closure = _handoff_closure(data)
+    if closure:
+        snapshot.update(archive_reason="移交目标已验收；保留来源未解决/取消结果。", archived_at=closure["closed_at"],
+                        handoff_closure=deepcopy(closure))
+    review = _closure_review(data)
+    if review and review["decision"] == "accept":
+        snapshot.update(archive_reason="父级已明确验收收尾；原始结果保持不变。", archived_at=review["reviewed_at"],
+                        closure_review=deepcopy(review))
     return snapshot
 
 
@@ -1118,8 +1376,15 @@ def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
 
 
 def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
+    if node.get("id") == data.get("root_id") and _handoff_closure(data):
+        return "handed_off"
+    if _accepted_closure(data, node.get("id")):
+        return "closed"
     if node.get("review_status") == "pending":
         return "awaiting_review"
+    if node.get("outcome") != "resolved" and _children_settled(data, node.get("id")):
+        review = _closure_review(data, node.get("id"))
+        return "open" if review and review["decision"] == "continue" else "waiting_synthesis"
     if node.get("execution_status") == "finished" and node.get("outcome"):
         return node["outcome"]
     status = node.get("execution_status")
@@ -1174,7 +1439,9 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     percent = int(completed / total * 100) if total else 0
     root = nodes[data["root_id"]]
     root_status = _display_node_status(data, root)
-    if root.get("outcome") == "resolved":
+    if root_status in ("closed", "handed_off", "waiting_synthesis", "open"):
+        overall_status = root_status
+    elif root.get("outcome") == "resolved":
         overall_status = "completed"
     elif root.get("outcome") == "open":
         overall_status = "open"
@@ -1213,6 +1480,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "planned_assignment": node.get("planned_assignment"),
             "responsibility_legacy": node.get("responsibility_version") != 1,
             "review_status": node.get("review_status") or ("legacy_unrecorded" if node.get("responsibility_version") != 1 else None),
+            "closure_review_binding": {"source_epoch": data.get("epoch", 0), "source_fingerprint": _result_fingerprint(data, node_id)} if node.get("children") else None,
             "dispatch": node.get("dispatch") or ({
                 "status": "pending", "attempt_id": node.get("attempt_id"), "agent_name": None,
                 "bound_at": None, "legacy": True, "source": "legacy_unrecorded",
@@ -1256,6 +1524,15 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "ready_tasks": [node["id"] for node in ready_nodes],
         "next_actions": _planning_next_actions(data),
         "history": data.get("history", []),
+        "handoffs": deepcopy(data.get("handoffs", [])),
+        "handoff_closures": deepcopy(data.get("handoff_closures", [])),
+        "closure_reviews": deepcopy(data.get("closure_reviews", [])),
+        "handoff_closure": deepcopy(_handoff_closure(data)),
+        "closure_review": deepcopy(_closure_review(data)),
+        "closure_review_due": _closure_review_due(data),
+        "closure_review_binding": {"source_epoch": data.get("epoch", 0), "source_fingerprint": _result_fingerprint(data)},
+        "handoff_summary": {"registered": len(data.get("handoffs", [])), "closed": len(data.get("handoff_closures", [])),
+                            "closure_reviews": len(data.get("closure_reviews", []))},
     }
 
 
@@ -1274,6 +1551,13 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
         return ["decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason"]
     nodes = data["nodes"]
     root = nodes[data["root_id"]]
+    review = _closure_review(data)
+    if _handoff_closure(data) or _accepted_closure(data):
+        return ["已验收收尾；原始未解决/取消结果保留。需要继续时显式retry，不改写旧结果。"]
+    if _closure_review_due(data):
+        return (["收尾验收决定继续：按验收摘要显式retry或重规划；原始结果保持不变。"]
+                if review and review["decision"] == "continue" else
+                ["全部子项已结束；主会话review_task_closure决定continue（重试/重规划）或accept（验收收尾），取消不自动算成功。"])
     if _node_is_terminal(root):
         return ["任务已完成：报告验收结果。" if root.get("outcome") == "resolved" else "报告未解决或已终止结果；需要继续时显式重试或重规划。"]
     actions = []
@@ -1290,7 +1574,9 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
               and all(_node_is_terminal(nodes[child]) for child in node["children"])
               and (_dependencies_satisfied(data, node) or all(_node_is_terminal(nodes[dependency_id])
                    for _, dependency_id in _dependency_constraints(data, node)))):
-            actions.append(f"主会话综合验收 {node_id}：update_task(finished)，填写 summary/evidence；有未解决子结果只能 open/终止。")
+            outcome_hint = ", outcome=resolved" if all(nodes[child].get("execution_status") == "finished"
+                and nodes[child].get("outcome") == "resolved" for child in node["children"]) else "，有未解决子结果只能 open/终止"
+            actions.append(f"主会话综合验收 {node_id}：update_task(finished{outcome_hint})，填写 summary/evidence。")
         elif _node_is_ready(data, node):
             planned = node.get("planned_assignment") or {}
             role = planned.get("execution_mode")
@@ -1853,6 +2139,9 @@ def rebuild_task_network(
             "reason": reason.strip(),
             "closed_at": _now(),
             "nodes": data["nodes"],
+            "handoffs": deepcopy(data.get("handoffs", [])),
+            "handoff_closures": deepcopy(data.get("handoff_closures", [])),
+            "closure_reviews": deepcopy(data.get("closure_reviews", [])),
         })
         next_epoch = int(data["epoch"]) + 1
         new_title = task_title.strip() if isinstance(task_title, str) and task_title.strip() else data["task_title"]
@@ -2334,15 +2623,17 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 # complete current snapshot so UI/export traffic never enters model tool results.
 _QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
 _RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history")
-_HISTORY_KINDS = ("history", "task_history", "context_revisions", "legacy_history")
+_HISTORY_KINDS = ("history", "task_history", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
                     "percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
-                    "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included")
+                    "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
+                    "closure_review_binding", "closure_review_due", "handoff_summary")
 _TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "attempt_id")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
                            "bind_task_agent", "review_task", "reassign_task", "rebuild_task_network", "route_request",
-                           "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress"))
+                           "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
+                           "handoff_request", "review_task_closure"))
 
 
 def _query_integer(value: Any, name: str, minimum: int, maximum: int | None = None) -> int:
@@ -2502,6 +2793,9 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
             ack["attempt_id"] = target["attempt_id"]
     if name == "update_step":
         ack["step_index"] = args.get("step_index")
+    for key in ("handoff_id", "review_id"):
+        if args.get(key):
+            ack[key] = args[key]
     if args.get("request_id"):
         ack["request_id"] = args["request_id"]
         request = next((item for item in source.get("session_work", {}).get("requests", []) if item["request_id"] == args["request_id"]), None)
@@ -3279,7 +3573,27 @@ _REQUEST_PROPERTIES = {
     "acceptance_criteria": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 12000}},
     "context_brief": {"type": "object", "description": "调用方提供的显式上下文，不能从摘要补造未记录事实。"},
 }
+_CLOSURE_PROPERTIES = {
+    "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+    "source_epoch": {"type": "integer", "minimum": 0},
+    "source_fingerprint": {"type": "string", "description": "查询所得closure_review_binding.source_fingerprint；来源变化则拒绝迟到决定。"},
+    "summary": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "reviewer": _assignment_schema(),
+}
+_HANDOFF_MAPPING = {
+    "source_task_id": {"type": "string"}, "source_attempt_id": {"type": ["string", "null"]},
+    "target_task_instance_id": {"type": "string"}, "target_epoch": {"type": "integer", "minimum": 0},
+    "target_task_id": {"type": "string"}, "target_attempt_id": {"type": "string", "minLength": 1},
+}
 for _name, _title, _description, _properties, _required in [
+    ("handoff_request", "登记并行请求移交验收", "以foreground身份，将已如实收尾的parallel全部未解决叶固定绑定到本会话承接叶instance/epoch/task/有效attempt。允许running/待复核承接；后续写入仅在其真实resolved且已验收后自动闭环。支持历史实例/计划补录；保留来源open/cancelled和冻结证据，拒绝漏项、自指、环、旧attempt。handoff_id幂等；身份由调用方声明。",
+     {**_CLOSURE_PROPERTIES, "request_id": {"type": "string"}, "handoff_id": {"type": "string"}, "source_task_instance_id": {"type": "string"},
+      "mappings": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"type": "object", "properties": _HANDOFF_MAPPING, "required": list(_HANDOFF_MAPPING), "additionalProperties": False}}},
+     [*_CLOSURE_PROPERTIES, "request_id", "handoff_id", "source_task_instance_id", "mappings"]),
+    ("review_task_closure", "验收父级收尾或决定继续", "全部子项结束且无pending submission后，主会话追加独立收尾验收。continue明确继续retry/重规划；accept允许收尾归档但不改原节点outcome或解除resolved依赖。必须使用查询所得source_epoch/fingerprint，review_id幂等；保留历史与原始取消。",
+     {**_CLOSURE_PROPERTIES, "task_id": {"type": "string"}, "review_id": {"type": "string"}, "decision": {"type": "string", "enum": ["continue", "accept"]}},
+     [*_CLOSURE_PROPERTIES, "task_id", "review_id", "decision"]),
     ("route_request", "登记排队或并行独立请求", "显式主会话实例登记新请求，request_id 幂等。queue 不执行；parallel 创建隔离任务实例，叶执行限 subagent 并由主会话验收。必须说明模式理由；不自动派发、不扩大授权，声明不构成宿主认证。",
      {**_REQUEST_PROPERTIES, "mode": {"type": "string", "enum": ["queue", "parallel"]}, "request_text": {"type": "string", "minLength": 1, "maxLength": 12000}},
      ["session_id", "task_instance_id", "request_id", "request_text", "task_title", "mode", "reason", "acceptance_criteria"]),
@@ -3314,6 +3628,8 @@ for _tool in TOOLS:
 
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "handoff_request": lambda args: handoff_request(**args),
+    "review_task_closure": lambda args: review_task_closure(**args),
     "route_request": lambda args: route_request(**args),
     "activate_request": lambda args: activate_request(**args),
     "update_request": lambda args: update_request(**args),
