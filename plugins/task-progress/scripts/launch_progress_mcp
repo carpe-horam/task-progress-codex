@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Task Progress MCP 启动器 — 查找可用 Python 运行时并执行 server.py
+# Python helper for hooks and explicit local commands. The cross-platform MCP
+# entry uses `python mcp_bridge.py` directly (Windows cannot exec this shell file).
 
 PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin"
 export PATH

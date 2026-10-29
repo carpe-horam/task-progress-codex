@@ -2,11 +2,12 @@
 """Install and inspect the user's single Task Progress HTTP service.
 
 No operation kills a PID. Service lifecycle changes use only our validated
-LaunchAgent label, and installed releases survive plugin cache replacement.
+user service definition, and installed releases survive plugin cache replacement.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import http.client
 import json
@@ -21,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 
 PORT = 53421
@@ -51,7 +53,8 @@ def atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
         raise ServiceError(f"Refusing symlink file: {path}")
     fd, temporary = tempfile.mkstemp(prefix=".task-progress-", dir=path.parent)
     try:
-        os.fchmod(fd, mode)
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
@@ -76,12 +79,173 @@ class ServiceManager:
         self.credentials = self.state_dir / "http-headers.json"
         self.releases = self.home / "Library/Application Support/Task Progress/releases"
         self.plist = self.home / "Library/LaunchAgents" / f"{LABEL}.plist"
+        if self.platform == "linux":
+            self.releases = self.home / ".local/share/task-progress/releases"
+            self.plist = self.home / ".config/systemd/user" / f"{LABEL}.service"
+        elif self.platform == "win32":
+            self.releases = self.home / "AppData/Local/Task Progress/releases"
+            self.plist = self.state_dir / "scheduled-task.xml"
+        self._windows_sid = None
         self.domain = f"gui/{_uid()}"
         self.job = f"{self.domain}/{LABEL}"
 
-    def _mac_only(self):
-        if self.platform != "darwin":
-            raise ServiceError("Automatic service management is unsupported on this platform; use prepare and foreground serve.")
+    def _supported(self):
+        if self.platform not in ("darwin", "linux", "win32"):
+            raise ServiceError("Automatic service management is unsupported on this platform")
+
+    def _command(self, args, check=True, encoding=None):
+        try:
+            result = self.runner(args, capture_output=True, text=True, timeout=30, encoding=encoding)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ServiceError(f"Unable to run user service manager: {args[0]}") from error
+        if check and result.returncode:
+            raise ServiceError(f"{Path(args[0]).name} user service operation failed (exit {result.returncode})")
+        return result
+
+    @staticmethod
+    def _ps_literal(value):
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _powershell(self, script):
+        encoded = base64.b64encode(("$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); " + script).encode("utf-16-le")).decode("ascii")
+        return self._command(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], encoding="utf-8")
+
+    def _sid(self):
+        if self._windows_sid is None:
+            self._windows_sid = self._powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value").stdout.strip()
+            if not re.fullmatch(r"S-1-[0-9-]+", self._windows_sid):
+                raise ServiceError("Unable to identify the current Windows user")
+        return self._windows_sid
+
+    def _systemctl(self, *args, check=True):
+        return self._command(["systemctl", "--user", *args], check=check)
+
+    def _task(self):
+        # Query only this user's task. The SID in its name also avoids collisions
+        # with another logged-in user's Task Progress installation.
+        return LABEL + "-" + self._sid()
+
+    def _windows_registered(self):
+        name = self._ps_literal(self._task())
+        result = self._powershell(
+            f"$t=Get-ScheduledTask -TaskPath '\\' -ErrorAction Stop | Where-Object {{$_.TaskName -eq {name}}}; "
+            "if($t){ @{xml=(Export-ScheduledTask -InputObject $t); state=[string]$t.State} | ConvertTo-Json -Compress }")
+        if not result.stdout.strip():
+            return None
+        try:
+            record = json.loads(result.stdout)
+            self._parse_definition(record["xml"], registered=True)
+            return record
+        except (ValueError, KeyError, TypeError, ET.ParseError) as error:
+            raise ServiceError("Refusing a scheduled task not managed by Task Progress") from error
+
+    @staticmethod
+    def _unit_quote(value):
+        # systemd performs percent specifier expansion even inside quotes.
+        return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%').replace('$', '$$').replace('\n', '\\n').replace('\r', '\\r') + '"'
+
+    def _definition_bytes(self, definition):
+        if self.platform == "darwin":
+            return plistlib.dumps(definition)
+        metadata = json.dumps(definition, sort_keys=True, separators=(",", ":"))
+        args = definition["ProgramArguments"]
+        if self.platform == "linux":
+            command = " ".join(self._unit_quote(arg) for arg in args)
+            return (f"# TaskProgressDefinition={metadata}\n[Unit]\nDescription=Task Progress MCP service\n"
+                    f"[Service]\nType=simple\nExecStart={command}\nRestart=on-failure\nRestartSec=5\n"
+                    "UMask=0077\n[Install]\nWantedBy=default.target\n").encode("utf-8")
+        namespace = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+        ET.register_namespace("", namespace)
+        def element(parent, tag, value=None, **attrs):
+            child = ET.SubElement(parent, "{" + namespace + "}" + tag, attrs)
+            if value is not None:
+                child.text = str(value)
+            return child
+        root = ET.Element("{" + namespace + "}Task", {"version": "1.2"})
+        registration = element(root, "RegistrationInfo")
+        element(registration, "Description", metadata)
+        triggers = element(root, "Triggers")
+        logon = element(triggers, "LogonTrigger")
+        element(logon, "Enabled", "true")
+        element(logon, "UserId", self._sid())
+        principals = element(root, "Principals")
+        principal = element(principals, "Principal", id="Author")
+        element(principal, "UserId", self._sid())
+        element(principal, "LogonType", "InteractiveToken")
+        element(principal, "RunLevel", "LeastPrivilege")
+        settings = element(root, "Settings")
+        element(settings, "MultipleInstancesPolicy", "IgnoreNew")
+        element(settings, "DisallowStartIfOnBatteries", "false")
+        element(settings, "StopIfGoingOnBatteries", "false")
+        element(settings, "ExecutionTimeLimit", "PT0S")
+        restart = element(settings, "RestartOnFailure")
+        element(restart, "Interval", "PT1M")
+        element(restart, "Count", "999")
+        actions = element(root, "Actions", Context="Author")
+        action = element(actions, "Exec")
+        element(action, "Command", args[0])
+        element(action, "Arguments", subprocess.list2cmdline(args[1:]))
+        return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+    def _parse_definition(self, raw, registered=False):
+        if self.platform == "darwin":
+            return plistlib.loads(raw)
+        if self.platform == "linux":
+            first = raw.decode("utf-8").splitlines()[0]
+            data = json.loads(first.removeprefix("# TaskProgressDefinition="))
+            if self._definition_bytes(data) != raw:
+                raise ValueError("Unit contents do not match their managed definition")
+            return data
+        root = ET.fromstring(raw)
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        data = json.loads(root.findtext("t:RegistrationInfo/t:Description", namespaces=ns))
+        args = data["ProgramArguments"]
+        actions = root.findall("t:Actions/t:Exec", ns)
+        principal = root.find("t:Principals/t:Principal", ns)
+        if (len(root.findall("t:Actions/*", ns)) != 1 or len(actions) != 1 or principal is None or
+                principal.findtext("t:UserId", namespaces=ns) != self._sid() or
+                principal.findtext("t:LogonType", namespaces=ns) != "InteractiveToken" or
+                principal.findtext("t:RunLevel", namespaces=ns) != "LeastPrivilege" or
+                actions[0].findtext("t:Command", namespaces=ns) != args[0] or
+                actions[0].findtext("t:Arguments", namespaces=ns) != subprocess.list2cmdline(args[1:])):
+            raise ValueError("Scheduled task actions or principal differ from managed definition")
+        if not registered and self._definition_bytes(data) != raw:
+            raise ValueError("Scheduled task contents differ from managed definition")
+        self._validate_definition(data)
+        return data
+
+    def _refresh_definition(self):
+        if self.platform == "linux":
+            self._systemctl("daemon-reload")
+        elif self.platform == "win32" and self.plist.exists():
+            # Registration is separate from Start so rollback restores an old
+            # stopped task too, without accidentally starting it.
+            self._windows_registered()
+            name, path = self._ps_literal(self._task()), self._ps_literal(self.plist)
+            self._powershell(f"Register-ScheduledTask -TaskName {name} -TaskPath '\\' -Xml ([IO.File]::ReadAllText({path})) -Force | Out-Null")
+
+    def _start_native(self):
+        if self.platform == "darwin":
+            return self._launchctl("bootstrap", self.domain, str(self.plist), check=False)
+        if self.platform == "linux":
+            self._systemctl("enable", self.plist.name)
+            return self._systemctl("start", self.plist.name, check=False)
+        return self._powershell(f"Start-ScheduledTask -TaskName {self._ps_literal(self._task())} -TaskPath '\\'")
+
+    def _stop_native(self):
+        if self.platform == "darwin":
+            self._launchctl("bootout", self.job)
+        elif self.platform == "linux":
+            self._systemctl("stop", self.plist.name)
+        else:
+            self._windows_registered()  # Refuse replacement actions before stopping.
+            self._powershell(f"Stop-ScheduledTask -TaskName {self._ps_literal(self._task())} -TaskPath '\\'")
+
+    def _remove_native(self):
+        if self.platform == "linux":
+            self._systemctl("disable", self.plist.name)
+        elif self.platform == "win32" and self._windows_registered():
+            self._powershell(f"Unregister-ScheduledTask -TaskName {self._ps_literal(self._task())} -TaskPath '\\' -Confirm:$false")
 
     def _headers(self):
         if self.credentials.is_symlink():
@@ -123,15 +287,30 @@ class ServiceManager:
 
     @contextmanager
     def _management_lock(self):
-        import fcntl
         private_directory(self.state_dir)
         lock = self.state_dir / "manager.lock"
         if lock.is_symlink():
             raise ServiceError("Refusing symlink manager lock")
         fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            os.fchmod(fd, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            if os.name == "nt":
+                import msvcrt
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b"\0")
+                deadline = time.monotonic() + self.lifecycle_timeout
+                while True:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            raise ServiceError("Timed out waiting for service management lock")
+                        time.sleep(0.05)
+            else:
+                import fcntl
+                os.fchmod(fd, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX)
             yield
         finally:
             os.close(fd)
@@ -144,7 +323,19 @@ class ServiceManager:
         return result
 
     def _loaded(self):
-        return self._launchctl("print", self.job, check=False).returncode == 0
+        if self.platform == "darwin":
+            return self._launchctl("print", self.job, check=False).returncode == 0
+        if self.platform == "win32":
+            task = self._windows_registered()
+            return bool(task and task["state"] in ("Running", "Queued"))
+        result = self._systemctl("show", self.plist.name, "--property=ActiveState", "--property=FragmentPath", "--property=DropInPaths", check=False)
+        if result.returncode:
+            raise ServiceError("Unable to contact systemd user manager; a login session with systemd --user is required")
+        fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        fragment = fields.get("FragmentPath", "")
+        if fields.get("DropInPaths") or (fragment and Path(fragment).resolve() != self.plist.resolve()):
+            raise ServiceError("Refusing a systemd unit not managed by Task Progress")
+        return fields.get("ActiveState") in ("active", "activating", "deactivating", "reloading")
 
     def _wait_unloaded(self, deadline):
         # bootout can return while launchd and the HTTP listener are still
@@ -168,15 +359,15 @@ class ServiceManager:
             if time.monotonic() >= deadline:
                 raise ServiceError("Timed out before the managed bootstrap could complete")
             if self._owned_plist() != expected:
-                raise ServiceError("Managed LaunchAgent definition changed before bootstrap")
+                raise ServiceError("Managed service definition changed before bootstrap")
             if self._loaded() or self._port_busy():
                 raise ServiceError("Refusing bootstrap while the job label or port is occupied")
-            result = self._launchctl("bootstrap", self.domain, str(self.plist), check=False)
+            result = self._start_native()
             if result.returncode == 0:
                 return
             remaining = deadline - time.monotonic()
-            if result.returncode != 5 or remaining <= 0:
-                raise ServiceError(f"launchctl bootstrap failed (exit {result.returncode})")
+            if self.platform != "darwin" or result.returncode != 5 or remaining <= 0:
+                raise ServiceError(f"User service bootstrap failed (exit {result.returncode})")
             if self._loaded() or self._port_busy():
                 raise ServiceError("launchctl bootstrap failed (exit 5); job label or port became occupied")
             time.sleep(min(delay, remaining))
@@ -184,26 +375,29 @@ class ServiceManager:
                 raise ServiceError("launchctl bootstrap failed (exit 5; bounded retry expired)")
             delay = min(delay * 2, 2.0)
 
+    def _validate_definition(self, data):
+        args = data["ProgramArguments"]
+        runtime = Path(args[1])
+        if not (data.get("TaskProgressManagedBy") == OWNER and
+                data.get("Label") == LABEL and len(args) == 6 and
+                Path(args[0]).is_absolute() and runtime.is_absolute() and
+                runtime.name == "shared_service.py" and
+                runtime.parent.parent.resolve() == self.releases.resolve() and
+                args[2:] == ["--port", str(PORT), "--state-dir", str(self.state_dir)]):
+            raise ValueError("Unmanaged runtime definition")
+
     def _owned_plist(self):
         if self.plist.is_symlink():
-            raise ServiceError("Refusing symlink LaunchAgent")
+            raise ServiceError("Refusing symlink service definition")
         if not self.plist.exists():
             return None
         try:
-            data = plistlib.loads(self.plist.read_bytes())
-            args = data["ProgramArguments"]
-            runtime = Path(args[1])
-            valid = (self.plist.stat().st_uid == os.getuid() and
-                     data.get("TaskProgressManagedBy") == OWNER and
-                     data.get("Label") == LABEL and len(args) == 6 and
-                     Path(args[0]).is_absolute() and runtime.is_absolute() and
-                     runtime.name == "shared_service.py" and
-                     runtime.parent.parent.resolve() == self.releases.resolve() and
-                     args[2:] == ["--port", str(PORT), "--state-dir", str(self.state_dir)])
-        except (OSError, ValueError, KeyError, TypeError, IndexError, plistlib.InvalidFileException):
-            valid = False
-        if not valid:
-            raise ServiceError("Refusing to replace or stop a LaunchAgent not managed by Task Progress")
+            if _uid() is not None and self.plist.stat().st_uid != _uid():
+                raise ValueError("Definition belongs to another user")
+            data = self._parse_definition(self.plist.read_bytes())
+            self._validate_definition(data)
+        except (OSError, ValueError, KeyError, TypeError, IndexError, ET.ParseError, plistlib.InvalidFileException) as error:
+            raise ServiceError("Refusing to replace or stop a service not managed by Task Progress") from error
         return data
 
     def health(self):
@@ -298,13 +492,13 @@ class ServiceManager:
                 "StandardErrorPath": str(self.state_dir / "service.stderr.log")}
 
     def install(self):
-        self._mac_only()
+        self._supported()
         self.prepare()
         with self._management_lock():
             previous = self._owned_plist()
             loaded = self._loaded()
             if loaded and previous is None:
-                raise ServiceError("An unmanaged launchd job already uses the Task Progress label")
+                raise ServiceError("An unmanaged user service already uses the Task Progress label")
             live = self.health()
             if self._port_busy() and (not loaded or previous is None or not live or
                     Path(live["runtime_path"]).resolve() != Path(previous["ProgramArguments"][1]).resolve()):
@@ -319,7 +513,8 @@ class ServiceManager:
                 if log.is_symlink():
                     raise ServiceError("Refusing symlink service log")
                 fd = os.open(log, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
-                os.fchmod(fd, 0o600)
+                if hasattr(os, "fchmod"):
+                    os.fchmod(fd, 0o600)
                 os.close(fd)
             old_bytes = self.plist.read_bytes() if previous else None
             changed_job = False
@@ -329,11 +524,12 @@ class ServiceManager:
             deadline = time.monotonic() + self.lifecycle_timeout
             try:
                 if loaded:
-                    self._launchctl("bootout", self.job)
+                    self._stop_native()
                     changed_job = True
                     self._wait_unloaded(deadline)
-                atomic_write(self.plist, plistlib.dumps(definition))
+                atomic_write(self.plist, self._definition_bytes(definition))
                 written = True
+                self._refresh_definition()
                 self._bootstrap_owned(definition, deadline)
                 started = True
                 changed_job = True
@@ -345,16 +541,20 @@ class ServiceManager:
                 rollback_error = None
                 try:
                     rollback_deadline = time.monotonic() + self.lifecycle_timeout
-                    if started and self._loaded():
+                    if (started or self.platform != "darwin") and self._loaded():
                         if self._owned_plist() != definition:
-                            raise ServiceError("Managed LaunchAgent definition changed before rollback")
-                        self._launchctl("bootout", self.job)
+                            raise ServiceError("Managed service definition changed before rollback")
+                        self._stop_native()
                     if self._owned_plist() != (definition if written else previous):
-                        raise ServiceError("Managed LaunchAgent definition changed during rollback")
+                        raise ServiceError("Managed service definition changed during rollback")
                     if old_bytes is None:
+                        self._remove_native()
                         self.plist.unlink(missing_ok=True)
                     else:
                         atomic_write(self.plist, old_bytes)
+                    if self.platform == "win32":
+                        self._wait_unloaded(rollback_deadline)
+                    self._refresh_definition()
                     self._wait_unloaded(rollback_deadline)
                     if old_bytes is not None and loaded:
                         self._bootstrap_owned(previous, rollback_deadline)
@@ -366,7 +566,7 @@ class ServiceManager:
                 raise ServiceError(message) from error
 
     def status(self):
-        self._mac_only()
+        self._supported()
         definition = self._owned_plist()
         loaded = self._loaded()
         health = self.health()
@@ -374,26 +574,29 @@ class ServiceManager:
                         Path(health["runtime_path"]).resolve() == Path(definition["ProgramArguments"][1]).resolve())
         return {"ok": True, "installed": bool(definition), "loaded": loaded,
                 "healthy": verified, "health": health if verified else None,
-                "plist": str(self.plist), "port": PORT}
+                "plist": str(self.plist), "service_manager": {"darwin": "launchd", "linux": "systemd-user", "win32": "windows-task-scheduler"}[self.platform], "port": PORT}
 
     def stop(self):
-        self._mac_only()
+        self._supported()
         with self._management_lock():
             definition = self._owned_plist()
             stopped = False
             if definition and self._loaded():
-                self._launchctl("bootout", self.job)
+                self._stop_native()
                 stopped = True
             return {"ok": True, "stopped": stopped, "data_preserved": True}
 
     def uninstall(self):
-        self._mac_only()
+        self._supported()
         with self._management_lock():
             definition = self._owned_plist()
             if definition:
                 if self._loaded():
-                    self._launchctl("bootout", self.job)
+                    self._stop_native()
+                self._wait_unloaded(time.monotonic() + self.lifecycle_timeout)
+                self._remove_native()
                 self.plist.unlink()
+                self._refresh_definition()
             return {"ok": True, "uninstalled": bool(definition), "data_preserved": True,
                     "releases_preserved": True}
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-10-29
+
+[发布说明与跨平台安装指南](docs/releases/0.2.2.md)
+
+- **跨平台自动服务管理**：首次连接时自动安装、更新并健康检查共享服务。macOS 使用 LaunchAgent，Linux 使用 systemd 用户服务，Windows 使用当前用户的任务计划程序。插件用轻量 stdio 桥接连接共享 HTTP 服务，保留跨会话状态隔离。
+- **简化安装升级**：不再要求用户手动执行版本缓存路径下的 Python 服务安装命令；统一支持 macOS、Linux、Windows。需要 Codex PATH 中的 Python 3；Linux 需要 systemd 用户会话，Windows 任务在交互用户登录期间运行。
+- **安全与回滚**：服务定义经过归属校验，内容寻址运行文件、管理锁、健康验证与失败回滚保留。Windows 凭据访问仍依赖用户配置文件 ACL；Linux 与 Windows 原生生命周期尚需在对应平台验收。
+- **桥接健壮性**：stdio 入口有界读取请求行，通过直连 HTTP 转发 MCP JSON-RPC，不对有歧义的写操作自动重试。
+
 ## 0.2.1 — 2026-10-29
 
 [发布说明、首次安装与升级命令](docs/releases/0.2.1.md)
