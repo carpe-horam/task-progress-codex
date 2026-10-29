@@ -29,7 +29,7 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-These instructions describe the next release with automatic service startup. Published `v0.2.1` still requires manual service installation; the commands above pick up the new behavior after it merges into the default branch. **Restart Codex** after installation. The first plugin connection automatically installs or updates the shared local service. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
+Task Progress 0.2.1 installs or updates the shared local service on first connection. **Restart Codex** after installation. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
 
 ## Getting started
 
