@@ -20,6 +20,7 @@ node tests/test_history_loading_app.cjs
 node tests/test_request_queue_app.cjs
 node tests/test_parallel_roots_app.cjs
 node tests/test_parallel_archive_app.cjs
+node tests/test_handoff_closure_app.cjs
 node tests/test_selective_view_app.cjs
 node tests/test_record_loading_app.cjs
 ```
@@ -48,7 +49,9 @@ Historical running-duration checks install a pre-protocol snapshot into a separa
 
 Parallel roots now render directly in the task network. `test_parallel_roots_app.cjs` verifies sibling placement, instance-scoped duplicate node IDs, stable expansion, independent review states, foreground activation, cached payload placeholders and cancelled requests. The request-queue browser test uses the same inline roots instead of a preview switch. Backend projection tests ensure all roots share one captured revision and that reads do not change stored nodes or include recursive history.
 
-Resolved parallel roots move into task history only after every node is resolved and root synthesis is complete. Active, pending-review, open, failed and cancelled work stays visible. `test_request_queue.py` covers frozen acceptance snapshots, explicit retry/reappearance, stale writes, read-only projection of old completed instances, history pagination and deduplication across foreground activation. `test_parallel_archive_app.cjs` verifies lazy history, independent disclosure/export keys for repeated acceptances of the same instance, compact refresh and complete HTML/XLSX evidence. Instances remain addressable by their original ID; only an explicit retry may reopen a completed instance. These are isolated backend and Chrome checks, not native Codex host acceptance.
+Resolved parallel roots move into task history after every node is resolved and root synthesis is complete. Open, failed and cancelled work stays visible until an explicit parent closure review or accepted handoff closes it; original outcomes stay unchanged. `test_request_queue.py` covers frozen acceptance snapshots, explicit retry/reappearance, stale writes, read-only projection of old completed instances, history pagination and deduplication across foreground activation. `test_parallel_archive_app.cjs` verifies lazy history, independent disclosure/export keys for repeated acceptances of the same instance, compact refresh and complete HTML/XLSX evidence. Instances remain addressable by their original ID; only an explicit retry may reopen a completed instance. These are isolated backend and Chrome checks, not native Codex host acceptance.
+
+`test_handoff_closure.py` covers pending-to-accepted handoff reconciliation, a target in an archived instance's old epoch, a cancelled source leaf with no attempt, rejected/stale/self/cyclic/incomplete mappings, source result bindings, cancellation closure continue/accept decisions, unchanged nodes, frozen retry archives, unresolved dependency protection and selective audit receipts/queries. Run it with `python3 -m unittest discover -s tests -p test_handoff_closure.py -v`. `test_handoff_closure_app.cjs` runs the real app and isolated server in Chrome, checks two resolved plus one cancelled parent waiting for synthesis, then handoff/closure history and complete HTML/XLSX acceptance evidence. No live session or shared service is involved.
 
 The request-queue browser test also checks collapsed context with a visible queue count, concise task rows retaining role, bound agent, model and reasoning effort, a result summary on task expansion with separately collapsed execution/binding/review/evidence details, full records on demand, refresh persistence, and disclosure isolation when the task instance changes.
 

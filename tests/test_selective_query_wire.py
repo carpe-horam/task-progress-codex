@@ -89,6 +89,18 @@ class SelectiveWireTests(unittest.TestCase):
                                 status='in_progress', assignment=MAIN)['structuredContent']
         self.assertTrue(legacy_start['attempt_id'])
         self.rpc('clear_progress', session_id=linear['session_id'])
+        # Both audit mutations keep their full evidence out of acknowledgements.
+        init = self.rpc('init_task_network', task_title='Audit wire', tasks=[
+            {'id':'target','title':'Target','assignment':MAIN}, {'id':'later','title':'Later','assignment':MAIN}])['structuredContent']
+        sid, iid = init['session_id'], init['task_instance_id']
+        target = self.rpc('update_task', session_id=sid, task_instance_id=iid, task_id='target', execution_status='running', assignment=MAIN)['structuredContent']['attempt_id']
+        peer = self.rpc('route_request', session_id=sid, task_instance_id=iid, request_id='transfer', request_text='Transfer', task_title='Transfer', mode='parallel', reason='Isolated', acceptance_criteria=['Delivery'])['structuredContent']['request_task_instance_id']
+        server.decompose_task(sid, 'root', [{'id':'cancelled','title':'Cancelled','assignment':SUB}], task_instance_id=peer)
+        server.update_task(sid, 'cancelled', 'cancelled', summary='Transferred', task_instance_id=peer)
+        server.update_task(sid, 'root', 'finished', outcome='open', summary='Source ended', assignment=MAIN, task_instance_id=peer)
+        binding = server.get_progress(sid, task_instance_id=peer)['structuredContent']['progress']['closure_review_binding']
+        self.rpc('review_task_closure', session_id=sid, task_instance_id=peer, task_id='root', review_id='continue', decision='continue', summary=LONG, evidence=[LONG], reviewer=MAIN, **binding)
+        self.rpc('handoff_request', session_id=sid, task_instance_id=iid, request_id='transfer', handoff_id='transfer', source_task_instance_id=peer, summary=LONG, evidence=[LONG], reviewer=MAIN, mappings=[{'source_task_id':'cancelled','source_attempt_id':None,'target_task_instance_id':iid,'target_epoch':0,'target_task_id':'target','target_attempt_id':target}], **binding)
         self.assertEqual(self.seen, server._MUTATION_TOOLS)
 
     def test_overview_tree_and_tasks_are_distinct_explicit_layers(self):

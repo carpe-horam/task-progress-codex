@@ -88,7 +88,7 @@ class ToolResponsePerformanceTests(unittest.TestCase):
         self.assertEqual(dependency["outcome"], "open")
 
     def test_parallel_roots_stay_visible_and_load_their_own_records_explicitly(self):
-        self.accept(self.submit())
+        self.accept(self.submit(outcome="open"))
         server.route_request(self.sid, self.iid, "peer", "Independent request", "Peer", "parallel",
                              "Separate work", ["Preserve evidence"])
         data = server._read(self.sid)

@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">Interactive demo</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.0">Get 0.2.0</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.1">Get 0.2.1</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -25,12 +25,12 @@
 For macOS, with Python 3 and a Codex client that supports plugins. Run in a terminal:
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.1
 codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.1/service_manager.py" install
 ```
 
-Complete all three commands, then **restart Codex**. Already installed? See [upgrade commands](docs/releases/0.2.0.md#从旧版本升级). Platform notes and service management are in the [installation guide](docs/installation.md) (Chinese).
+Complete all three commands, then **restart Codex** to load the new tools. Already installed? See [upgrade commands](docs/releases/0.2.1.md#从旧版本升级). Platform notes and service management are in the [installation guide](docs/installation.md) (Chinese).
 
 ## Getting started
 
@@ -45,10 +45,12 @@ Describe your task in Codex:
 | Queue another task | “Queue the documentation work for after the current task.” |
 | Work in parallel | “Have a subagent check the docs in parallel while the main task continues.” |
 
-The panel refreshes automatically. Expand a task for details, or select **Export** to save reports. “Awaiting main-session review” means submitted results still need checking. Codex executes and coordinates the work; Task Progress records and displays it. Data stays on your computer. The interactive panel requires MCP Apps support.
+Version 0.2.1 links handed-off work to an exact receiving attempt and archives the source after acceptance. When children include cancelled or unresolved work, the main session explicitly decides whether to continue or accept closure. Original open/cancelled results, attempts and reviews stay intact; retries can reopen the work, and HTML/Excel retain the audit evidence.
+
+The panel refreshes automatically. Expand a task for details, or select **Export** to save reports. “Awaiting main-session review” means submitted results still need checking. Codex executes and coordinates the work; Task Progress records and displays it. Data stays on your computer. The plugin does not automatically wake or control host agents. The interactive panel requires MCP Apps support.
 
 <details>
-<summary><strong>Explore the task panel</strong> · Actual interface, demo data</summary>
+<summary><strong>Explore the task panel</strong> · Historical 0.2.0 preview, demo data</summary>
 
 ![Task Progress 0.2.0 panel with demonstration data](docs/assets/task-progress-0.2.0.png)
 

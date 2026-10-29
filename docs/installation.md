@@ -1,37 +1,39 @@
 # 安装与服务管理
 
-[返回 README](../README.md) · [0.2.0 发布说明](releases/0.2.0.md)
+[返回 README](../README.md) · [0.2.1 发布说明](releases/0.2.1.md)
 
 
-### 首次安装 0.2.0（macOS）
+### 首次安装 0.2.1（macOS）
 
-安装发布标签 `v0.2.0`，不依赖默认分支。需要 Python 3，以及支持插件、Streamable HTTP 和 `http_headers_helper` 的 Codex CLI/客户端。
+安装发布标签 `v0.2.1`，不依赖默认分支。需要 Python 3，以及支持插件、Streamable HTTP 和 `http_headers_helper` 的 Codex CLI/客户端。
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.1
 codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.1/service_manager.py" install
 ```
 
-完成后重启 Codex。插件安装不会单独启动后台服务，最后一条命令是必需步骤。使用稳定安装的 Python 3；服务会记录该解释器的绝对路径。
+完成后重启 Codex，重新加载 0.2.1 的 `handoff_request` 与 `review_task_closure` 工具。插件安装不会单独启动后台服务，最后一条命令是必需步骤。使用稳定安装的 Python 3；服务会记录该解释器的绝对路径。
 
-### 从旧版本升级到 0.2.0
+### 从旧版本升级到 0.2.1
 
 重新登记来源到固定发布标签，重新安装插件和服务，然后重启 Codex：
 
 ```sh
 codex plugin marketplace remove task-progress-codex
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.0
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.1
 codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.0/service_manager.py" install
+python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.1/service_manager.py" install
 ```
+
+安装服务会更新本机后台代码；重启 Codex 会重新发现新工具，不能仅刷新面板来更新旧会话的工具清单。
 
 这会移除并重新添加 Marketplace 登记。任务数据独立保存在本机缓存中，无需迁移。旧 stdio 会话需重启 Codex 后才释放进程；不要仅刷新 Marketplace 就认为插件和服务已升级。若尚未登记该 Marketplace，直接使用首次安装命令。
 
 ### 从本地源码安装
 
 ```sh
-git clone --branch v0.2.0 --depth 1 https://github.com/carpe-horam/task-progress-codex.git
+git clone --branch v0.2.1 --depth 1 https://github.com/carpe-horam/task-progress-codex.git
 codex plugin marketplace add ./task-progress-codex
 codex plugin add task-progress@task-progress-codex
 python3 ./task-progress-codex/plugins/task-progress/service_manager.py install

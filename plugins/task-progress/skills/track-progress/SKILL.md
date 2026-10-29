@@ -36,7 +36,7 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 | 指定当前节点、派发、submission、review 和证据 | `view="tasks", task_ids=["<节点 ID>"]`；每次 1–20 个，不附历史记录数组。 |
 | 指定节点的追加记录 | `view="records", task_id="<节点 ID>", record_kind="attempts"`；另可选 `invalidated_results`、`reassignment_history`。 |
 | 恢复上下文与会话请求 | `view="context"`；完整 `task_context` 与 `session_work`，其中 requests 分页。 |
-| 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`context_revisions`、`legacy_history`。 |
+| 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`context_revisions`、`legacy_history`、`handoffs`、`handoff_closures`、`closure_reviews`。 |
 | 确需完整目标实例 | `view="full"`；兼容 `include_history=true`，不能与其他 view 混用。 |
 
 分页的 `pagination` 包含 `offset`、`limit`、`total`、`has_more`、`next_offset`；默认 limit=50，可选 1–200。保留第一页的 `state_revision`，后续页传 `expected_state_revision`，版本变化报错时从第一页重读，不混合不同版本。线性步骤在 tasks/records 中使用字符串索引，如 `"0"`。
@@ -266,6 +266,10 @@ Task Progress 是执行过程中的状态账本，不是只在开工时生成一
 分组/root 不直接 running，只能由主会话综合验收。所有直接子任务必须已解决且无待复核项，才可提交 `finished/resolved`；需要非空 summary/evidence 和 `assignment.execution_mode=main_session`，模型未知可省略。服务端另建 `kind=synthesis` attempt；叶节点结束百分比 100% 不代表整体完成。
 
 存在 open/failed/cancelled 子结果时，先处理、重试或重规划；也可在子任务均结束后如实以 `finished/open`、`failed` 或 `cancelled` 收尾，并说明证据和剩余工作，不能把未解决子结果静默视为 resolved。取消/失败保存 `kind=group_termination`，不会停止外部执行者，须先协调停止。没有运行 attempt 的分组不传旧的 attempt ID。旧的已完成/已归档记录保持可读，不虚构历史验收。
+
+全部子项已结束（包含 cancelled/open/failed）且无待复核提交时，父级显示 `waiting_synthesis`，由主会话明确判断继续还是验收收尾。若需要保留原始终态，先读取该父节点的 `closure_review_binding`（根可用 overview，其他父用 tasks），再调用 `review_task_closure`，传 `review_id`、`source_epoch`、`source_fingerprint`、`decision=continue|accept`、非空 summary/evidence 和主会话 reviewer。continue 留在当前并明确 retry/重规划；accept 追加独立验收，允许根收尾归档，但不改原 outcome、不把取消算成功、不放行 resolved 依赖。旧 binding 会被拒绝；同 ID 同内容可重试。已收尾实例仅显式 retry 可重开，旧归档保持冻结。子智能体不得验收自己的父/root；负责验收的主会话可依据独立审查结果做决定。
+
+工作移交到另一实例时，不用改写来源 cancelled/open。使用 `handoff_request` 将来源全部未解决叶明确绑定到承接叶的 instance/epoch/task/有效 attempt，并记录摘要和证据；承接可在当前或历史计划，未验收时来源继续可见，后续写入在承接真实 resolved 且通过验收后自动冻结闭环并归档。也支持对已经验收的历史承接补录。具体参数、身份与恢复规则见[请求分流与压缩恢复](references/request-routing.md)。
 
 ### 4. 重试与新一轮规划
 

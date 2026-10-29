@@ -218,7 +218,7 @@ h1{font-size:18px;line-height:1.35}
   const statusInfo = value => {
     if (value === 'completed' || value === 'complete' || value === 'resolved') return { key: 'completed', label: '已完成' };
     if (value === 'in_progress' || value === 'running' || value === 'executing') return { key: 'running', label: '进行中' };
-    const labels = { ready: '可执行', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', awaiting_review: '待主会话验收', waiting_synthesis: '待汇总验收', decomposing: '子任务可执行' };
+    const labels = { ready: '可执行', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', awaiting_review: '待主会话验收', waiting_synthesis: '待汇总验收', decomposing: '子任务可执行', closed:'已验收收尾 · 保留原结果', handed_off:'移交已验收 · 保留原结果' };
     if (Object.prototype.hasOwnProperty.call(labels, value)) return { key: value, label: labels[value] };
     return { key: 'pending', label: '待开始' };
   };
@@ -462,7 +462,7 @@ h1{font-size:18px;line-height:1.35}
       unresolved:leaves.filter(n=>['finished','failed','cancelled'].includes(n.execution_status) && n.review_status!=='pending' && !acceptedResolved(n) && (n.outcome!=='resolved' || n.review_status==='rejected' || n.invalidated_by)).length,
       unknown:leaves.filter(n=>n.outcome==='resolved' && n.review_status!=='pending' && !acceptedResolved(n) && n.review_status!=='rejected' && !n.invalidated_by).length};
   }
-  const nodeResultLabel = node => node.review_status === 'pending' ? '待主会话验收' : acceptedResolved(node) ? '已解决 / 已验收完成' : node.outcome === 'resolved' && (!currentResponsibility(node) || node.review_status==='legacy_unrecorded') ? '已解决 · 验收未记录' : node.execution_status === 'failed' ? '未解决 · 执行失败' : node.execution_status === 'cancelled' ? '未解决 · 已取消' : node.review_status === 'rejected' ? '未解决 · 验收退回' : null;
+  const nodeResultLabel = node => ['waiting_synthesis','closed','handed_off'].includes(node.status) ? statusInfo(node.status).label : node.review_status === 'pending' ? '待主会话验收' : acceptedResolved(node) ? '已解决 / 已验收完成' : node.outcome === 'resolved' && (!currentResponsibility(node) || node.review_status==='legacy_unrecorded') ? '已解决 · 验收未记录' : node.execution_status === 'failed' ? '未解决 · 执行失败' : node.execution_status === 'cancelled' ? '未解决 · 已取消' : node.review_status === 'rejected' ? '未解决 · 验收退回' : null;
   const hasReviewRecord = record => ['pending','accepted','rejected'].includes(record.review_status) || !!record.submission || !!record.review;
   const reviewLabel = value => ({pending:'待主会话验收',accepted:'已接受',rejected:'已退回'}[value] || '验收未记录');
   const responsibilityFields = (record, planned = null) => {
@@ -681,9 +681,22 @@ h1{font-size:18px;line-height:1.35}
   function archivedTaskScope(progress, position) {
     return taskScope(progress) + ':archive' + (progress.archive_key ? ':' + encodeURIComponent(progress.archive_key) : progress.task_instance_id ? '' : ':' + encodeURIComponent(progress.archived_at || '') + ':' + position);
   }
+  function auditRecords(progress) {
+    return [['handoffs','移交登记','handoff_id'],['handoff_closures','移交已验收','handoff_id'],['closure_reviews','收尾验收','review_id']].flatMap(([key,kind,id])=>list(progress?.[key]).map(record=>({kind,id:record[id] || '',record})));
+  }
+  function auditDetails(progress, prefix, openDetails) {
+    const fragment=document.createDocumentFragment();
+    auditRecords(progress).forEach((item,i)=>{
+      const details=document.createElement('details');details.className='detail-group closure-audit';details.dataset.key=prefix+':audit:'+item.kind+':'+item.id+':'+i;details.open=openDetails.get(details.dataset.key) || false;
+      const heading=document.createElement('summary');heading.textContent=item.kind+' · '+(item.record.decision==='continue'?'继续执行':item.record.decision==='accept'?'验收收尾':item.id);
+      details.append(heading,field('验收摘要',item.record.summary || ''),field('完整移交与验收证据',JSON.stringify(item.record,null,2)));fragment.append(details);
+    });
+    return fragment;
+  }
   function collectExportData(progress) {
     const report = collectSingleTaskExportData(progress);
-    report.plans = []; report.tasks = []; report.attempts = [];
+    report.plans = []; report.tasks = []; report.attempts = []; report.auditRecords = [];
+    const appendAudit = (task, current) => auditRecords(task).forEach(record=>report.auditRecords.push({...record,taskInstanceId:taskIdentity(task),instanceTitle:task.task_title || '',taskCurrent:current}));
     const archived = list(progress.task_history).filter(item => item && typeof item === 'object');
     const appendTask = (task, isCurrent, position) => {
       const item = collectSingleTaskExportData(task);
@@ -698,10 +711,12 @@ h1{font-size:18px;line-height:1.35}
         taskLatestRound: plan.current, closedAt: plan.closedAt || (!isCurrent ? task.archived_at || '' : '') }));
       item.tasks.forEach(row => report.tasks.push(enrich(row)));
       item.attempts.forEach(row => report.attempts.push(enrich(row)));
+      appendAudit(task, isCurrent);
       if (isCurrent) report.currentRoundKey = key + '/round:' + item.currentRoundKey;
     };
     archived.forEach((task, position) => appendTask(task, false, position));
     appendTask(progress, true, archived.length);
+    list(progress.parallel_tasks).forEach(task=>appendAudit(task,true));
     report.archivedTaskCount = archived.length;
     report.taskInstanceCount = archived.length + 1;
     report.planRoundCount = report.plans.filter(plan => plan.taskCurrent).length;
@@ -794,6 +809,7 @@ h1{font-size:18px;line-height:1.35}
       {name:'计划变更',rows:[headers.plans,...planRows],widths:[14,30,38,42,55,12,55,16,20,12,12,14,14,22,22,12,14,100,80,28,20,32,22]}
     ];
     sheets.push({name:'验收历史',rows:[reviewHeaders,...reviewRows],widths:Array(reviewHeaders.length).fill(28)});
+    if (list(data.auditRecords).length) sheets.push({name:'移交与收尾',rows:[['任务范围','任务实例','任务实例 ID','记录类型','记录 ID','分片','完整审计记录'],...data.auditRecords.flatMap(row=>{const value=JSON.stringify(row.record);return Array.from({length:Math.max(1,Math.ceil(value.length/30000))},(_,i)=>[row.taskCurrent?'当前任务':'归档任务',row.instanceTitle,row.taskInstanceId,row.kind,row.id,i+1,value.slice(i*30000,(i+1)*30000)]);})],widths:[16,36,40,24,40,10,120]});
     if (data.legacyHistory) sheets.push({name:'SQLite只读历史',rows:[['来源','只读说明','任务实例 ID','标题','旧状态（原值）','旧控制状态（原值）','更新时间','有界兼容摘录'],['sqlite_v3','旧库为有界兼容摘录；状态：'+data.legacyHistory.status+(data.legacyHistory.truncated?'；历史已截断':'')+(data.legacyHistory.warning?'；'+data.legacyHistory.warning:''),'','','','','',JSON.stringify({...data.legacyHistory,records:undefined})],...list(data.legacyHistory.records).map(t=>['sqlite_v3','旧记录不证明已按当前协议验收'+(t.nodes_truncated?'；节点已截断':'')+(legacyDetailsIncomplete(t)?'；详情不可用或摘录不完整':''),t.task_instance_id,t.title,t.status,t.control_state,t.updated_at,JSON.stringify(t)])],widths:[20,45,40,50,25,25,25,120]});
     const colName=index=>{let n=index+1,s='';while(n){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26)}return s};
     const dates=new Set(['开始时间','结束时间','关闭时间','快照更新时间','元数据采集时间','提交时间','验收时间','失效时间','归档时间','导出时间','源数据更新时间']);
@@ -1036,6 +1052,7 @@ h1{font-size:18px;line-height:1.35}
     const currentRoot = data.network ? tasksFor(data.currentRoundKey).find(task => data.currentPlan?.rootId ? task.taskId === data.currentPlan.rootId : !task.parentId) : null;
     const finalStatus = currentRoot?.executionStatus || data.taskStatus;
     const delivery = (() => {
+      if (['closed','handed_off','waiting_synthesis'].includes(data.taskStatus)) return statusInfo(data.taskStatus).label;
       if (data.legacyOnly) return '旧版只读记录';
       if (finalStatus === 'failed') return '执行失败';
       if (finalStatus === 'cancelled') return '已取消';
@@ -1061,6 +1078,7 @@ h1{font-size:18px;line-height:1.35}
     const timelineSection = `<section id="rp-plans" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">01</span>计划如何走到今天</h2><span class="rp-small">同一任务 · ${currentPlans.length} 轮计划</span></div><p class="rp-section-caption">每轮保留自己的目标、叶任务范围与结果；进入原因取自前一轮记录。没有共同任务 ID 时不推测语义沿袭。</p>${planTimeline(currentPlans, 'current')}${currentPlans.length <= 1 ? '<p class="rp-note">当前记录没有计划变更时间线，无法还原每一次拆分发生的顺序。</p>' : ''}</section>`;
     const currentSection = `<section id="rp-current" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">02</span>当前计划展开</h2><span class="rp-small">${currentStats.total} 项叶任务 · ${tasksFor(data.currentRoundKey).length} 个节点（含根节点）</span></div><p class="rp-section-caption">运行中及未解决分支默认展开；展开任务查看摘要、证据与历次执行。</p>${data.currentPlan ? renderTree(data.currentPlan, 'current', true) : '<p class="rp-note">当前快照没有计划节点。</p>'}</section>`;
     const archiveSection = archivedGroups.size ? `<section id="rp-archives" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">03</span>此前做过的任务</h2><span class="rp-small">${data.archivedTaskCount} 个历史任务 · 与当前计划分开计数</span></div>${[...archivedGroups.entries()].map(([scope, plans]) => { const plan=plans.sort((a,b)=>Number(a.epoch)-Number(b.epoch)).at(-1), stats=planStats(plan); return `<details class="rp-history-item"><summary class="cursor-interaction">${chevron}<span class="rp-history-title">${esc(plan.instanceTitle)}<small>${plan.taskInstanceId ? '历史任务实例' : '历史任务'} · ${plans.length} 轮计划 · ${stats.total} 项叶任务</small></span><span class="rp-small">已解决 ${stats.resolved}/${stats.total} · 已结束 ${stats.ended}/${stats.total}</span></summary><div class="rp-history-body"><p class="rp-small">归档于 ${fmtTime(plan.archivedAt)}；数字均属于此历史任务。</p>${planTimeline(plans, scope)}</div></details>`; }).join('')}</section>` : '';
+    const auditSection = list(data.auditRecords).length ? `<section id="rp-closure-audit" class="rp-section"><h2>移交与收尾验收</h2><p>验收收尾保留原始未解决或取消结果，不作为已解决计数。</p>${data.auditRecords.map(item=>`<details class="rp-history-item"><summary>${esc(item.instanceTitle)} · ${esc(item.kind)} · ${esc(item.id)}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(item.record,null,2))}</pre></details>`).join('')}</section>` : '';
     const legacySection = data.legacyHistory ? `<section id="rp-legacy" class="rp-section"><h2>SQLite 历史 · 只读</h2><p class="rp-note">来源 sqlite_v3；${data.legacyOnly ? '仅有旧版归档，无当前 JSON 任务。' : '当前任务来自 JSON；SQLite 为独立历史来源，状态冲突不自动合并。'}旧状态按原值展示，不证明已按当前协议验收。旧库内容为有界兼容摘录。${data.legacyHistory.truncated ? '任务历史已截断。' : ''}${data.legacyHistory.status === 'unavailable' ? '旧库来源不可用；当前 JSON 历史仍完整导出。' : ''}${esc(data.legacyHistory.warning || '')}</p>${list(data.legacyHistory.records).map(t=>`<details class="rp-history-item"><summary>${esc(t.title)} · ${esc(t.status)} · ${esc(t.task_instance_id)}</summary>${legacyDetailsIncomplete(t) ? '<p>兼容历史摘录不完整：节点已截断或详情不可用。</p>' : ''}<pre class="rp-small">${esc(JSON.stringify(t,null,2))}</pre></details>`).join('')}</section>` : '';
     const sheets = ['概览','任务清单','执行尝试','证据索引','计划变更','验收历史'];
     const currentTasks = data.tasks.filter(task => task.taskCurrent && task.roundKey === data.currentRoundKey);
@@ -1077,7 +1095,7 @@ h1{font-size:18px;line-height:1.35}
     const model = data.mainSession?.model || '未记录', thinking = data.mainSession?.reasoning_effort || '未记录';
     const focus = `<p class="rp-note" id="rp-state-counts">${currentStats.running} 项执行中 · ${currentStats.pendingReview || 0} 项待主会话验收</p><div class="rp-focus"><div class="rp-focus-item"><div class="rp-focus-label">当前推进</div><div class="rp-focus-title">${esc(active?.title || '暂无执行中任务')}</div><div class="rp-small">${active ? esc(active.pathTitles) : '当前快照没有 running 叶任务。'}</div>${active ? jumpLink(active) : ''}</div><div class="rp-focus-item rp-attention"><div class="rp-focus-label">仍待解决 / 下一关口</div><div class="rp-focus-title">${esc(unresolved[0]?.title || (currentStats.running ? `${currentStats.running} 项执行中` : currentStats.ended < currentStats.total ? '仍有待执行任务' : delivery))}</div><div class="rp-small">${unresolved.length ? esc(unresolved[0].summary || unresolved[0].pathTitles) : '未从快照推断外部验收要求。'}</div>${unresolved[0] ? jumpLink(unresolved[0]) : ''}</div></div>`;
     const roundsSectionNo = '01';
-    const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Task Progress · ${esc(data.taskTitle)}</title><style>${css}</style></head><body><main id="task-progress-report" class="report"><div class="rp-top"><div class="rp-brand"><span class="rp-monogram">tp</span><div><div class="rp-wordmark">TASK PROGRESS</div><div class="rp-small">执行报告 · 计划与结果快照</div></div></div><div class="rp-small">${esc(data.mode)} · ${esc(data.status)}</div></div><header class="rp-hero"><div class="rp-kicker"><span>当前任务 · 第 ${Number(data.currentEpoch||0)+1} 轮计划</span><span class="rp-tag active">${esc(data.status)}</span></div><h1>${esc(data.taskTitle)}</h1><p class="rp-subtitle">会话 ${esc(data.sessionId)}<br>数据冻结于 ${fmtTime(data.currentPlan?.capturedAt || data.sourceUpdatedAt)} · 报告生成于 ${fmtTime(data.generatedAt)}</p></header><div class="rp-metrics"><div class="rp-metric"><div class="rp-metric-label">已结束</div><div class="rp-number">${currentStats.ended}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i class="rp-ended" style="width:${pct(currentStats.ended,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">已解决</div><div class="rp-number">${currentStats.resolved}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i style="width:${pct(currentStats.resolved,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">计划沿革</div><div class="rp-number">${currentPlans.length}<span>轮 · 同一任务</span></div><div class="rp-small">另有 ${data.archivedTaskCount} 个历史任务</div></div><div class="rp-metric"><div class="rp-metric-label">最终交付</div><div class="rp-number rp-delivery">${esc(delivery)}</div><div class="rp-small">${currentStats.running} 项执行中${currentStats.endedUnresolved ? ` · ${currentStats.endedUnresolved} 项已结束未解决` : ''}</div></div></div>${focus}<nav class="rp-nav" aria-label="报告目录"><a href="#rp-plans"><span>01</span>计划沿革</a><a href="#rp-current"><span>02</span>当前任务</a>${archivedGroups.size ? '<a href="#rp-archives"><span>03</span>历史任务</a>' : ''}<a href="#rp-workbook"><span>${archivedGroups.size?'04':'03'}</span>数据表预览</a></nav>${timelineSection}${currentSection}${archiveSection}${legacySection}${workbookPreview}<details class="rp-source"><summary>${chevron}数据来源与记录边界</summary><dl><dt>统计口径</dt><dd>仅统计叶任务；已结束包含完成、失败、取消；已解决仅统计 outcome=resolved 且通过当前验收协议；历史验收未记录的结果不推断为已验收；待主会话验收的执行结果不计为已解决。执行结束不等于验收通过。身份与执行配置由调用方填报，未作宿主认证。</dd><dt>时间口径</dt><dd>运行中时长截至任务快照时间；历史结果保留在各自计划轮次与任务实例。</dd><dt>计划沿袭</dt><dd>${currentPlans.length>1?'相邻轮次只按任务 ID 交集呈现，不推断任务之间的语义继承。':'当前记录没有计划变更历史，不能还原拆分顺序。'} revision=${esc(data.revision)} 是状态修订号，不等于拆分次数。</dd><dt>主会话模型</dt><dd>${esc(model)} / 思维强度 ${esc(thinking)}；${esc(data.mainSessionEvidence || '来源未记录')}</dd><dt>任务实例 ID</dt><dd>${esc(data.currentPlan?.taskInstanceId || '未记录')}</dd><dt>历史任务数</dt><dd>${data.archivedTaskCount}</dd></dl></details><footer class="rp-footer"><span>TASK PROGRESS · 执行、结果与计划沿革</span><span>离线报告 / ${esc(data.generatedAt)}</span></footer></main><script>
+    const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Task Progress · ${esc(data.taskTitle)}</title><style>${css}</style></head><body><main id="task-progress-report" class="report"><div class="rp-top"><div class="rp-brand"><span class="rp-monogram">tp</span><div><div class="rp-wordmark">TASK PROGRESS</div><div class="rp-small">执行报告 · 计划与结果快照</div></div></div><div class="rp-small">${esc(data.mode)} · ${esc(data.status)}</div></div><header class="rp-hero"><div class="rp-kicker"><span>当前任务 · 第 ${Number(data.currentEpoch||0)+1} 轮计划</span><span class="rp-tag active">${esc(data.status)}</span></div><h1>${esc(data.taskTitle)}</h1><p class="rp-subtitle">会话 ${esc(data.sessionId)}<br>数据冻结于 ${fmtTime(data.currentPlan?.capturedAt || data.sourceUpdatedAt)} · 报告生成于 ${fmtTime(data.generatedAt)}</p></header><div class="rp-metrics"><div class="rp-metric"><div class="rp-metric-label">已结束</div><div class="rp-number">${currentStats.ended}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i class="rp-ended" style="width:${pct(currentStats.ended,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">已解决</div><div class="rp-number">${currentStats.resolved}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i style="width:${pct(currentStats.resolved,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">计划沿革</div><div class="rp-number">${currentPlans.length}<span>轮 · 同一任务</span></div><div class="rp-small">另有 ${data.archivedTaskCount} 个历史任务</div></div><div class="rp-metric"><div class="rp-metric-label">最终交付</div><div class="rp-number rp-delivery">${esc(delivery)}</div><div class="rp-small">${currentStats.running} 项执行中${currentStats.endedUnresolved ? ` · ${currentStats.endedUnresolved} 项已结束未解决` : ''}</div></div></div>${focus}<nav class="rp-nav" aria-label="报告目录"><a href="#rp-plans"><span>01</span>计划沿革</a><a href="#rp-current"><span>02</span>当前任务</a>${archivedGroups.size ? '<a href="#rp-archives"><span>03</span>历史任务</a>' : ''}<a href="#rp-workbook"><span>${archivedGroups.size?'04':'03'}</span>数据表预览</a></nav>${timelineSection}${currentSection}${archiveSection}${auditSection}${legacySection}${workbookPreview}<details class="rp-source"><summary>${chevron}数据来源与记录边界</summary><dl><dt>统计口径</dt><dd>仅统计叶任务；已结束包含完成、失败、取消；已解决仅统计 outcome=resolved 且通过当前验收协议；历史验收未记录的结果不推断为已验收；待主会话验收的执行结果不计为已解决。执行结束不等于验收通过。身份与执行配置由调用方填报，未作宿主认证。</dd><dt>时间口径</dt><dd>运行中时长截至任务快照时间；历史结果保留在各自计划轮次与任务实例。</dd><dt>计划沿袭</dt><dd>${currentPlans.length>1?'相邻轮次只按任务 ID 交集呈现，不推断任务之间的语义继承。':'当前记录没有计划变更历史，不能还原拆分顺序。'} revision=${esc(data.revision)} 是状态修订号，不等于拆分次数。</dd><dt>主会话模型</dt><dd>${esc(model)} / 思维强度 ${esc(thinking)}；${esc(data.mainSessionEvidence || '来源未记录')}</dd><dt>任务实例 ID</dt><dd>${esc(data.currentPlan?.taskInstanceId || '未记录')}</dd><dt>历史任务数</dt><dd>${data.archivedTaskCount}</dd></dl></details><footer class="rp-footer"><span>TASK PROGRESS · 执行、结果与计划沿革</span><span>离线报告 / ${esc(data.generatedAt)}</span></footer></main><script>
 document.addEventListener('click',e=>{const jump=e.target.closest('[data-jump]');if(jump){e.preventDefault();const target=[...document.querySelectorAll('#task-progress-report [data-node-id]')].find(n=>n.dataset.nodeId===jump.dataset.jump);if(target){for(let p=target.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;target.scrollIntoView({block:'center'});target.querySelector('summary')?.focus();}}const tab=e.target.closest('[data-sheet-index]');if(tab){const i=tab.dataset.sheetIndex;document.querySelectorAll('#task-progress-report [data-sheet-index]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));document.querySelectorAll('#task-progress-report .rp-book-grid').forEach((panel,j)=>panel.hidden=String(j)!==i);document.getElementById('rp-sheet-name').textContent=tab.textContent;}});
 document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-index]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=[...document.querySelectorAll('#task-progress-report [data-sheet-index]')],i=tabs.indexOf(tab),next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[next].click();tabs[next].focus();});
 </scr`+`ipt></body></html>`;
@@ -1477,6 +1495,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
         const p=rootContext.progress, stats=leafProgress(nodes);
         body.append(field('本任务进度', stats.resolved + ' / ' + stats.total + ' 项已解决 / 已验收完成；' + stats.pending + ' 待验收 · ' + stats.running + ' 执行中'));
         body.append(field('本任务规划', p.planning_status==='required'?'尚未规划':'第 '+(Number(p.epoch || 0)+1)+' 轮'));
+        body.append(auditDetails(p, prefix, openDetails));
       }
       const responsibility = responsibilityDetails(node, node.planned_assignment, prefix + ':' + id, openDetails, {
         compact: true, omitSubmissionSummary: !!resultSummary && printable(resultSummary) === printable(node.submission?.summary)
@@ -1556,11 +1575,11 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
   }
   function shownParallelTasks(progress) {
     const archived = new Set(list(progress.task_history).filter(task=>task.archive_kind==='parallel').map(task=>task.task_instance_id));
-    const completed = task => {const nodes=nodesFrom(task.nodes);return task.request_status==='completed' && nodes.length && nodes.every(node=>node.execution_status==='finished' && node.outcome==='resolved' && node.review_status!=='pending');};
+    const completed = task => {const nodes=nodesFrom(task.nodes);return !!task.handoff_closure || task.closure_review?.decision==='accept' && task.closure_review.task_id===task.root_id || task.request_status==='completed' && nodes.length && nodes.every(node=>node.execution_status==='finished' && node.outcome==='resolved' && node.review_status!=='pending');};
     if (Array.isArray(progress.parallel_tasks)) return progress.parallel_tasks.filter(task=>task && task.task_instance_id && task.task_instance_id!==progress.task_instance_id && !completed(task));
     // Old cached host payloads can name a parallel instance without its nodes.
     // Keep its place in the root list until a fresh foreground snapshot arrives.
-    return list(sessionWork?.requests).filter(item=>item.mode==='parallel' && item.task_instance_id && item.task_instance_id!==progress.task_instance_id && !(item.status==='completed' && archived.has(item.task_instance_id))).map(item=>({...item, details_unavailable:true}));
+    return list(sessionWork?.requests).filter(item=>item.mode==='parallel' && item.task_instance_id && item.task_instance_id!==progress.task_instance_id && !(['completed','closed','handed_off'].includes(item.status) && archived.has(item.task_instance_id))).map(item=>({...item, details_unavailable:true}));
   }
   function renderNetwork(progress, nodes, openDetails) {
     $('steps').className = 'steps task-tree';
@@ -1603,7 +1622,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const heading = document.createElement('summary'); heading.textContent = '第 ' + (Number(snapshot.epoch ?? position) + 1) + ' 轮 · ' + (snapshot.task_title || '未命名计划');
       const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '结束 ' + date(snapshot.closed_at) + (snapshot.reason ? '\n重建原因：' + snapshot.reason : '');
       const tree = document.createElement('ol'); tree.className = 'steps task-tree'; tree.append(networkTree(nodesFrom(snapshot.nodes), snapshot.root_id, key, openDetails, false, snapshotTimeContext(snapshot)));
-      details.append(heading, meta, tree); li.append(details); fragment.append(li);
+      details.append(heading, meta, tree, auditDetails(snapshot,key,openDetails)); li.append(details); fragment.append(li);
     });
     return fragment;
   }
@@ -1623,13 +1642,14 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const total = Number.isFinite(task.total) ? task.total : task.schema_version === 2 ? nodesFrom(task.nodes).filter(node => !list(node.children).length).length : list(task.steps).length;
       const completed = Number.isFinite(task.completed) ? task.completed : 0;
       const percent = Math.round(Math.max(0, Math.min(100, Number.isFinite(task.percent) ? task.percent : total ? completed / total * 100 : 0)));
-      status.textContent = (statusInfo(task.status).key === 'running' ? '归档时进行中' : statusInfo(task.status).label) + ' · ' + completed + '/' + total + ' · ' + percent + '%';
+      const resolved = task.schema_version===2 ? (Number.isFinite(task.resolved_leaf_count) ? task.resolved_leaf_count : nodesFrom(task.nodes).filter(node=>!list(node.children).length && acceptedResolved(node)).length) : completed;
+      status.textContent = (statusInfo(task.status).key === 'running' ? '归档时进行中' : statusInfo(task.status).label) + ' · 已解决 ' + resolved + '/' + total + ' · 已结束 ' + completed + '/' + total + ' · ' + percent + '% 已结束';
       const archivedAt = document.createElement('span'); archivedAt.className = 'task-history-progress'; archivedAt.textContent = '归档 ' + date(task.archived_at);
       heading.append(title, status, archivedAt);
       const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '归档 ' + date(task.archived_at) + ' · ' + (task.schema_version === 2 ? '第 ' + (Number(task.epoch || 0) + 1) + ' 轮计划' : '顺序步骤');
       const tree = document.createElement('ol'); tree.className = task.schema_version === 2 ? 'steps task-tree' : 'steps';
       tree.append(task.schema_version === 2 ? networkTree(nodesFrom(task.nodes), task.root_id, prefix + ':current-plan', openDetails, true, snapshotTimeContext(task, true)) : linearSteps(list(task.steps), prefix + ':steps', openDetails, snapshotTimeContext(task, true)));
-      details.append(heading, meta, tree);
+      details.append(heading, meta, tree, auditDetails(task,prefix,openDetails));
       if (task.schema_version === 2 && list(task.history).length) {
         const plans = document.createElement('details'); plans.className = 'task-history-plans'; plans.dataset.key = prefix + ':plans'; plans.open = openDetails.get(plans.dataset.key) || false;
         const label = document.createElement('summary'); label.textContent = '此任务的历史计划 · ' + task.history.length + ' 轮';

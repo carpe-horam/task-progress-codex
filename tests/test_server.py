@@ -242,7 +242,8 @@ class ProgressTests(unittest.TestCase):
         self.assertRejectedUnchanged(lambda: self.finish("g", outcome="open", summary=""))
         self.finish("g", outcome="open", summary="Required input failed")
         self.finish("root", outcome="open", summary="Cannot complete")
-        self.assertEqual(self.progress()["status"], "open")
+        self.assertEqual(self.progress()["status"], "waiting_synthesis")
+        self.assertEqual(self.node("root")["outcome"], "open")
         self.assertEqual(self.node("g")["attempts"][0]["kind"], "synthesis")
 
     def test_group_cancellation_requires_closed_children_metadata_and_reason(self):
@@ -252,7 +253,8 @@ class ProgressTests(unittest.TestCase):
         self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "cancelled", assignment=ASSIGNMENT))
         self.assertRejectedUnchanged(lambda: server.update_task(self.sid, "root", "cancelled", summary="Stop"))
         server.update_task(self.sid, "root", "cancelled", summary="Stop", assignment=ASSIGNMENT)
-        self.assertEqual(self.progress()["status"], "cancelled")
+        self.assertEqual(self.progress()["status"], "waiting_synthesis")
+        self.assertEqual(self.node("root")["execution_status"], "cancelled")
         self.assertEqual(self.node("root")["attempts"][0]["execution_status"], "cancelled")
 
     def test_retry_cannot_invalidate_ancestor_used_by_running_consumer(self):
@@ -555,7 +557,7 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 24)
+        self.assertEqual(len(replies[1]["tools"]), 26)
         listed = {tool["name"]: tool for tool in replies[1]["tools"]}
         self.assertTrue({"get_progress", "update_task", "review_task", "route_request", "get_progress_view", "consume_display_intent"} <= listed.keys())
         self.assertEqual(listed["consume_display_intent"]["_meta"]["ui"]["visibility"], ["app"])
