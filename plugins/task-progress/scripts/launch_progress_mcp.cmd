@@ -1,5 +1,6 @@
 @echo off
 setlocal
+rem Python helper for hooks and explicit commands; MCP uses python directly.
 
 if defined CODEX_MCP_PYTHON_PATH if exist "%CODEX_MCP_PYTHON_PATH%" (
   "%CODEX_MCP_PYTHON_PATH%" %*

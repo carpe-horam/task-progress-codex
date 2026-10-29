@@ -22,15 +22,14 @@
 
 ## Installation
 
-For macOS, with Python 3 and a Codex client that supports plugins. Run in a terminal:
+On macOS, Linux and Windows, use a Codex client with plugins and stdio MCP, and Python 3 available as `python` on the Codex process PATH. Run in a terminal:
 
 ```sh
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.1
+codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
-python3 "${CODEX_HOME:-$HOME/.codex}/plugins/cache/task-progress-codex/task-progress/0.2.1/service_manager.py" install
 ```
 
-Complete all three commands, then **restart Codex** to load the new tools. Already installed? See [upgrade commands](docs/releases/0.2.1.md#从旧版本升级). Platform notes and service management are in the [installation guide](docs/installation.md) (Chinese).
+These instructions describe the next release with automatic service startup. Published `v0.2.1` still requires manual service installation; the commands above pick up the new behavior after it merges into the default branch. **Restart Codex** after installation. The first plugin connection automatically installs or updates the shared local service. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
 
 ## Getting started
 
