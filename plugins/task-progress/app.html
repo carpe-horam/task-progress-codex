@@ -1942,6 +1942,10 @@ h1{font-size:18px;line-height:1.35}
       const title = document.createElement('span'); title.className = 'step-title';
       const titleText = document.createElement('span'); titleText.className = 'task-title-text'; titleText.textContent = String(node.title || '未命名任务');
       title.append(taskNumber(number), titleText);
+      if (node.is_added) {
+        const badge = document.createElement('span'); badge.className = 'retry-badge added-badge';
+        badge.textContent = '追加'; badge.title = '追加原因：' + String(node.addition_reason || '未记录'); title.append(badge);
+      }
       // Group attempts also include synthesis/closure records, so their count
       // does not describe retries of an execution task.
       if (!childIds.length) appendRetryBadge(title, node.attempt);
@@ -1986,6 +1990,15 @@ h1{font-size:18px;line-height:1.35}
       more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
       const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
       const moreContent = document.createElement('div'); moreContent.className = 'detail-group-content';
+      if (node.is_added) moreContent.append(field('追加原因', node.addition_reason || '未记录'));
+      if (node.stage_inventory_due_attempt) moreContent.append(field('阶段盘点', '待主会话盘点未解决任务。'));
+      if (list(node.stage_inventories).length) {
+        const inventory = node.stage_inventories[node.stage_inventories.length - 1];
+        const labels = {continue:'继续', obsolete:'已过期', covered:'已被覆盖'};
+        moreContent.append(field('最近阶段盘点', inventory.status === 'superseded' ? inventory.reason : list(inventory.decisions).map(item => String(item.task_id) + ' · ' + (labels[item.decision] || item.decision) + ' · ' + String(item.reason || '')).join('\n') || '无未解决叶任务'));
+      } else if (node.stage_inventory_count) {
+        moreContent.append(field('阶段盘点记录', String(node.stage_inventory_count) + ' 条；完整记录可按需读取。'));
+      }
       if (Object.keys(assignment).length) moreContent.append(field('配置来源', metadataEvidence(assignment), 'metadata-provenance'));
       if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));

@@ -34,7 +34,7 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 |---|---|
 | 一层或多层子树 | `view="tree", task_id="<起点>", depth=1`；深度 0–8，广度优先分页；注意 `depth_limited`、`child_count` 和 `title_truncated`，不可把简要节点当完整文本。 |
 | 指定当前节点、派发、submission、review 和证据 | `view="tasks", task_ids=["<节点 ID>"]`；每次 1–20 个，不附历史记录数组。 |
-| 指定节点的追加记录 | `view="records", task_id="<节点 ID>", record_kind="attempts"`；另可选 `invalidated_results`、`reassignment_history`。 |
+| 指定节点的追加记录 | `view="records", task_id="<节点 ID>", record_kind="attempts"`；另可选 `invalidated_results`、`reassignment_history`、`stage_inventories`。 |
 | 恢复上下文与会话请求 | `view="context"`；完整 `task_context` 与 `session_work`，其中 requests 分页。 |
 | 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`context_revisions`、`legacy_history`、`handoffs`、`handoff_closures`、`closure_reviews`。 |
 | 确需完整目标实例 | `view="full"`；兼容 `include_history=true`，不能与其他 view 混用。 |
@@ -74,6 +74,8 @@ description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度�
 - **先有结构，再启动阶段。**多阶段任务调用 `init_task_network` 后，立即用 `decompose_task` 建立主要阶段；完成后调用 `get_ready_tasks`，只启动依赖已满足的 ready 叶任务。除非任务确实原子且无合理边界，否则 `root.children` 为空不能作为已完成规划。
 - **粒度保持粗而有效。**按可独立推进、可单独验收或有清晰依赖边界的工作拆分，不把每个命令和微步骤都建成节点。可将同一缺陷下的调查与修复合并，也可将不同缺陷、独立审查、共享门禁拆成有依赖关系的阶段；门禁或资源等待本身不抹掉已存在的阶段边界。
 - **执行中持续重看计划。**每完成一个主要阶段、收到用户新要求、遇到阻塞或根因导致范围改变时，对照剩余工作检查是否出现新阶段、依赖或验收项。发现后先在对应未完成分组下用 `decompose_task` 追加子任务并修正依赖，再开始这部分新工作；不要另建重复 root，也不要只把新增范围写进摘要。
+- **阶段结束后盘点未闭环任务。**主会话在主要阶段真实结束（子智能体结果经复核后，或主会话阶段结束后）及开始下一阶段前，读取 overview 中 `stage_inventory_due` 和全部 tree 分页，按需读任务结果/证据，逐项判断所有未解决叶任务是否继续、过期或被后续结果覆盖。调用 `review_stage_inventory`，传阶段 task_id、attempt_id、读取时的 expected_state_revision，以及每项的 task_id、decision（continue/obsolete/covered）和具体 reason（含证据或下一步）；状态变化则重读重审。盘点仅记录判断，不自动修改状态：仍需执行的任务明确重试或调整计划，过期/覆盖的结果保留原始记录并按现有收尾与移交协议处理，不伪造 resolved、不删除历史。并行任务可继续，不应中断真实运行的工作。恢复后先检查尚未处理的盘点提醒；服务端提醒不阻止其他工作，主会话必须主动执行盘点。
+- **追加任务按真实依赖插入。**`decompose_task` 的每个新增问题节点填写非空 `addition_reason`，并用 `precedes` 指定依赖它的已有后继；同时用 `depends_on` 表示新增节点的前驱。服务端原子校验并更新真实依赖，面板按依赖显示；仅有前后顺序不代表依赖。已开始的后继不能静默插入前置，先协调执行者并使用显式重规划/重试保留历史。仅无依赖关系的任务保持原有相对顺序。旧客户端缺少原因时标为未记录，不补造原因。
 - **尊重正在运行的工作。**若要拆分当前 `running` 叶节点，先协调其执行者停止或移交，再按本 skill 的 attempt 规则分解；不得为更新计划而中断不能安全停止的长命令、Dagu 或 CI。可先把不干扰运行门禁的独立后续阶段加到合适的未完成分组下；没有安全边界时记录具体原因，并在门禁结束后的第一个安全点重新拆分。
 - **复核点是动态调整的兜底。**10 分钟 `split_review_due` 必须立刻处理，但它不能替代开工前粗拆分，也不能成为长期保留单一大任务的理由。记录“不拆分”时必须说明该任务为何不可独立推进或验收，而不只是“正在等待门禁”。
 

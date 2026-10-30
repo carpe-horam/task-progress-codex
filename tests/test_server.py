@@ -16,6 +16,67 @@ ASSIGNMENT = {"execution_mode": "main_session", "model": "test-fixture", "reason
 
 
 class ProgressTests(unittest.TestCase):
+    def test_append_inserts_real_pending_dependency_with_reason_atomically(self):
+        self.add({"id": "first", "title": "First"}, {"id": "later", "title": "Later", "depends_on": ["first"]})
+        self.add({"id": "inserted", "title": "New issue", "depends_on": ["first"],
+                  "precedes": ["later"], "addition_reason": "New issue must be fixed before verification"})
+        later = self.node("later")
+        added = self.node("inserted")
+        self.assertEqual(later["depends_on"], ["first", "inserted"])
+        self.assertTrue(added["is_added"])
+        self.assertEqual(added["addition_reason"], "New issue must be fixed before verification")
+        self.assertLess(self.node("root")["children"].index("inserted"), self.node("root")["children"].index("later"))
+        self.start("first"); self.finish("first")
+        self.assertEqual(self.progress()["ready_tasks"], ["inserted"])
+        self.start("inserted"); self.finish("inserted")
+        self.assertEqual(self.progress()["ready_tasks"], ["later"])
+        self.start("later")
+        self.assertRejectedUnchanged(lambda: self.add({"id": "unsafe", "title": "Unsafe", "precedes": ["later"], "addition_reason": "late prerequisite"}))
+
+    def test_append_cycle_and_missing_reason_do_not_change_state(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B", "depends_on": ["a"]})
+        self.assertRejectedUnchanged(lambda: self.add({"id": "bad", "title": "Bad", "precedes": ["b"]}))
+        with self.assertRaisesRegex(server.ProgressError, "循环依赖"):
+            self.add({"id": "bad", "title": "Bad", "depends_on": ["b"], "precedes": ["a"], "addition_reason": "cycle"})
+        self.assertNotIn("bad", [node["id"] for node in self.progress()["nodes"]])
+
+    def test_stage_inventory_invalidated_by_retry_and_records_are_selective(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B", "depends_on": ["a"]})
+        self.start("a"); self.finish("a")
+        self.start("b"); self.finish("b")
+        old_a, old_b = self.node("a")["attempt_id"], self.node("b")["attempt_id"]
+        server.update_task(self.sid, "a", "running", retry=True, assignment=ASSIGNMENT)
+        self.assertNotIn("stage_inventory_due_attempt", self.node("a"))
+        self.assertNotIn("stage_inventory_due_attempt", self.node("b"))
+        self.assertEqual(self.node("a")["stage_inventories"][-1]["status"], "superseded")
+        self.assertEqual(self.node("b")["stage_inventories"][-1]["status"], "superseded")
+        revision = server.get_progress(self.sid)["structuredContent"]["state_revision"]
+        self.assertRejectedUnchanged(lambda: server.review_stage_inventory(self.sid, "b", old_b, [], revision))
+        detail = server.get_progress(self.sid, view="tasks", task_ids=["a"])["structuredContent"]["progress"]["nodes"][0]
+        self.assertNotIn("stage_inventories", detail)
+        records = server.get_progress(self.sid, view="records", task_id="a", record_kind="stage_inventories")["structuredContent"]["progress"]["records"]
+        self.assertEqual(records[-1]["attempt_id"], old_a)
+
+    def test_major_stage_completion_receipt_requests_inventory(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B"})
+        attempt = self.start("a")
+        args = {"session_id": self.sid, "task_id": "a", "execution_status": "finished", "outcome": "open", "attempt_id": attempt}
+        result = server.update_task(self.sid, "a", "finished", outcome="open", attempt_id=attempt)
+        wire = server._wire_result("update_task", args, result)
+        self.assertTrue(wire["structuredContent"]["stage_inventory_due"])
+        self.assertIn("盘点", wire["content"][0]["text"])
+        overview = server.get_progress(self.sid)["structuredContent"]
+        self.assertEqual(overview["progress"]["stage_inventory_due"], [{"task_id": "a", "attempt_id": attempt}])
+        revision = overview["state_revision"]
+        decisions = [{"task_id": "a", "decision": "continue", "reason": "Need to finish the open result"},
+                     {"task_id": "b", "decision": "covered", "reason": "Covered by fixture evidence"}]
+        self.assertRejectedUnchanged(lambda: server.review_stage_inventory(self.sid, "a", attempt, decisions[:1], revision))
+        self.assertRejectedUnchanged(lambda: server.review_stage_inventory(self.sid, "a", attempt, decisions, revision - 1))
+        server.review_stage_inventory(self.sid, "a", attempt, decisions, revision)
+        self.assertEqual(self.node("a")["stage_inventories"][0]["decisions"], decisions)
+        self.assertEqual(server.get_progress(self.sid)["structuredContent"]["progress"]["stage_inventory_due"], [])
+        self.assertEqual(self.node("b")["execution_status"], "pending")
+
     def test_idle_session_locks_are_released_in_a_long_lived_service(self):
         import gc
         import uuid
@@ -557,7 +618,7 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 26)
+        self.assertEqual(len(replies[1]["tools"]), 27)
         listed = {tool["name"]: tool for tool in replies[1]["tools"]}
         self.assertTrue({"get_progress", "update_task", "review_task", "route_request", "get_progress_view", "consume_display_intent"} <= listed.keys())
         self.assertEqual(listed["consume_display_intent"]["_meta"]["ui"]["visibility"], ["app"])
