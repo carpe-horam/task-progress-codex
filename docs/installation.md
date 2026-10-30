@@ -1,8 +1,8 @@
 # 安装与服务管理
 
-[返回 README](../README.md) · [0.2.2 发布说明](releases/0.2.2.md)
+[返回 README](../README.md) · [0.2.3 发布说明](releases/0.2.3.md)
 
-本文描述 Task Progress 0.2.2 的跨平台自动服务启动与管理。需要固定版本时，可在首次添加 Marketplace 时使用 `--ref <release-tag>`。
+本文描述 Task Progress 0.2.3 的跨平台自动服务启动与管理。需要固定版本时，可在首次添加 Marketplace 时使用 `--ref <release-tag>`。
 
 ### 平台与运行前提
 
@@ -27,10 +27,11 @@ codex plugin add task-progress@task-progress-codex
 
 ### 从旧版本升级
 
-已有同名 Marketplace 时，更新 Marketplace，再重新安装插件：
+已有同名 Marketplace 时，重新登记当前发布标签，再重新安装插件。固定旧标签的 Marketplace 执行 upgrade 仍会停留在该标签：
 
 ```sh
-codex plugin marketplace upgrade task-progress-codex
+codex plugin marketplace remove task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.3
 codex plugin add task-progress@task-progress-codex
 ```
 

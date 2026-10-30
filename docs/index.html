@@ -167,7 +167,7 @@
   <main id="top" class="shell">
     <section class="hero" aria-labelledby="hero-title">
       <div>
-        <span class="eyebrow">Codex 插件 · 0.2.2 使用指南</span>
+        <span class="eyebrow">Codex 插件 · 0.2.3 使用指南</span>
         <h1 id="hero-title">让复杂任务的<br><span>进度一眼可见</span></h1>
         <p class="hero-copy">先粗拆目标，按依赖推进；新请求排队或独立并行，恢复时继续原任务。Task Progress 保存分工、执行与验收，让你先看进展，再按需查看结果和证据。</p>
         <div class="hero-cta"><a class="button primary" href="#demo">开始体验演示</a><a class="button ghost" href="#workflow">查看怎么使用</a></div>
@@ -187,11 +187,12 @@
     </section>
 
     <section id="install" class="section">
-      <div class="section-head"><div><div class="section-kicker">Get started</div><h2>安装或升级到 0.2.2</h2></div><p class="section-intro">macOS、Linux、Windows · Python 3 · 支持插件与 stdio MCP 的 Codex 客户端。安装后重启 Codex。</p></div>
-      <div class="two-col"><article class="info-card"><h3>首次安装</h3><pre class="code-block"><code>codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.2
-codex plugin add task-progress@task-progress-codex</code></pre></article><article class="info-card"><h3>从旧版本升级</h3><pre class="code-block"><code>codex plugin marketplace upgrade task-progress-codex
+      <div class="section-head"><div><div class="section-kicker">Get started</div><h2>安装或升级到 0.2.3</h2></div><p class="section-intro">macOS、Linux、Windows · Python 3 · 支持插件与 stdio MCP 的 Codex 客户端。安装后重启 Codex。</p></div>
+      <div class="two-col"><article class="info-card"><h3>首次安装</h3><pre class="code-block"><code>codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.3
+codex plugin add task-progress@task-progress-codex</code></pre></article><article class="info-card"><h3>从旧版本升级</h3><pre class="code-block"><code>codex plugin marketplace remove task-progress-codex
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.3
 codex plugin add task-progress@task-progress-codex</code></pre></article></div>
-      <p class="section-intro" style="margin-top:12px">升级 Marketplace 后重新安装插件并重启 Codex；首次连接自动更新后台服务，现有任务数据无需迁移。详见 <a href="https://github.com/carpe-horam/task-progress-codex/blob/v0.2.2/docs/releases/0.2.2.md">0.2.2 发布说明</a>；Linux 和 Windows 的原生安装与升级尚未实测。</p>
+      <p class="section-intro" style="margin-top:12px">重新登记版本标签后安装插件并重启 Codex；首次连接自动更新后台服务，现有任务数据无需迁移。详见 <a href="https://github.com/carpe-horam/task-progress-codex/blob/v0.2.3/docs/releases/0.2.3.md">0.2.3 发布说明</a>；Linux 和 Windows 的原生安装与升级尚未实测。</p>
     </section>
 
     <section id="capabilities" class="section">
@@ -296,13 +297,13 @@ codex plugin add task-progress@task-progress-codex</code></pre></article></div>
       </div>
     </section>
 
-    <footer class="footer"><span><strong>Task Progress 使用指南</strong> · 单文件交互页面，可离线浏览</span><span>Task Progress 0.2.2 · 当前源码界面 + 合成演示数据 · 宿主展示需单独验证。</span></footer>
+    <footer class="footer"><span><strong>Task Progress 使用指南</strong> · 单文件交互页面，可离线浏览</span><span>Task Progress 0.2.3 · 当前源码界面 + 合成演示数据 · 宿主展示需单独验证。</span></footer>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
     (() => {
-      // Synced from plugins/task-progress/app.html, manifest version 0.2.2.
+      // Synced from plugins/task-progress/app.html, manifest version 0.2.3.
       const REAL_TASK_PROGRESS_HTML =
         'PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9InpoLUNOIj4KPGhlYWQ+CjxtZXRhIGNoYXJzZXQ9InV0Zi04Ij4KPG1ldGEgbmFtZT0idmlld3BvcnQiIGNv' +
         'bnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCwgaW5pdGlhbC1zY2FsZT0xIj4KPHRpdGxlPlRhc2sgUHJvZ3Jlc3M8L3RpdGxlPgo8c3R5bGU+Cjpyb290e2Nv' +
@@ -2791,7 +2792,7 @@ codex plugin add task-progress@task-progress-codex</code></pre></article></div>
         'cG9ydCA9IGVudHJpZXMuc29tZShlbnRyeSA9PiBlbnRyeS5pc0ludGVyc2VjdGluZyk7CiAgICAgIHN5bmNQb2xsaW5nKCk7CiAgICAgIGlmICghd2FzVmlz' +
         'aWJsZSAmJiBjYXJkSW5WaWV3cG9ydCAmJiBjYW5Qb2xsKCkpIHZvaWQgcmVmcmVzaFByb2dyZXNzKHRydWUpOwogICAgfSwgeyB0aHJlc2hvbGQ6IDAgfSku' +
         'b2JzZXJ2ZShkb2N1bWVudC5xdWVyeVNlbGVjdG9yKCcuY2FyZCcpKTsKICB9CiAgcmVuZGVyKG51bGwpOwogIHJlcXVlc3QoJ3VpL2luaXRpYWxpemUnLCB7' +
-        'IGFwcEluZm86IHsgbmFtZTogJ3Rhc2stcHJvZ3Jlc3MnLCB2ZXJzaW9uOiAnMC4yLjInIH0sIGFwcENhcGFiaWxpdGllczogeyBhdmFpbGFibGVEaXNwbGF5' +
+        'IGFwcEluZm86IHsgbmFtZTogJ3Rhc2stcHJvZ3Jlc3MnLCB2ZXJzaW9uOiAnMC4yLjMnIH0sIGFwcENhcGFiaWxpdGllczogeyBhdmFpbGFibGVEaXNwbGF5' +
         'TW9kZXM6IFsnaW5saW5lJywgJ2Z1bGxzY3JlZW4nXSB9LCBwcm90b2NvbFZlcnNpb246ICcyMDI2LTAxLTI2JyB9KQogICAgLnRoZW4ocmVzdWx0ID0+IHsg' +
         'aWYgKGRpc3Bvc2VkKSByZXR1cm47IGlmIChkaXNwbGF5TW9kZSA9PT0gbnVsbCkgZGlzcGxheU1vZGUgPSByZXN1bHQ/Lmhvc3RDb250ZXh0Py5kaXNwbGF5' +
         'TW9kZSA/PyBudWxsOyBhdmFpbGFibGVEaXNwbGF5TW9kZXMgPSByZXN1bHQ/Lmhvc3RDb250ZXh0Py5hdmFpbGFibGVEaXNwbGF5TW9kZXMgPz8gYXZhaWxh' +

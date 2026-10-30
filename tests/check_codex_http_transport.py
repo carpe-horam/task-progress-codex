@@ -15,6 +15,7 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_VERSION = json.loads((ROOT / "plugins/task-progress/.codex-plugin/plugin.json").read_text())["version"]
 
 
 def health(port, headers):
@@ -111,8 +112,8 @@ def client(executable, server_name, overrides, index):
         resource = rpc(3, "mcpServer/resource/read", {"server": server_name, "uri": render_meta["ui"]["resourceUri"]})
         # App-server returns the MCP resource response directly or in contents.
         assert "__TASK_PROGRESS_VERSION__" not in json.dumps(resource)
-        assert "version: '0.2.0'" in json.dumps(resource), list(resource)
-        return {"client": index, "server": entry.get("name"), "tool_count": len(names), "resource_version": "0.2.0", "query_views": properties["view"]["enum"], "app_reader_visibility": ["app"], "creates_chat": False}
+        assert f"version: '{PLUGIN_VERSION}'" in json.dumps(resource), list(resource)
+        return {"client": index, "server": entry.get("name"), "tool_count": len(names), "resource_version": PLUGIN_VERSION, "query_views": properties["view"]["enum"], "app_reader_visibility": ["app"], "creates_chat": False}
     finally:
         stop(process)
         process.stdin.close(); process.stdout.close()

@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">交互演示</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.2">安装 0.2.2</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.3">安装 0.2.3</a> ·
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
@@ -29,7 +29,7 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-Task Progress 0.2.2 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
+Task Progress 0.2.3 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
 
 ## 开始使用
 
