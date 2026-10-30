@@ -78,6 +78,11 @@ async function main(){
  await onlyFrame.locator('#export-all').click();await onlyFrame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();const onlyExport=await savedReport(onlyPage);assert.equal(await onlyExport.report.locator('.rp-delivery').textContent(),'旧版只读记录');
  const onlyText=await onlyExport.report.locator('body').textContent();for(const invented of ['顺序步骤','待开始','当前任务','第 1 轮计划','计划沿革','当前计划展开','0/0'])assert(!onlyText.includes(invented),'SQLite-only export invents '+invented);
  assert.equal(await onlyExport.report.locator('#rp-current,#rp-plans,.rp-metrics').count(),0);
+ await onlyExport.report.emulateMedia({colorScheme:'dark'});await onlyExport.report.reload();
+ assert.equal(await onlyExport.report.locator('#rp-theme').inputValue(),'porcelain-blue');
+ await onlyExport.report.locator('#rp-theme').selectOption('mist-lilac');
+ assert.equal(await onlyExport.report.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(249, 246, 254)');
+ assert.equal(await onlyExport.report.locator('.rp-delivery').textContent(),'旧版只读记录');
  const onlyWorkbook=onlyExport.call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path;const onlyOverview=execFileSync('python3',['-c',"import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(z.read('xl/worksheets/sheet1.xml').decode())",onlyWorkbook],{encoding:'utf8'});assert(onlyOverview.includes('旧库任务数'));assert(!onlyOverview.includes('当前任务计划轮次数')&&!onlyOverview.includes('当前计划'));
 
  results.push('JSON current state and SQLite history show distinct sources; SQLite-only card/export remains read-only and never claims modern acceptance.');

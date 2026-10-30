@@ -204,7 +204,7 @@ async function main() {
   await screenshot(rootApp,'main-integration-root-synthesis'); await rootApp.close();
   const rootExport=await host.exportReport(r);
   assert.equal(await rootExport.report.locator('.rp-delivery').textContent(),'已解决');
-  const rootRecord=rootExport.report.locator('#rp-current [data-node-id="root"] > .rp-subdetails.rp-node-body');
+  const rootRecord=rootExport.report.locator('#rp-current [data-node-id="root"] > .r-detail > .rp-task-detail > .rp-node-body');
   assert.equal(await rootRecord.locator('.rp-review').count(),1);
   assert((await rootRecord.locator('.rp-review').textContent()).includes('ROOT_SYNTHESIS_EVIDENCE'));
   await screenshot(rootExport.report,'root-synthesis-independent-history'); await rootExport.report.close(); await rootExport.hostPage.close();

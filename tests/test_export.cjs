@@ -41,8 +41,8 @@ async function main(){
  const feedback=await exportSnapshot(r),exportDir=path.join(temp,'Downloads','Task Progress Exports');
  const report=await browser.newPage();await report.goto('file://'+path.join(exportDir,fs.readdirSync(exportDir).find(n=>n.endsWith('.html'))));
  results.push({case:'export_attempt_titles',feedback,rows:await report.evaluate(()=>[...document.querySelectorAll('#rp-current .rp-leaf')].map(node=>({
-  taskId:node.dataset.nodeId,title:node.querySelector(':scope > summary .rp-node-title').textContent,
-  attemptCount:node.querySelectorAll(':scope > .rp-node-body .rp-attempt').length
+  taskId:node.dataset.nodeId,title:node.querySelector(':scope > [data-task]').textContent,
+  attemptCount:node.querySelectorAll(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').length
  }))) });
  const workbook=path.join(exportDir,fs.readdirSync(exportDir).find(n=>n.endsWith('.xlsx')));
  const xlsxTitles=JSON.parse(execFileSync('python3',['-c',`import json,sys,zipfile,xml.etree.ElementTree as E

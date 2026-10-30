@@ -413,10 +413,14 @@ h1{font-size:18px;line-height:1.35}
   };
   const timestamp = value => {
     if (typeof value !== 'string' || !value.trim()) return null;
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+    const [year, month, day, hour, minute, second] = value.slice(0,19).split(/\D/).map(Number);
+    const days = [31,year%4===0&&(year%100!==0||year%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
     const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : null;
+    return month>=1&&month<=12&&day>=1&&day<=days[month-1]&&hour<24&&minute<60&&second<60&&Number.isFinite(parsed) ? parsed : null;
   };
   function appendElapsed(target, item, timeContext = null) {
+    if (item.time_boundary_sources?.started_at) return;
     const start = timestamp(item.started_at);
     if (start === null) return;
     const finish = timestamp(item.finished_at);
@@ -428,7 +432,7 @@ h1{font-size:18px;line-height:1.35}
       elapsed.textContent = timeContext.label + ' —';
       elapsed.title = '开始 ' + date(item.started_at) + '；快照截止时间未记录';
     } else if (terminal && finish === null) {
-      elapsed.textContent = '总耗时 —';
+      elapsed.textContent = '当前尝试耗时 —';
       elapsed.title = '开始 ' + date(item.started_at) + '；未记录结束时间';
     } else {
       const seconds = Math.max(0, Math.floor(((finish ?? cutoff ?? Date.now()) - start) / 1000));
@@ -436,7 +440,7 @@ h1{font-size:18px;line-height:1.35}
       const minutes = Math.floor(seconds % 3600 / 60);
       const remaining = seconds % 60;
       const duration = hours ? hours + '小时' + minutes + '分' + remaining + '秒' : minutes ? minutes + '分' + remaining + '秒' : remaining + '秒';
-      elapsed.textContent = (finish !== null ? '总耗时 ' : timeContext ? timeContext.label + ' ' : '已用 ') + duration;
+      elapsed.textContent = (finish !== null ? '当前尝试耗时 ' : timeContext ? timeContext.label + '（当前尝试） ' : '当前尝试已用 ') + duration;
       elapsed.title = '开始 ' + date(item.started_at) + (finish !== null ? '；结束 ' + date(item.finished_at) : timeContext ? '；快照截止 ' + date(timeContext.cutoff) : '；每 5 秒刷新');
     }
     target.classList.add('has-elapsed'); target.append(elapsed);
@@ -498,7 +502,109 @@ h1{font-size:18px;line-height:1.35}
     const start = timestamp(startedAt);
     const finish = timestamp(finishedAt) ?? (!finishedAt ? timestamp(snapshotAt) : null);
     if (start === null || finish === null) return '';
-    return String(Math.max(0, Math.round((finish - start) / 1000)));
+    return finish < start ? '' : String(Math.round((finish - start) / 1000));
+  }
+  // Derived view data only. Never write inferred timestamps into stored attempts.
+  function executionTiming(node, byId = new Map(), childMap = new Map(), cutoff = '') {
+    const terminal = record => ['finished','failed','cancelled','completed'].includes(record.execution_status || record.status);
+    const state = node.execution_status || (node.status === 'in_progress' ? 'running' : node.status);
+    const children = childMap.get(String(node.id)) || [];
+    const group = children.length > 0;
+    const records = [], ids = new Map();
+    const add = record => {
+      if (!record || typeof record !== 'object') return;
+      const id = record.attempt_id;
+      if (id && ids.has(id)) { Object.assign(ids.get(id), record); return; }
+      const copy = {...record}; records.push(copy); if (id) ids.set(id, copy);
+    };
+    list(node.attempts).forEach(add);
+    list(node.invalidated_results).forEach(record => add({...record, kind:ids.get(record.attempt_id)?.kind || record.kind || (group ? 'legacy_synthesis' : 'execution')}));
+    if (node.attempt_id || node.started_at || node.finished_at || ['running','finished','failed','cancelled','completed'].includes(state)) {
+      const existing = ids.get(node.attempt_id);
+      // A group's top-level timestamps describe synthesis/termination, not child execution.
+      add({...existing, ...node, execution_status:state, kind:existing?.kind || (group ? 'synthesis' : 'execution')});
+    }
+    const executions = records.filter(record => !['synthesis','group_termination','legacy_synthesis'].includes(record.kind));
+    const cutoffNumber = timestamp(cutoff);
+    let completedSeconds = 0, runningSeconds = 0, incomplete = node.records_included === false || Number(node.attempt || 0) > records.length;
+    let overlap = false, possibleDuplicate = false;
+    const spans = [], starts = [];
+    for (const record of executions) {
+      const sources = record.time_boundary_sources || {};
+      const start = sources.started_at === 'unknown_start_fallback' ? null : timestamp(record.started_at), finish = timestamp(record.finished_at);
+      if (sources.started_at || sources.finished_at) incomplete = true;
+      if (start !== null) starts.push(start); else incomplete = true;
+      const end = finish ?? (record.execution_status === 'running' ? cutoffNumber : null);
+      if (start === null || end === null || end < start || (record.finished_at && finish === null)) { incomplete = true; continue; }
+      if (record.execution_status === 'running' && finish === null) runningSeconds += (end-start)/1000;
+      else completedSeconds += (end-start)/1000;
+      if (spans.some(span => Math.min(span.end,end) > Math.max(span.start,start))) overlap = true;
+      spans.push({start,end});
+    }
+    const unidentified = executions.filter(record => !record.attempt_id);
+    // Without an ID, even differing timestamps cannot prove that two views are independent.
+    possibleDuplicate = unidentified.length > 0 && executions.length > 1;
+    if (possibleDuplicate) incomplete = true;
+    const seconds = value => String(Math.round(value));
+    const human = value => {
+      const total = Math.round(value), hours = Math.floor(total/3600), minutes = Math.floor(total%3600/60), rest = total%60;
+      const text = (hours?hours+'小时':'')+(minutes?minutes+'分':'')+(rest||!hours&&!minutes?rest+'秒':'');
+      return total>=60?text+'（'+total+' 秒）':text;
+    };
+    const executionCount = executions.length;
+    const runningRecorded = executions.some(record=>record.execution_status==='running' && timestamp(record.finished_at)===null && timestamp(record.started_at)!==null && cutoffNumber!==null && cutoffNumber>=timestamp(record.started_at));
+    const cumulative = (executionCount ? '累计执行耗时：'+(spans.length?human(completedSeconds)+'（已结束区间）':'暂无可计算的完整执行区间')+(runningRecorded?' + '+human(runningSeconds)+'（运行中截至快照）':'')+(incomplete?' · 记录不完整，仅为已知区间':'')+(overlap?' · 含重叠尝试，逐次相加':'')+(possibleDuplicate?' · 无编号记录可能重复':'') : group ? '累计执行耗时：分组不累加子任务耗时' : Number(node.attempt||node.attempt_count||0)>0 ? '累计执行耗时：历史尝试未加载 / 未记录' : '累计执行耗时：未开始')+(node.records_included===false?' · 历史未加载，仅当前已知区间':'');
+    const first = starts.length ? Math.min(...starts) : null;
+    const last = terminal(node) ? timestamp(node.finished_at) : cutoffNumber;
+    const overall = first !== null && last !== null && last >= first ? '整体历时：'+human((last-first)/1000)+'（最早已记录开始 → '+(terminal(node)?group?'分组综合验收 / 收尾（非叶执行终态）':'当前执行结束':'快照')+'，含重试间等待）'+(incomplete?' · 起点或尝试记录可能不完整':'') : '整体历时：'+(executionCount?'边界未记录或无效':Number(node.attempt||node.attempt_count||0)>0?'历史尝试未加载 / 未记录':'未开始');
+    let timeStart = String(node.started_at || ''), timeEnd = String(node.finished_at || ''), timeRunning = state === 'running', timeOpen = false;
+    const hasHistoricalExecution = records.length>0 || Number(node.attempt||node.attempt_count||0)>0;
+    let timeStartState = state === 'pending' || !state ? hasHistoricalExecution?(node.records_included===false?'当前尝试未开始，历史待加载':'当前尝试未开始，历史执行见详情'):'未开始' : '历史未记录';
+    let timeEndState = state === 'pending' || !state ? hasHistoricalExecution?'当前尝试尚未开始':'尚未开始' : state === 'running' ? '尚未结束' : '历史未记录';
+    let timeSource = group ? '综合验收 / 分组收尾原始记录' : '当前执行尝试原始记录';
+    if (node.time_boundary_sources?.started_at) timeSource += ' · 开始时间缺失，以结束边界保底（非实际开始）';
+    if (node.time_boundary_sources?.finished_at) timeSource += ' · 结束时间为关闭时保底';
+    let timeEvidence = node.attempt_id ? 'attempt:'+node.attempt_id : '节点原始记录（尝试编号未记录）';
+    if (group) {
+      const leaves = [], subtree = [node], visited = new Set([String(node.id)]);
+      const visit = id => { if(visited.has(id))return;visited.add(id);const child=byId.get(id);if(!child)return;subtree.push(child);const kids=childMap.get(id)||[];if(kids.length)kids.forEach(visit);else leaves.push(child); };
+      children.forEach(visit);
+      const knownStarts = leaves.filter(child=>timestamp(child.started_at)!==null), candidates=[], historicalEnds=[];
+      for(const child of subtree){
+        if(timestamp(child.started_at)!==null)candidates.push(child.started_at);
+        // Inner groups can finish synthesis after their leaves. Their ancestors must
+        // cover that closing boundary too, even if the ancestor has a stale timestamp.
+        if(timestamp(child.finished_at)!==null)historicalEnds.push(child.finished_at);
+        for(const attempt of [...list(child.attempts),...list(child.invalidated_results)]){
+          if(!['synthesis','group_termination','legacy_synthesis'].includes(attempt.kind)&&!attempt.time_boundary_sources?.started_at&&timestamp(attempt.started_at)!==null){candidates.push(attempt.started_at);if(timestamp(attempt.finished_at)!==null&&timestamp(attempt.finished_at)>=timestamp(attempt.started_at))historicalEnds.push(attempt.finished_at);}
+          if(timestamp(attempt.finished_at)!==null)historicalEnds.push(attempt.finished_at);
+        }
+      }
+      const knownEnds = leaves.filter(child=>timestamp(child.finished_at)!==null);
+      const allEnded = leaves.length>0 && leaves.every(terminal);
+      const allEndsKnown = allEnded && knownEnds.length===leaves.length;
+      timeStart = candidates.length ? candidates.reduce((a,b)=>timestamp(a)<=timestamp(b)?a:b) : '';
+      timeEnd = allEndsKnown ? knownEnds.reduce((a,b)=>timestamp(a.finished_at)>=timestamp(b.finished_at)?a:b).finished_at : '';
+      if(timeEnd)for(const end of historicalEnds)if(timestamp(end)>timestamp(timeEnd))timeEnd=end;
+      if(timeEnd&&terminal(node)&&timestamp(node.finished_at)!==null&&timestamp(node.finished_at)>timestamp(timeEnd))timeEnd=node.finished_at;
+      timeRunning = leaves.some(child=>(child.execution_status||child.status)==='running');
+      timeOpen = !allEnded;
+      timeStartState = leaves.every(child=>(child.execution_status||child.status)==='pending') ? '子任务当前尝试未开始' : '子任务历史未记录';
+      timeEndState = allEnded ? '子任务结束边界未记录' : '子任务尚未全部结束';
+      timeSource = '任务与子树全部已知执行记录的观察范围（推导，含重试和等待）';
+      if (leaves.some(child=>child.time_boundary_sources?.started_at||child.time_boundary_sources?.finished_at)) timeSource += ' · 含缺失时间保底边界，非实际执行时间';
+      timeEvidence = subtree.filter(child=>timestamp(child.started_at)!==null||timestamp(child.finished_at)!==null||list(child.attempts).length||list(child.invalidated_results).length).map(child=>String(child.id)+(child.attempt_id?' / '+child.attempt_id:' / 历史记录')).join('；') || '无已记录的子任务执行时间';
+      if (knownStarts.length < leaves.length && candidates.length) timeSource += ' · 最早已知边界，不完整';
+    }
+    const groupEnd = timestamp(timeEnd) ?? cutoffNumber;
+    const groupStart = timestamp(timeStart);
+    const groupSpan = groupStart!==null&&groupEnd!==null&&groupEnd>=groupStart ? human((groupEnd-groupStart)/1000)+'（任务及子树最早已记录开始 → '+(timeEnd?'任务收尾或全部执行结束':'快照，尚未全部结束')+'）' : '边界未记录';
+    const envelopeStart=group?timeStart:first!==null?new Date(first).toISOString():'';
+    const envelopeEnd=group?(timeEnd||(timeOpen&&cutoffNumber!==null&&groupStart!==null?cutoff:'')):(terminal(node)?node.finished_at||'':first!==null?cutoff:'');
+    return {timeStart,timeEnd,timeRunning,timeOpen,timeStartState,timeEndState,timeSource,timeEvidence,envelopeStart,envelopeEnd,
+      timeKind:group?'derived':'actual', cumulativeTime:cumulative,overallTime:group?(executionCount?'历史叶执行'+overall+'；':'')+'分组观察跨度：'+groupSpan+'；任务与子树历史记录推导，包含并行与等待；不代表父任务执行者耗时':overall,
+      historyAttemptCount:records.filter(record=>!node.attempt_id || record.attempt_id!==node.attempt_id).length,
+      cumulativeComplete:!incomplete,completedExecutionSeconds:seconds(completedSeconds),runningExecutionSeconds:seconds(runningSeconds)};
   }
   function dependencyConstraints(node, byId) {
     const constraints = []; const seen = new Set();
@@ -584,6 +690,7 @@ h1{font-size:18px;line-height:1.35}
         leafCount: leaves.length, resolvedLeaves, terminalLeaves, openLeaves: leaves.length - terminalLeaves,
         mainSessionModel: String(mainSession.model || ''), mainSessionThinking: String(mainSession.reasoning_effort || ''),
         mainSessionEvidence: metadataEvidence(mainSession), mainSessionCapturedAt: String(mainSession.metadata_provenance?.captured_at || ''),
+        createdAt: String(snapshot.created_at || (Number(epoch) === 0 ? progress.created_at || '' : '')),
         status: planStatus, closedAt: snapshot.closed_at || '', reason: snapshot.reason || '', taskCount: nodes.length
       });
       for (const node of nodes) {
@@ -600,14 +707,15 @@ h1{font-size:18px;line-height:1.35}
           taskId: String(node.id), parentId: node.parent_id == null ? '' : String(node.parent_id),
           title: String(node.title || '未命名任务'), type: nodeChildren.length ? '分组任务' : '叶任务', leaf: !nodeChildren.length,
           depth: nodePath.depth, pathIds: nodePath.ids.join(' / '), pathTitles: nodePath.titles.join(' › '),
-          acceptedResolved: acceptedResolved(node), status: statusInfo(statusValue).label, executionStatus: String(node.execution_status || ''), outcome: String(node.outcome || ''),
+          acceptedResolved: acceptedResolved(node), statusKey: statusValue, status: statusInfo(statusValue).label, executionStatus: String(node.execution_status || ''), outcome: String(node.outcome || ''),
           dependencies: depends.join('、'), blockedBy: blocked.join('、'), dependencyPolicy: String(node.dependency_policy || ''),
           dependencyConditions: rules.map(rule => rule.id + '：' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决') + (String(rule.owner.id) !== String(node.id) ? '（继承自 ' + rule.owner.id + '）' : '')).join('；'),
           ...responsibilityFields(node, node.planned_assignment),
           executor: exportExecutor(assignment), model: String(assignment.model || ''), thinking: String(assignment.reasoning_effort || ''),
           metadataEvidence: metadataEvidence(assignment), metadataCapturedAt: String(assignment.metadata_provenance?.captured_at || ''),
           profile: String(assignment.profile || node.profile || ''), attempt: node.attempt == null ? '' : String(node.attempt), attemptId: String(node.attempt_id || ''),
-          startedAt: String(node.started_at || ''), finishedAt: String(node.finished_at || ''), durationSeconds: exportDuration(node.started_at, node.finished_at, snapshotAt),
+          startedAt: String(node.started_at || ''), finishedAt: String(node.finished_at || ''), durationSeconds: node.time_boundary_sources?.started_at?'':exportDuration(node.started_at, node.finished_at, node.execution_status==='running'?snapshotAt:''),
+          ...executionTiming(node, byId, childMap, snapshotAt),
           summary: String(node.summary || ''), evidence: list(node.evidence).map(printable).join('\n'),
           dispatchText: String(assignment.dispatch_text || '')
         });
@@ -624,20 +732,20 @@ h1{font-size:18px;line-height:1.35}
             metadataEvidence: metadataEvidence(attemptAssignment), metadataCapturedAt: String(attemptAssignment.metadata_provenance?.captured_at || ''),
             thinking: String(attemptAssignment.reasoning_effort || ''), dispatchText: String(attemptAssignment.dispatch_text || ''),
             startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
-            durationSeconds: exportDuration(attempt.started_at, attempt.finished_at, snapshotAt), summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n'),
+            durationSeconds: attempt.time_boundary_sources?.started_at?'':exportDuration(attempt.started_at, attempt.finished_at, attempt.execution_status==='running'?snapshotAt:''), timeBoundarySources: attempt.time_boundary_sources || {}, summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n'),
             invalidatedBy: String(attempt.invalidated_by || ''), invalidatedAt: String(attempt.invalidated_at || ''), validity: attempt.invalidated_by ? '已失效' : '有效'
           });
         });
-        list(node.invalidated_results).filter(result => !result.attempt_id).forEach(result => {
+        list(node.invalidated_results).filter(result => !result.attempt_id || !list(node.attempts).some(attempt=>attempt.attempt_id===result.attempt_id)).forEach(result => {
           const attemptAssignment = result.assignment && typeof result.assignment === 'object' ? result.assignment : {};
           attempts.push({
             epoch: epoch == null ? '' : String(epoch), roundKey: key, roundLabel: '第 ' + (Number(epoch || 0) + 1) + ' 轮',
-            taskId: String(node.id), taskTitle: String(node.title || '未命名任务'), number: '', attemptId: '',
-            kind: 'legacy_synthesis', kindLabel: '历史综合验收', status: statusInfo(result.execution_status || 'pending').label,
+            taskId: String(node.id), taskTitle: String(node.title || '未命名任务'), number: '', attemptId: String(result.attempt_id||''),
+            kind: result.kind || (nodeChildren.length?'legacy_synthesis':'execution'), kindLabel: '历史失效结果', status: statusInfo(result.execution_status || 'pending').label,
             outcome: String(result.outcome || ''), executor: exportExecutor(attemptAssignment), model: String(attemptAssignment.model || ''),
             metadataEvidence: metadataEvidence(attemptAssignment), metadataCapturedAt: String(attemptAssignment.metadata_provenance?.captured_at || ''),
             thinking: String(attemptAssignment.reasoning_effort || ''), startedAt: String(result.started_at || ''), finishedAt: String(result.finished_at || ''),
-            durationSeconds: exportDuration(result.started_at, result.finished_at, snapshotAt), summary: String(result.summary || ''),
+            durationSeconds: result.time_boundary_sources?.started_at?'':exportDuration(result.started_at, result.finished_at), timeBoundarySources: result.time_boundary_sources || {}, summary: String(result.summary || ''),
             evidence: list(result.evidence).map(printable).join('\n'), invalidatedBy: String(result.invalidated_by || ''),
             invalidatedAt: String(result.invalidated_at || ''), validity: result.invalidated_by ? '已失效' : '有效'
           });
@@ -654,12 +762,12 @@ h1{font-size:18px;line-height:1.35}
         const assignment = step.assignment && typeof step.assignment === 'object' ? step.assignment : {};
         tasks.push({
           epoch: '', roundKey: key, roundLabel: '顺序步骤', taskId: String(step.index ?? position), parentId: '',
-          title: String(step.description || '未命名步骤'), type: '步骤', leaf: true, depth: 0, pathIds: String(step.index ?? position), pathTitles: String(step.description || '未命名步骤'), status: statusInfo(step.status).label,
+          title: String(step.description || '未命名步骤'), type: '步骤', leaf: true, depth: 0, pathIds: String(step.index ?? position), pathTitles: String(step.description || '未命名步骤'), statusKey: step.status, status: statusInfo(step.status).label,
           executionStatus: step.status === 'completed' ? 'finished' : step.status === 'in_progress' ? 'running' : String(step.status || ''), outcome: step.status === 'completed' ? 'resolved' : '', dependencies: '', blockedBy: '', dependencyPolicy: '',
           executor: exportExecutor(assignment), model: String(assignment.model || ''), thinking: String(assignment.reasoning_effort || ''),
           metadataEvidence: metadataEvidence(assignment), metadataCapturedAt: String(assignment.metadata_provenance?.captured_at || ''),
           profile: String(assignment.profile || ''), attempt: '', attemptId: '', startedAt: String(step.started_at || ''),
-          finishedAt: String(step.finished_at || ''), durationSeconds: exportDuration(step.started_at, step.finished_at, progress.archived_at || progress.updated_at || progress.created_at || ''), summary: String(step.note || ''), evidence: '', dispatchText: String(assignment.dispatch_text || '')
+          finishedAt: String(step.finished_at || ''), ...executionTiming(step, new Map(), new Map(), progress.archived_at || progress.updated_at || progress.created_at || ''), durationSeconds: step.time_boundary_sources?.started_at?'':exportDuration(step.started_at, step.finished_at, step.status==='in_progress'?(progress.archived_at || progress.updated_at || progress.created_at || ''):''), summary: String(step.note || ''), evidence: '', dispatchText: String(assignment.dispatch_text || '')
         });
       });
     }
@@ -710,7 +818,7 @@ h1{font-size:18px;line-height:1.35}
         taskScope: key, archivedAt: task.archived_at || '', taskCurrent: isCurrent,
         roundKey: key + '/round:' + row.roundKey, roundLabel: label + ' / ' + row.roundLabel });
       item.plans.forEach(plan => report.plans.push({ ...enrich(plan), current: isCurrent && plan.current,
-        taskLatestRound: plan.current, closedAt: plan.closedAt || (!isCurrent ? task.archived_at || '' : '') }));
+        taskLatestRound: plan.current, replanClosedAt: plan.closedAt, closedAt: plan.closedAt || (!isCurrent ? task.archived_at || '' : '') }));
       item.tasks.forEach(row => report.tasks.push(enrich(row)));
       item.attempts.forEach(row => report.attempts.push(enrich(row)));
       appendAudit(task, isCurrent);
@@ -776,9 +884,9 @@ h1{font-size:18px;line-height:1.35}
     const tasks=data.tasks, taskByKey=new Map(tasks.map(t=>[t.roundKey+'|'+t.taskId,t]));
     const responsibilityHeaders=['计划执行者','绑定智能体 ID','派发状态','主会话自执行原因','验收状态','提交结果','提交摘要','提交证据','提交时间'];
     const responsibilityValues=t=>[t.plannedExecutor||'计划执行者未记录',t.agentName,t.dispatchStatus,t.selfExecutionReason,t.reviewLabel||'验收未记录',t.submittedOutcome,t.submissionSummary,t.submissionEvidence,t.submittedAt];
-    headers.tasks.push(...responsibilityHeaders); headers.attempts.push(...responsibilityHeaders);
-    const taskRows=tasks.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.parentId,t.depth,t.pathTitles,t.title,t.type,t.leaf?'是':'否',t.status,t.executionStatus,t.outcome,t.dependencies,t.blockedBy,t.dependencyConditions||'',t.executor,t.model,t.thinking,t.metadataEvidence,t.profile,t.attempt,t.attemptId,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt,...responsibilityValues(t)]);
-    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt,...responsibilityValues(t)]);
+    headers.tasks.push(...responsibilityHeaders,'展示开始时间','展示结束时间','开始边界状态','结束边界状态','时间来源','时间来源节点 / 尝试','累计执行耗时','整体历时 / 分组观察跨度'); headers.attempts.push(...responsibilityHeaders,'开始时间保底来源','结束时间保底来源');
+    const taskRows=tasks.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.parentId,t.depth,t.pathTitles,t.title,t.type,t.leaf?'是':'否',t.status,t.executionStatus,t.outcome,t.dependencies,t.blockedBy,t.dependencyConditions||'',t.executor,t.model,t.thinking,t.metadataEvidence,t.profile,t.attempt,t.attemptId,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt,...responsibilityValues(t),t.timeStart,t.timeEnd,t.timeStartState,t.timeEndState,t.timeSource,t.timeEvidence,t.cumulativeTime,t.overallTime]);
+    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,t.evidence,t.dispatchText,t.archivedAt,...responsibilityValues(t),t.timeBoundarySources?.started_at||'',t.timeBoundarySources?.finished_at||'']);
     const reviewRecords=data.attempts.filter(t=>['pending','accepted','rejected'].includes(t.reviewStatus) || t.reviewDecision || t.kind==='synthesis').map(t=>t.kind==='synthesis' ? {...t,reviewLabel:'综合验收已记录',reviewKind:'synthesis',reviewDecision:'',reviewer:t.executor,reviewSummary:t.summary,reviewEvidence:t.evidence,reviewedAt:t.finishedAt} : t);
     tasks.filter(t=>(['pending','accepted','rejected'].includes(t.reviewStatus) || t.reviewDecision) && !reviewRecords.some(a=>a.roundKey===t.roundKey && a.taskId===t.taskId && a.attemptId===t.attemptId)).forEach(t=>reviewRecords.push({...t,taskTitle:t.title}));
     const reviewHeaders=['任务范围','任务实例','计划轮次','任务 ID','任务名称','Attempt ID','验收状态','提交结果','验收决定','验收者','验收者 ID','验收摘要','验收证据','验收时间','有效性','记录类型'];
@@ -840,268 +948,627 @@ h1{font-size:18px;line-height:1.35}
   }
   function buildVisualHtml(data) {
     const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const themeTokens=['paper','ink','muted','line','branch','soft','amber','amber-soft','green'];
+    const themes=[
+      {id:'porcelain-blue',name:'瓷白蓝',colors:['#FAFBFF','#202B3D','#606D80','#DDE3ED','#91A6D6','#EBEFF8','#94600F','#F6EDD9','#2855CF']},
+      {id:'ivory-green',name:'米白绿',colors:['#FCF9F2','#2B342F','#697166','#DFE1D5','#9DAF9B','#EEF0E5','#916323','#F5ECD9','#35634B']},
+      {id:'glacier-teal',name:'冰川青',colors:['#F0F8F7','#223B3C','#5B7475','#D5E5E3','#7CAEB0','#E3F0EF','#A4582F','#F4E7DF','#176E74']},
+      {id:'cream-gold',name:'奶油金',colors:['#FFF8EC','#3B3327','#776B5B','#E3DCCD','#BFA478','#EEE6D7','#875147','#F3E5DE','#98620B']},
+      {id:'mist-lilac',name:'雾紫白',colors:['#F9F6FE','#332C42','#766B85','#E2DBEC','#AF9CCF','#EEE8F6','#9A6232','#F5EBDC','#7454AE']},
+      {id:'apricot-white',name:'杏桃白',colors:['#FFF6F2','#442F2B','#816C65','#EADDD6','#C49B91','#F5E8E1','#80601E','#F3EBD6','#AA5144']}
+    ];
+    const themeStorageKey='task-progress:html-theme:v1:'+data.sessionId+':'+(data.currentPlan?.taskInstanceId||'legacy');
+    const trackStyles=[['signal','胶囊轨道'],['ink','端点线段'],['mist','双层泳道'],['outline','描边区间'],['dotted','虚线刻度'],['stripe','切面轨道'],['bracket','区间括号'],['ruler','标尺轨道'],['beads','节点轨迹'],['ribbon','折角带']];
+    const trackControls=`<label class="rp-track-control" for="rp-track-style">时间轴样式 <select id="rp-track-style">${trackStyles.map(([id,name])=>`<option value="${id}" ${id==='beads'?'selected':''}>${name}</option>`).join('')}</select></label>`;
+    const themeAttributes=`data-track-style="beads" data-theme="porcelain-blue" data-theme-storage-key="${esc(themeStorageKey)}"`;
+    const themeControls=`<div class="rp-theme-controls"><label for="rp-theme">主题</label><select id="rp-theme">${themes.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}</select><span id="rp-theme-status" class="rp-theme-status" role="status" aria-live="polite"></span></div>`;
+    const themeCss=`
+      :root{color-scheme:light;--rp-page:${themes[0].colors[0]}}
+      body{background:var(--rp-page);color-scheme:light}
+      #task-progress-report{${themeTokens.map((key,i)=>'--r-'+key+':'+themes[0].colors[i]).join(';')};color-scheme:light;background:var(--r-paper);color:var(--r-ink)}
+      #task-progress-report .rp-theme-controls{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px;color:var(--r-muted);max-width:100%}
+      #task-progress-report #rp-theme{font:inherit;color:var(--r-ink);background:var(--r-paper);border:1px solid var(--r-line);border-radius:5px;padding:6px 26px 6px 9px;max-width:100%;cursor:pointer;min-height:34px}
+      #task-progress-report #rp-theme:focus-visible{outline:2px solid var(--r-green);outline-offset:3px}
+      #task-progress-report .rp-theme-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      #task-progress-report .rp-top{align-items:center;flex-wrap:wrap}
+      #task-progress-report .r-plan>.r-main-dot{border-color:var(--r-green)}
+      #task-progress-report.rp-legacy-only{border-color:var(--r-line)}
+      #task-progress-report.rp-legacy-only details{border-color:var(--r-line)}
+      #task-progress-report.rp-legacy-only .note{background:var(--r-amber-soft)}
+      @media(max-width:540px){#task-progress-report .rp-theme-controls{margin-left:0;align-self:flex-start}}
+      @media print{#task-progress-report .rp-theme-controls{display:none}}
+    `;
+    const themeScript=`
+(()=>{
+  const root=document.getElementById('task-progress-report'),select=document.getElementById('rp-theme');
+  const themes=${JSON.stringify(themes)},tokens=${JSON.stringify(themeTokens)},storageKey=root.dataset.themeStorageKey;
+  function applyTheme(id,persist=false){
+    const theme=themes.find(t=>t.id===id)||themes[0];
+    tokens.forEach((token,i)=>root.style.setProperty('--r-'+token,theme.colors[i]));
+    document.documentElement.style.setProperty('--rp-page',theme.colors[0]);root.dataset.theme=theme.id;select.value=theme.id;
+    if(persist){try{localStorage.setItem(storageKey,theme.id);}catch{}document.getElementById('rp-theme-status').textContent='已切换为'+theme.name;}
+  }
+  let saved;try{saved=localStorage.getItem(storageKey);}catch{}
+  applyTheme(saved);select.addEventListener('change',()=>applyTheme(select.value,true));
+  const trackSelect=document.getElementById('rp-track-style'),trackStyles=${JSON.stringify(trackStyles)};
+  if(trackSelect){
+    const trackKey=storageKey+':track-style:v1';
+    const applyTrack=(id,persist=false)=>{const choice=trackStyles.find(item=>item[0]===id)||trackStyles.find(item=>item[0]==='beads');root.dataset.trackStyle=choice[0];trackSelect.value=choice[0];if(persist){try{localStorage.setItem(trackKey,choice[0]);}catch{}}};
+    let trackSaved;try{trackSaved=localStorage.getItem(trackKey);}catch{}applyTrack(trackSaved);trackSelect.addEventListener('change',()=>applyTrack(trackSelect.value,true));
+  }
+})();`;
     if (data.legacyOnly) {
       const legacy=data.legacyHistory || {},records=list(legacy.records);
-      return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Progress · SQLite 旧版只读归档</title><style>body{font:15px/1.7 system-ui,sans-serif;margin:0;color:#263b57;background:#f5f7fb}main{max-width:960px;margin:32px auto;padding:32px;background:white;border:1px solid #dce3ed;border-radius:12px}h1{font-size:26px}h2{font-size:18px}details{border-top:1px solid #dce3ed;padding:16px 0}summary{cursor:pointer;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,monospace}.note{padding:12px;background:#fff5df;border-radius:6px}.metric{font-size:20px}</style></head><body><main id="task-progress-report"><h1>SQLite 旧版只读归档</h1><p class="rp-delivery">${legacy.status==='unavailable'?'历史不可读取 · 结果未知':'旧版只读记录'}</p><p>会话 ${esc(data.sessionId)} · 来源 sqlite_v3 · schema 3 · 只读</p><p class="metric">旧库任务数：${esc(legacy.status==='unavailable'?'未知':legacy.task_count ?? records.length)} · 本次取得 ${records.length} 条摘录</p><section id="rp-legacy"><h2>旧版任务历史</h2><p class="note">旧库内容为有界兼容摘录；旧状态按原值展示，不证明已按现行协议验收。${legacy.truncated?'历史已截断。':''}${legacy.status==='unavailable'?'旧库来源不可用。':''}${esc(legacy.warning || '')}</p>${records.map(t=>`<details><summary>${esc(t.title)} · 旧状态 ${esc(t.status)} · ${esc(t.task_instance_id)}</summary>${legacyDetailsIncomplete(t)?'<p class="note">兼容历史摘录不完整：节点已截断或详情不可用。</p>':''}<pre>${esc(JSON.stringify(t,null,2))}</pre></details>`).join('')}</section><p>导出时间：${esc(data.generatedAt)}</p></main></body></html>`;
+      return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Progress · SQLite 旧版只读归档</title><style>body{font:15px/1.7 system-ui,sans-serif;margin:0;color:#263b57;background:#f5f7fb}main{max-width:960px;margin:32px auto;padding:32px;background:white;border:1px solid #dce3ed;border-radius:12px}h1{font-size:26px}h2{font-size:18px}details{border-top:1px solid #dce3ed;padding:16px 0}summary{cursor:pointer;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,monospace}.note{padding:12px;background:#fff5df;border-radius:6px}.metric{font-size:20px}${themeCss}</style></head><body><main id="task-progress-report" class="rp-legacy-only" ${themeAttributes}>${themeControls}<h1>SQLite 旧版只读归档</h1><p class="rp-delivery">${legacy.status==='unavailable'?'历史不可读取 · 结果未知':'旧版只读记录'}</p><p>会话 ${esc(data.sessionId)} · 来源 sqlite_v3 · schema 3 · 只读</p><p class="metric">旧库任务数：${esc(legacy.status==='unavailable'?'未知':legacy.task_count ?? records.length)} · 本次取得 ${records.length} 条摘录</p><section id="rp-legacy"><h2>旧版任务历史</h2><p class="note">旧库内容为有界兼容摘录；旧状态按原值展示，不证明已按现行协议验收。${legacy.truncated?'历史已截断。':''}${legacy.status==='unavailable'?'旧库来源不可用。':''}${esc(legacy.warning || '')}</p>${records.map(t=>`<details><summary>${esc(t.title)} · 旧状态 ${esc(t.status)} · ${esc(t.task_instance_id)}</summary>${legacyDetailsIncomplete(t)?'<p class="note">兼容历史摘录不完整：节点已截断或详情不可用。</p>':''}<pre>${esc(JSON.stringify(t,null,2))}</pre></details>`).join('')}</section><p>导出时间：${esc(data.generatedAt)}</p></main><script>${themeScript}</scr`+`ipt></body></html>`;
     }
-    const fmtTime = value => value ? new Date(value).toLocaleString('zh-CN', {hour12:false}) : '未记录';
-    const hm = value => value ? new Date(value).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',hour12:false}) : '—';
-    const pct = (n, total) => total ? Math.round(n * 100 / total) : 0;
-    const tasksFor = roundKey => data.tasks.filter(task => task.roundKey === roundKey);
-    const attemptsFor = roundKey => data.attempts.filter(attempt => attempt.roundKey === roundKey);
-    const planStats = plan => {
-      const leaves = tasksFor(plan.roundKey).filter(task => task.leaf);
-      return { leaves, total: leaves.length, ended: leaves.filter(task => ['finished','failed','cancelled'].includes(task.executionStatus)).length,
-        resolved: leaves.filter(task => task.acceptedResolved === true || (!data.network && task.outcome === 'resolved')).length, running: leaves.filter(task => task.executionStatus === 'running').length,
-        open: leaves.filter(task => task.outcome === 'open').length, endedUnresolved: leaves.filter(task => ['finished','failed','cancelled'].includes(task.executionStatus) && task.outcome !== 'resolved').length, failed: leaves.filter(task => task.executionStatus === 'failed' || task.outcome === 'failed').length,
-        pendingReview: leaves.filter(task => task.reviewStatus === 'pending').length,
-        cancelled: leaves.filter(task => task.executionStatus === 'cancelled').length };
+
+    const stamp = value => {
+      if (!value) return '未记录';
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) : String(value);
     };
-    const tag = (task, extra='') => {
-      const cls = task.executionStatus === 'running' ? 'active' : task.outcome === 'resolved' ? 'good' : task.outcome === 'open' ? 'warn' : ['failed'].includes(task.executionStatus) ? 'bad' : '';
-      return `<span class="rp-tag ${cls} ${extra}">${esc(task.status || '未开始')}</span>`;
+    const shortStamp = (value, clockOnly=false, withYear=false, withSeconds=false) => {
+      const date=new Date(value);
+      if(!Number.isFinite(date.getTime()))return String(value);
+      return date.toLocaleString('zh-CN',{...(clockOnly?{}:{...(withYear?{year:'numeric'}:{}),month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',...(withSeconds?{second:'2-digit'}:{}),hour12:false});
     };
-    const stampDuration = task => {
-      if (!task.startedAt) return '';
-      const seconds = Number(task.durationSeconds);
-      if (!Number.isFinite(seconds) || !task.durationSeconds) return '';
-      const mins = Math.max(0, Math.round(seconds / 60));
-      return `${task.finishedAt ? '用时' : '截至快照已运行'} ${mins >= 60 ? Math.floor(mins / 60) + ' 小时 ' : ''}${mins % 60} 分钟`;
+    const taskTime = task => {
+      const start=task.timeStart??task.startedAt,end=task.timeEnd??task.finishedAt,a=new Date(start),b=new Date(end);
+      const valid=Number.isFinite(a.getTime())&&Number.isFinite(b.getTime());
+      const sameDay=valid&&a.toDateString()===b.toDateString(),crossYear=valid&&a.getFullYear()!==b.getFullYear();
+      const seconds=valid&&Math.floor(a.getTime()/60000)===Math.floor(b.getTime()/60000)&&a.getTime()!==b.getTime();
+      const invalid=start&&timestamp(start)===null||end&&timestamp(end)===null;
+      const text=invalid?'时间格式无效，详见记录':start&&end?shortStamp(start,false,crossYear,seconds)+' → '+shortStamp(end,sameDay,crossYear,seconds):start?'开始于 '+shortStamp(start)+' · '+(task.timeEndState||'结束未记录'):end?(task.timeStartState||'开始未记录')+' · 结束于 '+shortStamp(end):(task.timeStartState||'历史未记录')+' / '+(task.timeEndState||'历史未记录');
+      const full=(task.timeSource||'原始记录')+'；原始开始：'+(task.startedAt||'未记录')+'；原始结束：'+(task.finishedAt||'未记录')+'；'+(task.cumulativeTime||'')+'；'+(task.overallTime||'');
+      return `<span class="r-task-time" title="${esc(full)}">${esc(text)}${task.timeKind==='derived'?'（子任务范围推导）':''}</span>`;
     };
-    const evidenceList = value => {
-      const items = String(value || '').split('\n').filter(Boolean);
-      return items.length ? `<ul class="rp-evidence">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : '<p class="rp-small">本记录未附证据。</p>';
+    const tasksFor = key => data.tasks.filter(t=>t.roundKey===key);
+    const attemptsFor = task => data.attempts.filter(a=>a.roundKey===task.roundKey&&a.taskId===task.taskId);
+    const keys = new Map(data.tasks.map((t,i)=>[t,'n'+i]));
+    const planKeys = new Map(data.plans.map((p,i)=>[p,'p'+i]));
+    const statsFor = plan => {
+      const leaves=tasksFor(plan.roundKey).filter(t=>t.leaf);
+      return {total:leaves.length,ended:leaves.filter(t=>['finished','failed','cancelled'].includes(t.executionStatus)).length,resolved:leaves.filter(t=>t.acceptedResolved===true||(!data.network&&t.outcome==='resolved')).length,running:leaves.filter(t=>t.executionStatus==='running').length,pendingReview:leaves.filter(t=>t.reviewStatus==='pending').length,endedUnresolved:leaves.filter(t=>['finished','failed','cancelled'].includes(t.executionStatus)&&t.outcome!=='resolved').length};
     };
-    const responsibilityMarkup = record => `<div class="rp-responsibility"><p class="rp-small">计划执行者：${esc(record.plannedExecutor || '计划执行者未记录')}${record.executor==='子智能体' || record.dispatchStatus || record.agentName ? ' · 实际智能体 ID：'+esc(record.agentName || '未绑定 / 未记录')+' · 派发：'+esc(record.dispatchStatus || '未记录') : ''}</p>${record.selfExecutionReason ? `<p>主会话自执行原因：${esc(record.selfExecutionReason)}</p>` : ''}<p>验收状态：${esc(record.reviewLabel || '验收未记录（旧记录不推断验收）')}</p>${record.reviewStatus==='accepted' && record.submittedOutcome==='open' ? '<p>接受的是结果报告；任务仍未解决。</p>' : ''}${record.submittedOutcome ? `<details class="rp-subdetails rp-submission"><summary>执行提交 · ${esc(record.submittedOutcome)}</summary><p>执行已结束，不等于验收通过。</p><p>${esc(record.submissionSummary)}</p>${evidenceList(record.submissionEvidence)}</details>` : ''}</div>`;
-    const reviewMarkup = record => `<article class="rp-review"><p><strong>${esc(record.reviewLabel)}</strong> · ${esc(record.attemptId || '执行编号未记录')}${record.invalidatedBy ? ' · 已失效' : ''}</p>${record.reviewKind==='synthesis' ? `<p>记录类型：综合验收执行记录 · 执行者：${esc(record.reviewer || '未记录')} · ${esc(record.reviewedAt)}</p><p>${esc(record.reviewSummary)}</p>${evidenceList(record.reviewEvidence)}` : record.reviewDecision ? `<p>决定：${esc(record.reviewDecision === 'accept' ? '接受' : record.reviewDecision === 'reject' ? '退回' : '综合验收')} · 验收者：${esc(record.reviewer || '未记录')}${record.reviewerName ? ' · '+esc(record.reviewerName) : ''} · ${esc(record.reviewedAt)}</p><p>${esc(record.reviewSummary)}</p>${evidenceList(record.reviewEvidence)}` : '<p>执行者已经提交结果，主会话尚未接受或退回。</p>'}</article>`;
-    const css = `
-    #task-progress-report { --rp-paper:light-dark(#faf9f5,#191d1b); --rp-ink:light-dark(#252e29,#e4e9e3); --rp-muted:light-dark(#626a62,#a5b1a6); --rp-line:light-dark(#d8ded4,#39443b); --rp-green:light-dark(#28513e,#a1c6ab); --rp-soft:light-dark(#eaf0e7,#26392d); --rp-amber:light-dark(#815b25,#e6bd7b); --rp-warn:light-dark(#f8efde,#392f21); --rp-red:light-dark(#923c33,#f2a49a); --rp-panel:light-dark(#f1f2eb,#222922); --rp-white:light-dark(#ffffff,#242b26); color:var(--rp-ink); font:14px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--rp-paper); padding:24px 32px 28px; overflow-wrap:anywhere; }
-    #task-progress-report * { box-sizing:border-box; }
-    #task-progress-report [hidden] { display:none !important; }
-    #task-progress-report h1,#task-progress-report h2,#task-progress-report h3,#task-progress-report p { margin:0; }
-    #task-progress-report button,#task-progress-report select { font:inherit; color:inherit; }
-    #task-progress-report button { background:transparent; border:1px solid var(--rp-line); border-radius:5px; padding:6px 10px; }
-    #task-progress-report button:hover { background:var(--rp-soft); }
-    #task-progress-report button:focus-visible,#task-progress-report select:focus-visible,#task-progress-report summary:focus-visible,#task-progress-report a:focus-visible { outline:2px solid var(--rp-green); outline-offset:3px; }
-    #task-progress-report a { color:var(--rp-green); text-underline-offset:4px; }
-    #task-progress-report .rp-top { display:flex; gap:16px; align-items:center; justify-content:space-between; padding-bottom:15px; border-bottom:1px solid var(--rp-line); margin-right:62px; }
-    #task-progress-report .rp-brand { display:flex; align-items:center; gap:10px; }
-    #task-progress-report .rp-monogram { display:grid; place-items:center; width:32px; height:32px; background:var(--rp-green); color:var(--rp-paper); font:500 18px Georgia,serif; }
-    #task-progress-report .rp-wordmark { font-size:12px; letter-spacing:1.8px; font-weight:500; }
-    #task-progress-report .rp-small { font-size:12px; color:var(--rp-muted); }
-    #task-progress-report .rp-picker { display:flex; gap:8px; align-items:center; font-size:12px; }
-    #task-progress-report select { min-width:0; max-width:100%; background:var(--rp-paper); border:1px solid var(--rp-line); padding:6px 24px 6px 8px; border-radius:4px; }
-    #task-progress-report .rp-hero { padding:24px 0 18px; }
-    #task-progress-report .rp-kicker { display:flex; gap:12px; align-items:center; flex-wrap:wrap; color:var(--rp-green); font-size:12px; margin-bottom:10px; }
-    #task-progress-report h1 { font:500 clamp(22px,3.1vw,30px)/1.4 "Songti SC","STSong","Noto Serif SC",serif; max-width:850px; letter-spacing:.4px; }
-    #task-progress-report .rp-subtitle { color:var(--rp-muted); font-size:12px; margin-top:10px; }
-    #task-progress-report .rp-metrics { display:grid; grid-template-columns:1fr 1fr 1fr 1.35fr; gap:18px; padding:16px 0 18px; border-top:1px solid var(--rp-line); border-bottom:1px solid var(--rp-line); }
-    #task-progress-report .rp-metric + .rp-metric { border-left:1px solid var(--rp-line); padding-left:18px; }
-    #task-progress-report .rp-metric-label { font-size:12px; color:var(--rp-muted); }
-    #task-progress-report .rp-number { font:400 28px/1.35 Georgia,"Songti SC",serif; margin-top:3px; font-variant-numeric:tabular-nums; }
-    #task-progress-report .rp-number span { font:400 13px/1.5 -apple-system,sans-serif; color:var(--rp-muted); margin-left:5px; }
-    #task-progress-report .rp-number.rp-delivery { font:500 19px/1.9 "Songti SC",serif; }
-    #task-progress-report .rp-track { display:flex; height:4px; background:var(--rp-line); margin-top:9px; max-width:170px; }
-    #task-progress-report .rp-track i { height:100%; background:var(--rp-green); }
-    #task-progress-report .rp-track i.rp-ended { opacity:.48; }
-    #task-progress-report .rp-focus { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:17px 0; }
-    #task-progress-report .rp-focus-item { padding-left:12px; border-left:3px solid var(--rp-green); }
-    #task-progress-report .rp-focus-item.rp-attention { border-color:var(--rp-amber); }
-    #task-progress-report .rp-focus-label { font-size:11px; letter-spacing:.5px; color:var(--rp-muted); margin-bottom:5px; }
-    #task-progress-report .rp-focus-title { font-size:13px; font-weight:500; }
-    #task-progress-report .rp-focus button { padding:1px 0; border:0; border-radius:0; color:var(--rp-green); text-decoration:underline; text-underline-offset:3px; font-size:12px; margin-top:6px; }
-    #task-progress-report .rp-nav { display:flex; gap:23px; flex-wrap:wrap; border-top:1px solid var(--rp-line); border-bottom:1px solid var(--rp-line); padding:10px 0; font-size:12px; }
-    #task-progress-report .rp-nav a { text-decoration:none; }
-    #task-progress-report .rp-nav span { margin-right:6px; color:var(--rp-muted); font:12px Georgia,serif; }
-    #task-progress-report .rp-section { padding-top:30px; scroll-margin-top:16px; }
-    #task-progress-report .rp-section-head { display:flex; justify-content:space-between; align-items:baseline; gap:14px; margin-bottom:14px; }
-    #task-progress-report h2 { font:500 21px/1.4 "Songti SC","STSong",serif; }
-    #task-progress-report h2 .rp-section-no { color:var(--rp-muted); font:400 13px Georgia,serif; margin-right:10px; }
-    #task-progress-report .rp-section-caption { font-size:12px; color:var(--rp-muted); margin:-6px 0 15px; }
-    #task-progress-report details>summary { list-style:none; }
-    #task-progress-report details>summary::-webkit-details-marker { display:none; }
-    #task-progress-report .rp-chevron { display:inline-block; width:16px; color:var(--rp-muted); font:20px/1 Georgia,serif; flex:none; transition:transform .12s; }
-    #task-progress-report details[open]>summary>.rp-chevron,#task-progress-report details[open]>summary .rp-summary-chevron { transform:rotate(90deg); }
-    #task-progress-report .rp-timeline { margin-left:16px; }
-    #task-progress-report .rp-round { position:relative; border-left:1px solid var(--rp-line); padding:0 0 0 28px; }
-    #task-progress-report .rp-round:last-child { border-left-color:transparent; }
-    #task-progress-report .rp-round-index { position:absolute; left:-17px; top:13px; width:33px; height:27px; text-align:center; background:var(--rp-paper); color:var(--rp-muted); font:15px/27px Georgia,serif; }
-    #task-progress-report .rp-round-current .rp-round-index { color:var(--rp-green); font-weight:500; }
-    #task-progress-report .rp-round>summary { padding:11px 0 12px; border-top:1px solid var(--rp-line); display:grid; grid-template-columns:minmax(0,1fr) auto 16px; gap:14px; align-items:center; }
-    #task-progress-report .rp-round-name { font-weight:500; font-size:14px; }
-    #task-progress-report .rp-round-time { font-size:11px; color:var(--rp-muted); margin-right:8px; font-variant-numeric:tabular-nums; }
-    #task-progress-report .rp-round-trigger { font-size:12px; color:var(--rp-muted); margin-top:4px; }
-    #task-progress-report .rp-round-result { text-align:right; font-size:12px; white-space:nowrap; }
-    #task-progress-report .rp-round-result strong { font-weight:500; }
-    #task-progress-report .rp-round-current>summary { background:var(--rp-soft); padding:12px; margin-left:-12px; }
-    #task-progress-report .rp-round-body { padding:6px 0 20px; }
-    #task-progress-report .rp-record { background:var(--rp-panel); padding:12px 14px; font-size:12px; margin:8px 0 12px; }
-    #task-progress-report .rp-record b { font-weight:500; display:block; margin-bottom:4px; }
-    #task-progress-report .rp-tag { display:inline-flex; align-items:center; gap:4px; font-size:11px; line-height:1.6; padding:2px 7px; border-radius:3px; background:var(--rp-panel); color:var(--rp-muted); white-space:nowrap; font-weight:400; }
-    #task-progress-report .rp-tag.good,#task-progress-report .rp-tag.active { background:var(--rp-soft); color:var(--rp-green); }
-    #task-progress-report .rp-tag.warn { background:var(--rp-warn); color:var(--rp-amber); }
-    #task-progress-report .rp-tag.bad { color:var(--rp-red); background:var(--rp-warn); }
-    #task-progress-report .rp-tree { border-top:1px solid var(--rp-line); }
-    #task-progress-report .rp-node { border-bottom:1px solid var(--rp-line); }
-    #task-progress-report .rp-node>summary { display:flex; gap:9px; align-items:flex-start; padding:var(--rp-row-padding,11px) 4px; }
-    #task-progress-report .rp-node>summary:hover { background:var(--rp-panel); }
-    #task-progress-report .rp-node>summary>.rp-chevron { margin-top:2px; }
-    #task-progress-report .rp-node-title { flex:1; min-width:0; font-size:13px; }
-    #task-progress-report .rp-group>summary .rp-node-title { font-weight:500; }
-    #task-progress-report .rp-node-count { display:block; margin-top:3px; font-size:11px; font-weight:400; color:var(--rp-muted); }
-    #task-progress-report .rp-children { margin:0 0 12px 14px; padding-left:14px; border-left:1px solid var(--rp-line); }
-    #task-progress-report .rp-children .rp-node:last-child { border-bottom:0; }
-    #task-progress-report .rp-node-body { padding:0 6px 14px 29px; font-size:12px; }
-    #task-progress-report .rp-node-body>p { margin-bottom:10px; }
-    #task-progress-report .rp-meta { display:flex; gap:6px 18px; flex-wrap:wrap; color:var(--rp-muted); font-size:11px; margin:10px 0; }
-    #task-progress-report .rp-evidence { margin:8px 0 0; padding-left:18px; font-size:12px; }
-    #task-progress-report .rp-evidence li { margin:5px 0; }
-    #task-progress-report .rp-subdetails { margin:9px 0 0; }
-    #task-progress-report .rp-subdetails>summary { padding:5px 0; color:var(--rp-green); font-size:12px; display:flex; align-items:center; gap:5px; }
-    #task-progress-report .rp-attempt { border-left:2px solid var(--rp-line); padding:7px 0 9px 12px; margin:6px 0; }
-    #task-progress-report .rp-attempt.current { border-color:var(--rp-green); }
-    #task-progress-report .rp-attempt-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:5px; }
-    #task-progress-report .rp-note { padding:10px 0; color:var(--rp-muted); font-size:12px; }
-    #task-progress-report .rp-history-item { border-top:1px solid var(--rp-line); }
-    #task-progress-report .rp-history-item>summary { display:flex; gap:12px; align-items:center; padding:13px 0; }
-    #task-progress-report .rp-history-title { flex:1; font-size:13px; }
-    #task-progress-report .rp-history-title small { display:block; font-size:11px; color:var(--rp-muted); margin-top:2px; }
-    #task-progress-report .rp-history-body { padding:0 0 16px 28px; }
-    #task-progress-report .rp-history-body .rp-tree { margin-top:12px; }
-    #task-progress-report .rp-book { border:1px solid var(--rp-line); background:var(--rp-white); }
-    #task-progress-report .rp-book-top { background:var(--rp-soft); color:var(--rp-green); padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; }
-    #task-progress-report .rp-book-grid { overflow:auto; }
-    #task-progress-report .rp-book table { border-collapse:collapse; width:100%; min-width:650px; font-size:12px; }
-    #task-progress-report .rp-book th { background:var(--rp-panel); text-align:left; font-weight:500; border-bottom:1px solid var(--rp-line); padding:9px 10px; }
-    #task-progress-report .rp-book td { border-bottom:1px solid var(--rp-line); padding:8px 10px; vertical-align:top; }
-    #task-progress-report .rp-book .rp-rownum { width:35px; font:11px/1.7 monospace; color:var(--rp-muted); text-align:center; background:var(--rp-panel); }
-    #task-progress-report .rp-book .rp-numcell { font-variant-numeric:tabular-nums; text-align:right; }
-    #task-progress-report .rp-book-tabs { display:flex; flex-wrap:wrap; gap:0; background:var(--rp-panel); border-top:1px solid var(--rp-line); }
-    #task-progress-report .rp-book-tabs button { border:0; border-radius:0; padding:9px 13px; font-size:12px; }
-    #task-progress-report .rp-book-tabs button[aria-selected="true"] { background:var(--rp-white); color:var(--rp-green); box-shadow:inset 0 -2px var(--rp-green); }
-    #task-progress-report .rp-book-note { padding:10px 14px; font-size:11px; color:var(--rp-muted); border-top:1px solid var(--rp-line); }
-    #task-progress-report .rp-source { border-top:1px solid var(--rp-line); margin-top:28px; padding-top:14px; font-size:11px; color:var(--rp-muted); }
-    #task-progress-report .rp-source summary { display:flex; gap:6px; align-items:center; }
-    #task-progress-report .rp-source dl { display:grid; grid-template-columns:110px 1fr; gap:6px 14px; }
-    #task-progress-report .rp-source dt,#task-progress-report .rp-source dd { margin:0; }
-    #task-progress-report .rp-footer { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:20px; font-size:11px; color:var(--rp-muted); }
-    #task-progress-report .rp-announcement { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-    @media(max-width:650px) {
-      #task-progress-report { padding:18px; }
-      #task-progress-report .rp-top { margin-right:0; align-items:flex-start; flex-direction:column; padding-right:62px; }
-      #task-progress-report .rp-picker { flex-wrap:wrap; }
-      #task-progress-report .rp-metrics { grid-template-columns:1fr 1fr; gap:16px; }
-      #task-progress-report .rp-metric:nth-child(3) { border-left:0; padding-left:0; }
-      #task-progress-report .rp-focus { grid-template-columns:1fr; gap:16px; }
-      #task-progress-report .rp-nav { gap:10px 18px; }
-      #task-progress-report .rp-section-head { align-items:flex-start; flex-direction:column; gap:5px; }
-      #task-progress-report .rp-round>summary { grid-template-columns:minmax(0,1fr) 16px; gap:4px 8px; }
-      #task-progress-report .rp-round-result { text-align:left; grid-row:2; white-space:normal; }
-      #task-progress-report .rp-round>summary>.rp-chevron { grid-row:1; grid-column:2; }
-      #task-progress-report .rp-round-result .rp-small { display:inline; margin-left:10px; }
-      #task-progress-report .rp-node>summary { flex-wrap:wrap; gap:6px; }
-      #task-progress-report .rp-node-title { flex-basis:calc(100% - 26px); }
-      #task-progress-report .rp-node>summary>.rp-tag { margin-left:22px; }
-      #task-progress-report .rp-children { margin-left:7px; padding-left:8px; }
-      #task-progress-report .rp-node-body { padding-left:22px; }
-      #task-progress-report .rp-history-item>summary { flex-wrap:wrap; }
-      #task-progress-report .rp-history-item>summary>.rp-small { margin-left:28px; }
-      #task-progress-report .rp-book-top { align-items:flex-start; flex-direction:column; gap:4px; }
-    }
-    @media(pointer:coarse) { #task-progress-report button,#task-progress-report select,#task-progress-report summary,#task-progress-report .rp-nav a { min-height:44px; } }
-    @media(prefers-reduced-motion:reduce) { #task-progress-report * { transition:none !important; } }
-    @media print { #task-progress-report { padding:0; } #task-progress-report .rp-picker,#task-progress-report .rp-nav { display:none; } #task-progress-report .rp-round,#task-progress-report .rp-node>summary { break-inside:avoid; } }
-  `;
-    const chevron = '<span class="rp-chevron" aria-hidden="true">›</span>';
-    const renderTree = (plan, scope, current=false) => {
-      const rows = tasksFor(plan.roundKey), map = new Map(rows.map(task => [task.taskId, task])), children = new Map();
-      rows.forEach(task => { const parent = task.parentId || ''; if (!children.has(parent)) children.set(parent, []); children.get(parent).push(task); });
-      const subtree = task => [task, ...(children.get(task.taskId) || []).flatMap(subtree)];
-      const renderAttempts = task => {
-        const items = attemptsFor(plan.roundKey).filter(attempt => attempt.taskId === task.taskId);
-        if (!items.length) return '';
-        return `<details class="rp-subdetails"><summary>${chevron}执行记录 · ${items.length} 次</summary>${[...items].reverse().map(attempt => `<article class="rp-attempt ${attempt.number === task.attempt ? 'current' : ''}"><div class="rp-attempt-head"><strong>第 ${esc(attempt.number || '—')} 次 · ${esc(attempt.kindLabel)}</strong>${tag({status:attempt.status,executionStatus:attempt.status==='执行结束'?'finished':attempt.status==='进行中'?'running':'',outcome:attempt.outcome})}<span class="rp-small">${esc(attempt.validity)}</span></div><div class="rp-meta"><span>${hm(attempt.startedAt)}–${attempt.finishedAt ? hm(attempt.finishedAt) : '快照时刻'}</span><span>${stampDuration(attempt)}</span><span>${esc(attempt.executor)}</span><span>模型：${esc(attempt.model || '未记录')}${attempt.thinking ? ' / '+esc(attempt.thinking) : ''}</span></div><p>${esc(attempt.summary || '暂无执行摘要。')}</p>${responsibilityMarkup(attempt)}${attempt.dispatchText ? `<details class="rp-subdetails"><summary>${chevron}派发任务文本</summary><p>${esc(attempt.dispatchText)}</p></details>` : ''}${attempt.evidence ? `<details class="rp-subdetails"><summary>${chevron}本次证据</summary>${evidenceList(attempt.evidence)}</details>` : ''}</article>`).join('')}</details>`;
+    // Attention belongs to the current round, not to unresolved historical snapshots.
+    const currentTask = t => t.taskCurrent && t.roundKey===data.currentRoundKey && !['closed','handed_off'].includes(data.taskStatus);
+    const taskTone = t => {
+      if(!currentTask(t))return 'neutral';
+      if(t.executionStatus==='failed'||t.reviewStatus==='rejected')return 'danger';
+      if(t.reviewStatus==='pending'||['awaiting_review','waiting_synthesis'].includes(t.statusKey))return 'attention';
+      if(t.acceptedResolved||(!data.network&&t.outcome==='resolved'))return 'success';
+      if(t.executionStatus==='running'||['running','executing','in_progress'].includes(t.statusKey))return 'running';
+      if(t.executionStatus==='cancelled')return 'neutral';
+      if(t.blockedBy||t.statusKey==='blocked'||t.outcome==='open')return 'attention';
+      return 'neutral';
+    };
+    const tag = t => `<span class="rp-tag r-state" data-tone="${taskTone(t)}">${esc(t.reviewStatus==='rejected'?'验收退回 · '+(t.status||'仍未解决'):data.network&&t.outcome==='resolved'&&!t.acceptedResolved&&!t.responsibilityCurrent&&t.reviewStatus!=='pending'?'已解决 · 验收未记录':t.status||'未记录')}</span>`;
+    const concernKinds=[['danger','失败 / 退回'],['review','待验收'],['blocked','依赖阻塞'],['open','仍未解决']];
+    const concern = t => !currentTask(t) ? '' : t.executionStatus==='failed'||t.reviewStatus==='rejected' ? 'danger' : t.reviewStatus==='pending' ? 'review' : t.executionStatus==='cancelled'||t.acceptedResolved||t.executionStatus==='running' ? '' : t.blockedBy ? 'blocked' : t.outcome==='open' ? 'open' : '';
+    const concernBadges = rows => concernKinds.map(([kind,label])=>{
+      const count=rows.filter(t=>t.leaf&&concern(t)===kind).length;
+      return count?`<span class="rp-concern" data-concern="${kind}" data-tone="${kind==='danger'?'danger':'attention'}">${label} ${count}</span>`:'';
+    }).join('');
+    const legend=`<div class="rp-legend" aria-label="颜色含义">${[['danger','!','失败 / 退回'],['attention','!','待验收 / 阻塞'],['running','●','执行中'],['replan','◆','重规划'],['success','✓','已解决'],['neutral','○','历史 / 其他']].map(([tone,icon,label])=>`<span data-tone="${tone}"><i aria-hidden="true">${icon}</i>${label}</span>`).join('')}</div>`;
+    const evidence = value => String(value||'').trim() ? `<pre class="rp-evidence">${esc(value)}</pre>` : '';
+    const responsibility = t => `<div class="rp-responsibility"><p>计划执行者：${esc(t.plannedExecutor||'计划执行者未记录')} · 实际执行者：${esc(t.executor||'未记录')}</p>${t.agentName||t.dispatchStatus?`<p>实际智能体 ID：${esc(t.agentName||'未绑定 / 未记录')} · 派发：${esc(t.dispatchStatus||'未记录')}</p>`:''}${t.selfExecutionReason?`<p>主会话自执行原因：${esc(t.selfExecutionReason)}</p>`:''}<p>验收状态：${esc(t.reviewLabel||'验收未记录（旧记录不推断验收）')}</p>${t.reviewStatus==='accepted'&&t.submittedOutcome==='open'?'<p>接受的是结果报告；任务仍未解决。</p>':''}${t.submittedOutcome?`<details class="rp-subdetails rp-submission"><summary>执行提交 · ${esc(t.submittedOutcome)}</summary><p>执行已结束，不等于验收通过。</p><p>${esc(t.submissionSummary)}</p>${evidence(t.submissionEvidence)}<p>提交时间：${esc(stamp(t.submittedAt))}</p></details>`:''}</div>`;
+    const review = t => `<article class="rp-review"><p>${esc(t.reviewLabel||'验收未记录')} · ${esc(t.attemptId||'执行编号未记录')}${t.invalidatedBy?' · 已失效':''}</p>${t.kind==='synthesis'?`<p>综合验收执行记录 · ${esc(t.executor)} · ${esc(stamp(t.finishedAt))}</p><p>${esc(t.summary)}</p>${evidence(t.evidence)}`:t.reviewDecision?`<p>决定：${esc(t.reviewDecision==='accept'?'接受':t.reviewDecision==='reject'?'退回':t.reviewDecision)} · 验收者：${esc(t.reviewer||'未记录')}${t.reviewerName?' · '+esc(t.reviewerName):''} · ${esc(stamp(t.reviewedAt))}</p><p>${esc(t.reviewSummary)}</p>${evidence(t.reviewEvidence)}`:'<p>执行者已经提交结果，主会话尚未接受或退回。</p>'}</article>`;
+    const attemptMarkup = a => `<article class="rp-attempt"><p><strong>第 ${esc(a.number||'—')} 次 · ${esc(a.kindLabel)}</strong> · ${esc(a.status)} · ${esc(a.outcome)} · ${esc(a.validity||'有效')}</p><p>尝试开始 ${esc(a.startedAt?stamp(a.startedAt):'历史未记录')}${a.timeBoundarySources?.started_at?'（开始未知，以结束边界保底）':''}<br>尝试结束 ${esc(a.finishedAt?stamp(a.finishedAt):a.executionStatus==='running'||a.status==='执行中'?'尚未结束':'历史未记录')}${a.timeBoundarySources?.finished_at?'（关闭时保底）':''}</p><p>${esc(a.summary||'暂无执行摘要。')}</p>${responsibility(a)}<p>模型：${esc(a.model||'未记录')} / ${esc(a.thinking||'未记录')} · ${esc(a.metadataEvidence||'来源未记录')}</p>${a.invalidatedBy?`<p class="r-amber">失效来源：${esc(a.invalidatedBy)} · 失效时间：${esc(stamp(a.invalidatedAt))}</p>`:''}${a.dispatchText?`<details><summary>派发任务文本</summary>${evidence(a.dispatchText)}</details>`:''}${evidence(a.evidence)}<p class="r-source">Attempt ID：${esc(a.attemptId||'未记录')}</p></article>`;
+    const taskBody = task => {
+      const attempts=attemptsFor(task), reviews=attempts.filter(a=>['pending','accepted','rejected'].includes(a.reviewStatus)||a.reviewDecision||a.kind==='synthesis');
+      const dependencyIds=String(task.dependencies||'').split('、').filter(Boolean),blockedIds=new Set(String(task.blockedBy||'').split('、').filter(Boolean)),peerTitles=new Map(tasksFor(task.roundKey).map(t=>[t.taskId,t.title]));
+      const dependencyMarkup=dependencyIds.map(id=>esc(peerTitles.get(id)||id)+(blockedIds.has(id)?'（未满足）':'（已满足）')).join('；');
+      if ((['pending','accepted','rejected'].includes(task.reviewStatus)||task.reviewDecision)&&!reviews.some(a=>a.attemptId===task.attemptId)) reviews.push(task);
+      return `<div class="rp-node-body r-detail-inner"><p>原始状态：${esc(task.status)} · ${esc(task.executionStatus)}${task.outcome?' · '+esc(task.outcome):''}</p><p class="r-detail-summary">${esc(task.summary||'暂无执行摘要。')}</p><div class="r-times"><span class="rp-lifecycle-source">${esc(task.timeSource||'原始记录')}</span><span>${esc(task.cumulativeTime||'')}</span><span>${esc(task.overallTime||'')}</span><span>来源节点 / 尝试：${esc(task.timeEvidence||'未记录')}</span><span>展示开始 ${esc(task.timeStart?stamp(task.timeStart):task.timeStartState||'历史未记录')}</span><span>展示结束 ${esc(task.timeEnd?stamp(task.timeEnd):task.timeEndState||'历史未记录')}</span><span>${task.historyAttemptCount?'另保留 '+esc(task.historyAttemptCount)+' 条历史尝试；不作为当前开始或结束。':''}</span><span title="${esc(task.startedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾开始':'当前尝试开始'} ${esc(task.startedAt?stamp(task.startedAt):task.timeKind==='derived'?'未记录':task.timeStartState||'历史未记录')}</span><span title="${esc(task.finishedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾结束':'当前尝试结束'} ${esc(task.finishedAt?stamp(task.finishedAt):task.timeKind==='derived'?'未记录':task.timeEndState||'历史未记录')}</span><span>执行角色 ${esc(task.executor||'未记录')}</span>${task.durationSeconds!==''?`<span>当前尝试耗时${!task.finishedAt?'（截至快照）':''}：${esc(task.durationSeconds)} 秒</span>`:''}</div>${dependencyMarkup?`<p>前置条件：${dependencyMarkup}</p>${task.dependencyConditions?`<p>放行要求：${esc(task.dependencyConditions)}</p>`:''}`:''}${task.blockedBy?`<p class="r-amber">阻塞前置：${esc(task.blockedBy)}</p>`:''}${responsibility(task)}<p>模型：${esc(task.model||'未记录')} / 思维强度 ${esc(task.thinking||'未记录')} · ${esc(task.metadataEvidence||'来源未记录')}</p>${task.evidence?`<details class="rp-subdetails"><summary>当前证据</summary>${evidence(task.evidence)}</details>`:''}${task.dispatchText?`<details class="rp-subdetails"><summary>派发说明</summary>${evidence(task.dispatchText)}</details>`:''}<details class="rp-subdetails"><summary>执行记录 · ${attempts.length} 次</summary>${attempts.length?[...attempts].reverse().map(attemptMarkup).join(''):'<p>未记录执行尝试。</p>'}</details><details class="rp-subdetails rp-review-history"><summary>验收历史 · ${reviews.length} 次</summary>${reviews.length?reviews.map(review).join(''):`<p>${!task.responsibilityCurrent?'未记录；旧执行记录不代表主会话已接受。':!task.leaf?'待综合验收（须先完成子任务复核）。':task.reviewNotRequired?'主会话直接执行，无需独立提交复核。':'尚无验收记录。'}</p>`}</details><p class="r-source">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)} · 父节点 ID：${esc(task.parentId||'无')}<br>任务实例：${esc(task.taskInstanceId)}<br>轮次：${esc(task.roundKey)}</p></div>`;
+    };
+    // Each generated key is scoped to the normalized instance and round, never to a reused task ID.
+    const renderTree = plan => {
+      const rows=tasksFor(plan.roundKey), byId=new Map(rows.map(t=>[t.taskId,t])), children=new Map();
+      rows.forEach(t=>{const parent=t.parentId&&byId.has(t.parentId)?t.parentId:'';if(!children.has(parent))children.set(parent,[]);children.get(parent).push(t);});
+      const roots=children.get('')||[], visited=new Set();
+      const node = (t,isRoot=false,parentKey='',number='1',depth=0) => {
+        if(visited.has(t.taskId))return '';visited.add(t.taskId);
+        const key=keys.get(t),kids=(children.get(t.taskId)||[]).filter(k=>!visited.has(k.taskId));
+        const descendants = (node, seen=new Set()) => {if(seen.has(node.taskId))return [];seen.add(node.taskId);return [node,...(children.get(node.taskId)||[]).flatMap(child=>descendants(child,seen))];};
+        const leaves=descendants(t).filter(n=>n.leaf),solved=leaves.filter(n=>n.acceptedResolved===true||(!data.network&&n.outcome==='resolved')).length;
+        return `<article class="r-node rp-node ${kids.length?'rp-group':'rp-leaf'} ${isRoot?'r-root-node':'r-task'}" id="node-${key}" data-node-id="${esc(t.taskId)}" data-node-key="${key}" data-parent-key="${parentKey}" data-depth="${depth}" data-hierarchy="${esc(number)}" data-tone="${taskTone(t)}" data-search-record><span class="${isRoot?'r-root-dot':'r-task-dot'}" data-dot="${key}" aria-hidden="true"></span><span class="r-node-index">${isRoot?'主任务':'子任务'} ${esc(number)}${isRoot?'':` <span class="r-parent-ref">↳ 从属 ${esc(number.slice(0,number.lastIndexOf('.')))}</span>`}</span><button type="button" class="${isRoot?'r-root-button':'r-task-title'}" data-task="${key}" aria-expanded="false" aria-controls="detail-${key}">${esc(t.title)}</button><div class="r-task-meta">${tag(isRoot&&!plan.taskLatestRound?{status:'已重规划 · 历史快照'}:t)}${taskTime(t)}</div><div id="detail-${key}" class="r-detail" hidden><details class="rp-task-detail"><summary><span class="rp-node-title">${esc(t.title)} · 摘要与记录</span></summary>${taskBody(t)}</details></div>${kids.length?`<div class="r-child-bottom"><button type="button" class="r-children-toggle" data-group="${key}" aria-expanded="false" aria-controls="children-${key}"><span class="r-group-symbol" aria-hidden="true">＋</span><span class="r-group-counts"><span>直接子任务 ${kids.length} 项</span><span>底层任务 ${leaves.length} 项 · 已解决 ${solved}/${leaves.length}</span></span></button>${concernBadges(leaves)}</div><div class="r-children rp-children" id="children-${key}" hidden><div class="r-tree">${kids.map((k,i)=>node(k,false,key,number+'.'+(i+1),depth+1)).join('')}</div></div>`:''}</article>`;
       };
-      const renderReviews = task => {
-        const records = attemptsFor(plan.roundKey).filter(a=>a.taskId===task.taskId && (['pending','accepted','rejected'].includes(a.reviewStatus) || a.reviewDecision || a.kind==='synthesis')).map(a=>a.kind==='synthesis' ? {...a,reviewLabel:'综合验收已记录',reviewKind:'synthesis',reviewDecision:'',reviewer:a.executor,reviewSummary:a.summary,reviewEvidence:a.evidence,reviewedAt:a.finishedAt} : a);
-        if ((['pending','accepted','rejected'].includes(task.reviewStatus) || task.reviewDecision) && !records.some(a=>a.attemptId===task.attemptId)) records.push(task);
-        return `<details class="rp-subdetails rp-review-history"><summary>${chevron}验收历史 · ${records.length} 次</summary>${records.length ? records.map(reviewMarkup).join('') : `<p>${!task.responsibilityCurrent ? '未记录；旧执行记录不代表主会话已接受。' : !task.leaf ? '待综合验收（须先完成子任务复核）。' : task.reviewNotRequired ? '主会话直接执行，无需独立提交复核。' : '尚无验收记录。'}</p>`}</details>`;
-      };
-      const renderNode = task => {
-        const kids = children.get(task.taskId) || [], descendants = subtree(task), stats = planStatsForNodes(descendants);
-        const openByDefault = current && kids.length && (task.taskId === plan.rootId || stats.running > 0 || stats.open > 0);
-        const dependencyIds = task.dependencies ? task.dependencies.split('、').filter(Boolean) : [];
-        const blockedIds = new Set(task.blockedBy ? task.blockedBy.split('、').filter(Boolean) : []);
-        const deps = dependencyIds.map(id => map.get(id)?.title || id);
-        const blocked = [...blockedIds].map(id => map.get(id)?.title || id);
-        const body = `<div class="rp-node-body">${task.summary ? `<p>${esc(task.summary)}</p>` : '<p class="rp-small">暂无执行摘要。</p>'}${deps.length ? `<p class="rp-small">前置条件：${deps.map((name, i) => esc(name) + (blockedIds.has(dependencyIds[i]) ? '（未满足）' : '（已满足）')).join('；')}</p>` : ''}<div class="rp-meta"><span>${esc(task.executor)}</span>${stampDuration(task) ? `<span>${stampDuration(task)}</span>` : ''}<span>模型：${esc(task.model || '未记录')}${task.thinking ? ' / '+esc(task.thinking) : ''}</span>${task.model ? `<span>来源：${esc(task.metadataEvidence || '调用方记录，未获宿主验证')}</span>` : ''}${task.attemptId ? `<span>尝试 ID：${esc(task.attemptId)}</span>` : ''}</div>${task.evidence ? `<details class="rp-subdetails"><summary>${chevron}当前证据</summary>${evidenceList(task.evidence)}</details>` : ''}${task.dispatchText ? `<details class="rp-subdetails"><summary>${chevron}派发说明</summary><p>${esc(task.dispatchText)}</p></details>` : ''}${responsibilityMarkup(task)}${renderAttempts(task)}${renderReviews(task)}<details class="rp-subdetails"><summary>${chevron}定位信息</summary><div class="rp-small">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)}${task.parentId ? '<br>父节点 ID：'+esc(task.parentId) : ''}</div></details></div>`;
-        return `<details class="rp-node ${kids.length ? 'rp-group' : 'rp-leaf'}" id="node-${esc(scope)}-${esc(task.taskId)}" data-node-id="${esc(task.taskId)}" ${openByDefault ? 'open' : ''}><summary class="cursor-interaction">${chevron}<span class="rp-node-title">${esc(task.title)}${kids.length ? `<span class="rp-node-count">${stats.total} 项叶任务 · 已解决 ${stats.resolved}/${stats.total}${stats.endedUnresolved ? ' · '+stats.endedUnresolved+' 项已结束未解决' : ''}${stats.running ? ' · '+stats.running+' 项执行中' : ''}</span>` : ''}</span>${tag(task)}</summary>${kids.length ? `<div class="rp-children">${kids.map(renderNode).join('')}</div>${task.summary || task.evidence || task.dispatchText || attemptsFor(plan.roundKey).some(a=>a.taskId===task.taskId) ? `<details class="rp-subdetails rp-node-body"><summary>${chevron}分组记录与综合验收</summary>${body}</details>` : ''}` : body}${blocked.length ? `<div class="rp-small">阻塞前置：${blocked.map(esc).join('、')}${task.dependencyConditions ? ' · '+esc(task.dependencyConditions) : ''}</div>` : ''}</details>`;
-      };
-      // Root records contain the main session's final acceptance and attempts.
-      const roots = rows.filter(task => !task.parentId || !map.has(task.parentId));
-      return `<div class="rp-tree">${roots.map(renderNode).join('') || '<p class="rp-note">该快照没有任务节点。</p>'}</div>`;
+      let rootIndex=0;
+      let html=roots.map(t=>node(t,true,'',String(++rootIndex))).join('');
+      // Preserve detached or cyclic historical nodes without allowing recursive markup loops.
+      html+=rows.filter(t=>!visited.has(t.taskId)).map(t=>node(t,true,'',String(++rootIndex))).join('');
+      return html||'<p class="rp-note">该快照没有任务节点。</p>';
     };
-    const planStatsForNodes = nodes => {
-      const leaves = nodes.filter(task => task.leaf);
-      return {total:leaves.length,resolved:leaves.filter(t=>t.outcome==='resolved').length,open:leaves.filter(t=>t.outcome==='open').length,endedUnresolved:leaves.filter(t=>['finished','failed','cancelled'].includes(t.executionStatus)&&t.outcome!=='resolved').length,running:leaves.filter(t=>t.executionStatus==='running').length};
-    };
-    const currentPlans = data.plans.filter(plan => plan.taskCurrent).sort((a,b) => Number(a.epoch)-Number(b.epoch));
-    const archivedGroups = new Map();
-    data.plans.filter(plan => !plan.taskCurrent).forEach(plan => { if (!archivedGroups.has(plan.taskScope)) archivedGroups.set(plan.taskScope, []); archivedGroups.get(plan.taskScope).push(plan); });
-    const active = data.tasks.find(task => task.taskCurrent && task.roundKey === data.currentRoundKey && task.leaf && task.executionStatus === 'running');
-    const unresolved = data.tasks.filter(task => task.taskCurrent && task.roundKey === data.currentRoundKey && task.leaf && task.outcome === 'open');
-    const currentStats = data.currentPlan ? planStats(data.currentPlan) : {total:0,ended:0,resolved:0,running:0,open:0,endedUnresolved:0};
-    const currentRoot = data.network ? tasksFor(data.currentRoundKey).find(task => data.currentPlan?.rootId ? task.taskId === data.currentPlan.rootId : !task.parentId) : null;
-    const finalStatus = currentRoot?.executionStatus || data.taskStatus;
-    const delivery = (() => {
-      if (['closed','handed_off','waiting_synthesis'].includes(data.taskStatus)) return statusInfo(data.taskStatus).label;
-      if (data.legacyOnly) return '旧版只读记录';
-      if (finalStatus === 'failed') return '执行失败';
-      if (finalStatus === 'cancelled') return '已取消';
-      if (!data.network) return data.taskStatus === 'completed' && currentStats.total > 0 && currentStats.resolved === currentStats.total ? '已解决' : '尚未完成';
-      if (currentStats.pendingReview) return '待主会话验收';
-      if (currentRoot?.acceptedResolved) return '已解决';
-      if (currentRoot?.outcome === 'resolved') return '验收未记录';
-      if (currentRoot?.outcome === 'open') return '仍未解决';
-      return currentStats.total > 0 && currentStats.ended === currentStats.total && currentStats.open === 0 && currentStats.resolved === currentStats.total ? '待汇总验收' : '尚未完成';
+    const currentPlans=data.plans.filter(p=>p.taskCurrent).sort((a,b)=>Number(a.epoch)-Number(b.epoch));
+    const groups=new Map();data.plans.forEach(p=>{if(!groups.has(p.taskScope))groups.set(p.taskScope,[]);groups.get(p.taskScope).push(p);});
+    const currentStats=data.currentPlan?statsFor(data.currentPlan):{total:0,ended:0,resolved:0,running:0,pendingReview:0,endedUnresolved:0};
+    const currentRoot=tasksFor(data.currentRoundKey).find(t=>t.taskId===data.currentPlan?.rootId)||null;
+    const delivery=(()=>{
+      if(['closed','handed_off'].includes(data.taskStatus))return statusInfo(data.taskStatus).label;
+      if(['failed','cancelled'].includes(currentRoot?.executionStatus||data.taskStatus))return (currentRoot?.executionStatus||data.taskStatus)==='failed'?'执行失败':'已取消';
+      if(data.taskStatus==='waiting_synthesis')return statusInfo(data.taskStatus).label;
+      if(!data.network)return data.taskStatus==='completed'&&currentStats.total&&currentStats.resolved===currentStats.total?'已解决':'尚未完成';
+      if(currentStats.pendingReview)return '待主会话验收';
+      if(currentRoot?.acceptedResolved)return '已解决';
+      if(currentRoot?.outcome==='resolved')return '验收未记录';
+      if(currentRoot?.outcome==='open')return '仍未解决';
+      return currentStats.total&&currentStats.ended===currentStats.total&&currentStats.resolved===currentStats.total?'待汇总验收':'尚未完成';
     })();
-    const jumpLink = task => `<a class="rp-jump cursor-interaction" href="#node-current-${encodeURIComponent(task.taskId)}" data-jump="${esc(task.taskId)}">定位任务 →</a>`;
-    const planTimeline = (plans, scope) => {
-      const rounds = [...plans].sort((a,b) => Number(a.epoch)-Number(b.epoch));
-      const leafIds = plan => tasksFor(plan.roundKey).filter(task=>task.leaf).map(task=>task.taskId);
-      return `<div class="rp-timeline">${rounds.map((plan, index) => {
-        const stats = planStats(plan), previous = rounds[index-1], prevIds = previous ? new Set(leafIds(previous)) : new Set(), shared = previous ? leafIds(plan).filter(id=>prevIds.has(id)).length : 0;
-        const incoming = index === 0 ? '初始计划' : previous.reason || '前序轮次未记录重规划原因';
-        const isCurrent = plan.current && plan.taskCurrent;
-        return `<details class="rp-round ${isCurrent ? 'rp-round-current' : ''}" ${isCurrent ? 'open' : ''}><summary class="cursor-interaction"><span class="rp-round-index">${String(index+1).padStart(2,'0')}</span><div><div><span class="rp-round-time">${plan.closedAt ? hm(previous?.closedAt || plan.capturedAt) + '–' + hm(plan.closedAt) : '快照时间 ' + hm(plan.capturedAt)}</span>${isCurrent ? '<span class="rp-tag active">当前计划</span>' : ''}</div><div class="rp-round-name">${esc(plan.title)}</div><div class="rp-round-trigger">进入原因：${esc(incoming)}${previous ? ` · 叶任务范围 ${planStats(previous).total} → ${stats.total}，共用 ${shared} 个 ID` : ''}</div></div><div class="rp-round-result"><strong>已解决 ${stats.resolved}/${stats.total}</strong><div class="rp-small">已结束 ${stats.ended}/${stats.total}</div></div>${chevron}</summary><div class="rp-round-body"><div class="rp-record"><b>本轮目标</b>${esc(plan.title)}</div>${previous ? `<div class="rp-record"><b>叶任务范围变化</b>${planStats(previous).total} → ${stats.total} 项叶任务；${shared ? `与前轮共用 ${shared} 个叶任务 ID。` : '与前轮没有相同叶任务 ID，不推断语义沿袭。'}</div>` : ''}${plan.reason ? `<div class="rp-record"><b>结束本轮并进入下一轮的原因 · 原始记录</b>${esc(plan.reason)}</div>` : ''}${isCurrent ? '<p class="rp-small">当前树与执行记录见下方「当前计划展开」。</p>' : treeForPlan(plan, scope, false)}</div></details>`;
-      }).join('')}</div>`;
+    const deliveryTone=['closed','handed_off'].includes(data.taskStatus)?'neutral':delivery==='已解决'?'success':delivery==='执行失败'?'danger':['待主会话验收','待汇总验收','仍未解决'].includes(delivery)?'attention':currentStats.running?'running':'neutral';
+    const attention=concernBadges(tasksFor(data.currentRoundKey));
+    const reasonExcerpt = value => {const text=String(value||'前序轮次未记录重规划原因');const first=text.match(/^.*?[。！？\n]/)?.[0]||text;const chars=Array.from(first);return chars.slice(0,120).join('')+(chars.length>120||first.length<text.length?'…':'');};
+    const eventGap = (start,end) => {
+      if(!start||!end)return '';
+      const from=new Date(start).getTime(),to=new Date(end).getTime();
+      if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return '';
+      let seconds=Math.floor((to-from)/1000);
+      const parts=[];
+      for(const [unit,label] of [[86400,'天'],[3600,'小时'],[60,'分'],[1,'秒']]){
+        const value=Math.floor(seconds/unit);seconds%=unit;
+        if(value)parts.push(value+label);
+      }
+      return parts.join(' ')||'0秒';
     };
-    const treeForPlan = (plan, scope, current) => renderTree(plan, scope, current);
-    const timelineSection = `<section id="rp-plans" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">01</span>计划如何走到今天</h2><span class="rp-small">同一任务 · ${currentPlans.length} 轮计划</span></div><p class="rp-section-caption">每轮保留自己的目标、叶任务范围与结果；进入原因取自前一轮记录。没有共同任务 ID 时不推测语义沿袭。</p>${planTimeline(currentPlans, 'current')}${currentPlans.length <= 1 ? '<p class="rp-note">当前记录没有计划变更时间线，无法还原每一次拆分发生的顺序。</p>' : ''}</section>`;
-    const currentSection = `<section id="rp-current" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">02</span>当前计划展开</h2><span class="rp-small">${currentStats.total} 项叶任务 · ${tasksFor(data.currentRoundKey).length} 个节点（含根节点）</span></div><p class="rp-section-caption">运行中及未解决分支默认展开；展开任务查看摘要、证据与历次执行。</p>${data.currentPlan ? renderTree(data.currentPlan, 'current', true) : '<p class="rp-note">当前快照没有计划节点。</p>'}</section>`;
-    const archiveSection = archivedGroups.size ? `<section id="rp-archives" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">03</span>此前做过的任务</h2><span class="rp-small">${data.archivedTaskCount} 个历史任务 · 与当前计划分开计数</span></div>${[...archivedGroups.entries()].map(([scope, plans]) => { const plan=plans.sort((a,b)=>Number(a.epoch)-Number(b.epoch)).at(-1), stats=planStats(plan); return `<details class="rp-history-item"><summary class="cursor-interaction">${chevron}<span class="rp-history-title">${esc(plan.instanceTitle)}<small>${plan.taskInstanceId ? '历史任务实例' : '历史任务'} · ${plans.length} 轮计划 · ${stats.total} 项叶任务</small></span><span class="rp-small">已解决 ${stats.resolved}/${stats.total} · 已结束 ${stats.ended}/${stats.total}</span></summary><div class="rp-history-body"><p class="rp-small">归档于 ${fmtTime(plan.archivedAt)}；数字均属于此历史任务。</p>${planTimeline(plans, scope)}</div></details>`; }).join('')}</section>` : '';
-    const auditSection = list(data.auditRecords).length ? `<section id="rp-closure-audit" class="rp-section"><h2>移交与收尾验收</h2><p>验收收尾保留原始未解决或取消结果，不作为已解决计数。</p>${data.auditRecords.map(item=>`<details class="rp-history-item"><summary>${esc(item.instanceTitle)} · ${esc(item.kind)} · ${esc(item.id)}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(item.record,null,2))}</pre></details>`).join('')}</section>` : '';
-    const legacySection = data.legacyHistory ? `<section id="rp-legacy" class="rp-section"><h2>SQLite 历史 · 只读</h2><p class="rp-note">来源 sqlite_v3；${data.legacyOnly ? '仅有旧版归档，无当前 JSON 任务。' : '当前任务来自 JSON；SQLite 为独立历史来源，状态冲突不自动合并。'}旧状态按原值展示，不证明已按当前协议验收。旧库内容为有界兼容摘录。${data.legacyHistory.truncated ? '任务历史已截断。' : ''}${data.legacyHistory.status === 'unavailable' ? '旧库来源不可用；当前 JSON 历史仍完整导出。' : ''}${esc(data.legacyHistory.warning || '')}</p>${list(data.legacyHistory.records).map(t=>`<details class="rp-history-item"><summary>${esc(t.title)} · ${esc(t.status)} · ${esc(t.task_instance_id)}</summary>${legacyDetailsIncomplete(t) ? '<p>兼容历史摘录不完整：节点已截断或详情不可用。</p>' : ''}<pre class="rp-small">${esc(JSON.stringify(t,null,2))}</pre></details>`).join('')}</section>` : '';
-    const sheets = ['概览','任务清单','执行尝试','证据索引','计划变更','验收历史'];
-    const currentTasks = data.tasks.filter(task => task.taskCurrent && task.roundKey === data.currentRoundKey);
-    const currentLeaves = currentTasks.filter(task=>task.leaf);
-    const workbookRows = sheet => {
-      if (sheet === '概览') return {headers:['指标','记录值','统计口径'],rows:[['当前计划',`${currentPlans.length} 轮`,'仅当前任务实例'],['历史任务',data.archivedTaskCount,'独立任务实例'],['已结束',`${currentStats.ended} / ${currentStats.total}`,`${pct(currentStats.ended,currentStats.total)}% · 包含失败/取消`],['已解决',`${currentStats.resolved} / ${currentStats.total}`,`${pct(currentStats.resolved,currentStats.total)}% · 已解决且通过当前验收协议`],['最终交付',delivery,`${currentStats.running} 项执行中 · ${currentStats.pendingReview || 0} 项待主会话验收 · ${currentStats.endedUnresolved} 项已结束未解决`],['快照时间',fmtTime(data.currentPlan?.capturedAt),'来源记录时间']]};
-      if (sheet === '任务清单') return {headers:['层级','任务 / 父级路径','状态','结果','尝试数','节点 ID'],rows:currentTasks.filter(task=>!data.network || task.parentId).slice(0,10).map(task=>[task.depth,task.pathTitles,task.status,task.outcome==='resolved'?'已解决':task.outcome==='open'?'未解决':'—',task.attempt,task.taskId])};
-      if (sheet === '执行尝试') return {headers:['任务','次数','状态 / 结果','开始时间','结束时间','尝试 ID'],rows:attemptsFor(data.currentRoundKey).slice(-10).map(a=>[a.taskTitle,a.number,a.status+(a.outcome?' · '+a.outcome:''),fmtTime(a.startedAt),a.finishedAt?fmtTime(a.finishedAt):'快照时未结束',a.attemptId])};
-      if (sheet === '验收历史') return {headers:['任务','执行编号','记录类型','验收状态','决定','验收者','验收摘要','验收证据'],rows:attemptsFor(data.currentRoundKey).filter(a=>['pending','accepted','rejected'].includes(a.reviewStatus) || a.reviewDecision || a.kind==='synthesis').map(a=>[a.taskTitle,a.attemptId,a.kind==='synthesis'?'综合验收执行记录':'执行提交复核',a.reviewLabel,a.reviewDecision,a.kind==='synthesis'?a.executor:a.reviewer,a.kind==='synthesis'?a.summary:a.reviewSummary,a.kind==='synthesis'?a.evidence:a.reviewEvidence])};
-      if (sheet === '证据索引') return {headers:['所属任务','记录范围','证据原文'],rows:currentTasks.filter(t=>t.evidence).flatMap(t=>t.evidence.split('\n').filter(Boolean).map(e=>[t.title,'当前记录',e])).slice(0,10)};
-      return {headers:['轮次','结束时间','叶任务数','已解决','进入本轮原因'],rows:currentPlans.map((p,i)=>[Number(p.epoch)+1,p.closedAt?fmtTime(p.closedAt):'未记录计划关闭时间',planStats(p).total,planStats(p).resolved,i?currentPlans[i-1].reason||'未记录':'初始计划'])};
+    const timeline = plans => {
+      const ordered=[...plans].sort((a,b)=>Number(a.epoch)-Number(b.epoch));
+      return ordered.map((plan,i)=>{
+        const key=planKeys.get(plan),next=ordered[i+1],previous=ordered[i-1],stats=statsFor(plan),boundary=previous?.replanClosedAt??previous?.closedAt;
+        const timeLabel=i?'重规划边界':plan.createdAt?'实例建立':'快照时间', timeValue=stamp(i?boundary:plan.createdAt||plan.capturedAt);
+        const gap=eventGap(i?boundary:plan.createdAt,plan.replanClosedAt??plan.closedAt);
+        const rootTitle=tasksFor(plan.roundKey).find(t=>t.taskId===plan.rootId)?.title;
+        const affected=tasksFor(plan.roundKey).filter(t=>t.executionStatus!=='finished'||t.outcome!=='resolved');
+        return `<section class="r-plan rp-round ${plan.current?'rp-round-current':''}" data-epoch="${esc(plan.epoch)}" data-round-key="${esc(plan.roundKey)}" data-side="${i%2?'right':'left'}" ${plan.current?'id="rp-current"':''}><span class="r-main-dot" data-main-key="${key}" aria-hidden="true"></span><div class="r-plan-content"><div class="r-round"><span class="r-round-index">${esc(plan.epoch===''?'顺序步骤':'第 '+(Number(plan.epoch)+1)+' 轮')}${plan.current?' · 当前轮':''}</span></div><p class="r-round-time"><span class="r-time-label">${esc(timeLabel)}</span><strong>${esc(timeValue)}</strong></p>${plan.title&&plan.title!==rootTitle?`<p class="r-small rp-plan-title">本轮目标：${esc(plan.title)}</p>`:''}<p class="r-small">${plan.current?'当前快照':'历史快照'} · 已解决 ${stats.resolved}/${stats.total} · 已结束 ${stats.ended}/${stats.total}</p>${renderTree(plan)}</div></section>${next?`<section class="r-replan" data-side="${i%2?'left':'right'}" data-from-round="${esc(plan.roundKey)}" data-to-round="${esc(next.roundKey)}" data-task-scope="${esc(plan.taskScope)}" data-search-record><span class="r-main-dot" data-main-key="turn-${key}" aria-hidden="true"></span><div class="r-turn-copy"><div class="r-turn-kicker">重新规划 ${Number(plan.epoch)+1} → ${Number(next.epoch)+1}</div><p class="r-turn-time"><span class="r-time-label">重规划时间</span><strong>${esc(stamp(plan.replanClosedAt??plan.closedAt))}</strong></p><p class="r-event-gap"><span>距上一关键事件</span><strong>${esc(gap||'间隔未知')}</strong></p><p class="r-turn-reason"><span class="r-small">原因摘要 </span>${esc(reasonExcerpt(plan.reason))}</p><button type="button" class="r-turn-toggle" data-turn="${key}" aria-expanded="false" aria-controls="turn-detail-${key}">原因全文与关闭快照 ＋</button><div class="r-detail" id="turn-detail-${key}" hidden><div class="r-detail-inner"><p class="r-details-label">原因全文</p><p class="r-turn-reason">${esc(plan.reason||'前序轮次未记录重规划原因')}</p><p>叶任务范围 ${stats.total} → ${statsFor(next).total}；不推断不同节点之间的语义继承。</p><p>以下为旧轮关闭时仍未解决或未结束的节点，状态不表示由重规划造成。</p>${affected.map(t=>`<p>${esc(t.title)} · ${esc(t.status)}</p>`).join('')||'<p>没有未解决节点。</p>'}<p class="r-source">旧轮关闭 → 新轮边界，非子任务开始时间<br>${esc(plan.roundKey)} → ${esc(next.roundKey)}</p></div></div></div></section>`:''}`;
+      }).join('');
     };
-    const workbookPreview = `<section id="rp-workbook" class="rp-section"><div class="rp-section-head"><h2><span class="rp-section-no">${archivedGroups.size ? '04' : '03'}</span>交给后续处理的数据表</h2><span class="rp-small">XLSX 内容预览 · 基于当前导出数据</span></div><div class="rp-book"><div class="rp-book-top"><strong>task-progress-report.xlsx</strong><span>${sheets.length} 张表 · 当前表：<span id="rp-sheet-name">概览</span></span></div>${sheets.map((sheet,i)=>{const model=workbookRows(sheet);return `<div id="rp-sheet-panel-${i}" class="rp-book-grid" role="tabpanel" ${i?'hidden':''}><table><thead><tr><th class="rp-rownum">#</th>${model.headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${model.rows.map((row,j)=>`<tr><td class="rp-rownum">${j+1}</td>${row.map(value=>`<td class="${typeof value==='number'?'rp-numcell':''}" style="white-space:pre-line">${esc(value)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${model.headers.length+1}" class="rp-small">本表当前没有记录。</td></tr>`}</tbody></table></div>`;}).join('')}<div class="rp-book-tabs" role="tablist" aria-label="工作表">${sheets.map((sheet,i)=>`<button type="button" role="tab" id="rp-sheet-tab-${i}" aria-controls="rp-sheet-panel-${i}" aria-selected="${i===0}" data-sheet-index="${i}">${sheet}</button>`).join('')}</div><div class="rp-book-note">交付规格：日期与数值保留数据类型；冻结表头、启用筛选；按层级路径定位；长文换行，技术 ID 可检索。此处展示当前报告对应数据节选。</div></div></section>`;
-    const model = data.mainSession?.model || '未记录', thinking = data.mainSession?.reasoning_effort || '未记录';
-    const focus = `<p class="rp-note" id="rp-state-counts">${currentStats.running} 项执行中 · ${currentStats.pendingReview || 0} 项待主会话验收</p><div class="rp-focus"><div class="rp-focus-item"><div class="rp-focus-label">当前推进</div><div class="rp-focus-title">${esc(active?.title || '暂无执行中任务')}</div><div class="rp-small">${active ? esc(active.pathTitles) : '当前快照没有 running 叶任务。'}</div>${active ? jumpLink(active) : ''}</div><div class="rp-focus-item rp-attention"><div class="rp-focus-label">仍待解决 / 下一关口</div><div class="rp-focus-title">${esc(unresolved[0]?.title || (currentStats.running ? `${currentStats.running} 项执行中` : currentStats.ended < currentStats.total ? '仍有待执行任务' : delivery))}</div><div class="rp-small">${unresolved.length ? esc(unresolved[0].summary || unresolved[0].pathTitles) : '未从快照推断外部验收要求。'}</div>${unresolved[0] ? jumpLink(unresolved[0]) : ''}</div></div>`;
-    const roundsSectionNo = '01';
-    const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Task Progress · ${esc(data.taskTitle)}</title><style>${css}</style></head><body><main id="task-progress-report" class="report"><div class="rp-top"><div class="rp-brand"><span class="rp-monogram">tp</span><div><div class="rp-wordmark">TASK PROGRESS</div><div class="rp-small">执行报告 · 计划与结果快照</div></div></div><div class="rp-small">${esc(data.mode)} · ${esc(data.status)}</div></div><header class="rp-hero"><div class="rp-kicker"><span>当前任务 · 第 ${Number(data.currentEpoch||0)+1} 轮计划</span><span class="rp-tag active">${esc(data.status)}</span></div><h1>${esc(data.taskTitle)}</h1><p class="rp-subtitle">会话 ${esc(data.sessionId)}<br>数据冻结于 ${fmtTime(data.currentPlan?.capturedAt || data.sourceUpdatedAt)} · 报告生成于 ${fmtTime(data.generatedAt)}</p></header><div class="rp-metrics"><div class="rp-metric"><div class="rp-metric-label">已结束</div><div class="rp-number">${currentStats.ended}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i class="rp-ended" style="width:${pct(currentStats.ended,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">已解决</div><div class="rp-number">${currentStats.resolved}<span>/ ${currentStats.total} 项</span></div><div class="rp-track"><i style="width:${pct(currentStats.resolved,currentStats.total)}%"></i></div></div><div class="rp-metric"><div class="rp-metric-label">计划沿革</div><div class="rp-number">${currentPlans.length}<span>轮 · 同一任务</span></div><div class="rp-small">另有 ${data.archivedTaskCount} 个历史任务</div></div><div class="rp-metric"><div class="rp-metric-label">最终交付</div><div class="rp-number rp-delivery">${esc(delivery)}</div><div class="rp-small">${currentStats.running} 项执行中${currentStats.endedUnresolved ? ` · ${currentStats.endedUnresolved} 项已结束未解决` : ''}</div></div></div>${focus}<nav class="rp-nav" aria-label="报告目录"><a href="#rp-plans"><span>01</span>计划沿革</a><a href="#rp-current"><span>02</span>当前任务</a>${archivedGroups.size ? '<a href="#rp-archives"><span>03</span>历史任务</a>' : ''}<a href="#rp-workbook"><span>${archivedGroups.size?'04':'03'}</span>数据表预览</a></nav>${timelineSection}${currentSection}${archiveSection}${auditSection}${legacySection}${workbookPreview}<details class="rp-source"><summary>${chevron}数据来源与记录边界</summary><dl><dt>统计口径</dt><dd>仅统计叶任务；已结束包含完成、失败、取消；已解决仅统计 outcome=resolved 且通过当前验收协议；历史验收未记录的结果不推断为已验收；待主会话验收的执行结果不计为已解决。执行结束不等于验收通过。身份与执行配置由调用方填报，未作宿主认证。</dd><dt>时间口径</dt><dd>运行中时长截至任务快照时间；历史结果保留在各自计划轮次与任务实例。</dd><dt>计划沿袭</dt><dd>${currentPlans.length>1?'相邻轮次只按任务 ID 交集呈现，不推断任务之间的语义继承。':'当前记录没有计划变更历史，不能还原拆分顺序。'} revision=${esc(data.revision)} 是状态修订号，不等于拆分次数。</dd><dt>主会话模型</dt><dd>${esc(model)} / 思维强度 ${esc(thinking)}；${esc(data.mainSessionEvidence || '来源未记录')}</dd><dt>任务实例 ID</dt><dd>${esc(data.currentPlan?.taskInstanceId || '未记录')}</dd><dt>历史任务数</dt><dd>${data.archivedTaskCount}</dd></dl></details><footer class="rp-footer"><span>TASK PROGRESS · 执行、结果与计划沿革</span><span>离线报告 / ${esc(data.generatedAt)}</span></footer></main><script>
-document.addEventListener('click',e=>{const jump=e.target.closest('[data-jump]');if(jump){e.preventDefault();const target=[...document.querySelectorAll('#task-progress-report [data-node-id]')].find(n=>n.dataset.nodeId===jump.dataset.jump);if(target){for(let p=target.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;target.scrollIntoView({block:'center'});target.querySelector('summary')?.focus();}}const tab=e.target.closest('[data-sheet-index]');if(tab){const i=tab.dataset.sheetIndex;document.querySelectorAll('#task-progress-report [data-sheet-index]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));document.querySelectorAll('#task-progress-report .rp-book-grid').forEach((panel,j)=>panel.hidden=String(j)!==i);document.getElementById('rp-sheet-name').textContent=tab.textContent;}});
-document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-index]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=[...document.querySelectorAll('#task-progress-report [data-sheet-index]')],i=tabs.indexOf(tab),next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[next].click();tabs[next].focus();});
+    const instanceMarkup = plans => `<section class="r-instance" ${plans[0].taskCurrent?'':'data-archived-instance'} data-task-scope="${esc(plans[0].taskScope)}"><h2 class="r-instance-title">${plans[0].taskCurrent?'当前任务':'历史任务'} · ${esc(plans[0].instanceTitle)}</h2><p class="r-small">任务实例 ${esc(plans[0].taskInstanceId)}${plans[0].archivedAt?' · 归档 '+esc(stamp(plans[0].archivedAt)):''}</p>${timeline(plans)}</section>`;
+    const timelineMarkup=`<section id="rp-plans">${currentPlans.length?instanceMarkup(currentPlans):'<p>当前快照没有计划节点。</p>'}</section><section id="rp-archives">${[...groups.values()].filter(plans=>!plans[0].taskCurrent).map(instanceMarkup).join('')}</section>`;
+    const table = (headers,rows,cls) => `<div class="rp-book-grid"><div class="rp-table-canvas">${cls==='rp-task-table'?'<svg class="rp-table-connectors" aria-hidden="true"></svg>':''}<table class="${cls}"><thead><tr>${headers.map((h,i)=>`<th scope="col">${cls==='rp-task-table'&&i===4?`<div class="rp-time-head"><span>执行时间<small>${esc(axisDateLabel)}</small></span><span class="rp-axis-labels">${axisTicks}</span></div>`:esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr data-report-row ${row.attrs||''}>${row.map(v=>`<td>${v&&typeof v==='object'&&v.html!==undefined?v.html:esc(v)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${headers.length}">没有记录。</td></tr>`}</tbody></table></div></div>`;
+    // Execution timestamps are facts. planned_assignment contains actor settings, not dates.
+    // All rows share one report-wide scale; task and attempt identities remain scoped by round.
+    const timeNumber = value => {
+      if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value))return null;
+      const [year,month,day,hour,minute,second]=value.slice(0,19).split(/\D/).map(Number),days=[31,year%4===0&&(year%100!==0||year%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
+      const time=Date.parse(value);
+      return month>=1&&month<=12&&day>=1&&day<=days[month-1]&&hour<24&&minute<60&&second<60&&Number.isFinite(time)?time:null;
+    };
+    const nextPlan = plan => [...(groups.get(plan.taskScope)||[])].sort((a,b)=>Number(a.epoch)-Number(b.epoch)).find(p=>Number(p.epoch)>Number(plan.epoch));
+    const starts=[], ends=[], planByRound=new Map(data.plans.map(plan=>[plan.roundKey,plan]));
+    for(const t of data.tasks){
+      const start=timeNumber(t.timeStart||t.startedAt),end=timeNumber(t.timeEnd||t.finishedAt);
+      if(start!==null)starts.push(start);if(end!==null)ends.push(end);
+      const cutoff=timeNumber(planByRound.get(t.roundKey)?.capturedAt);
+      if((t.timeOpen||t.timeRunning||t.executionStatus==='running')&&end===null&&start!==null&&cutoff!==null&&cutoff>=start)ends.push(cutoff);
+    }
+    for(const a of data.attempts){
+      const start=timeNumber(a.startedAt),end=timeNumber(a.finishedAt);
+      if(start!==null)starts.push(start);if(end!==null)ends.push(end);
+      const cutoff=timeNumber(planByRound.get(a.roundKey)?.capturedAt);
+      if(a.status==='执行中'&&end===null&&start!==null&&cutoff!==null&&cutoff>=start)ends.push(cutoff);
+    }
+    const known=[...starts,...ends],minimum=values=>values.reduce((a,b)=>Math.min(a,b)),maximum=values=>values.reduce((a,b)=>Math.max(a,b));
+    const axisMin=starts.length?minimum(starts):known.length?minimum(known):null;
+    const lastEnd=ends.length?maximum(ends):null,latestStart=starts.length?maximum(starts):null;
+    const axisMax=lastEnd===null?latestStart:latestStart!==null&&latestStart>lastEnd?latestStart:lastEnd;
+    const axisIncomplete=!starts.length||lastEnd===null||latestStart!==null&&latestStart>lastEnd;
+    const axisLabel=axisMin===null?'时间轴暂无可用记录':'全局时间轴：'+stamp(new Date(axisMin).toISOString())+' → '+stamp(new Date(axisMax).toISOString())+(axisIncomplete?'（部分边界未知）':'');
+    const axisSameDay=axisMin!==null&&axisMax!==null&&new Date(axisMin).toDateString()===new Date(axisMax).toDateString();
+    const axisDateLabel=axisSameDay?new Date(axisMin).toLocaleDateString('zh-CN'):'所有任务 · 统一刻度';
+    const tickValues=[];
+    if(axisMin!==null){
+      tickValues.push(axisMin);
+      const span=axisMax-axisMin,steps=[1000,5000,15000,30000,60000,5*60000,15*60000,30*60000,3600000,3*3600000,6*3600000,12*3600000,86400000,7*86400000,30*86400000,365*86400000];
+      const step=steps.find(value=>value>=span/4)||steps.at(-1);
+      // Align ticks in local time, so hour/day marks read naturally in any timezone.
+      const offset=new Date(axisMin).getTimezoneOffset()*60000;
+      for(let tick=Math.ceil((axisMin-offset)/step)*step+offset;tick<axisMax;tick+=step){
+        if(tick-axisMin>span*.17&&axisMax-tick>span*.17)tickValues.push(tick);
+      }
+      if(span>0)tickValues.push(axisMax);
+    }
+    const tickPosition=value=>axisMax===axisMin?50:(value-axisMin)/(axisMax-axisMin)*100;
+    const axisTicks=tickValues.map((value,i)=>`<span style="left:${tickPosition(value)}%" title="${esc(stamp(new Date(value).toISOString()))}">${esc(shortStamp(new Date(value).toISOString(),axisSameDay,false,axisMax-axisMin<60000))}</span>`).join('');
+    const axisGrid=tickValues.map(value=>`<i class="rp-time-grid" style="left:${tickPosition(value)}%" aria-hidden="true"></i>`).join('');
+    const roundTimes = new Map(data.plans.map(plan=>{
+      const cutoff=timeNumber(plan.capturedAt),next=nextPlan(plan),boundary=next?timeNumber(plan.replanClosedAt):null;
+      return [plan.roundKey,{min:axisMin,max:axisMax,cutoff,boundary,next}];
+    }));
+    const executionTime = (original,plan) => {
+      const task={...original,startedAt:original.timeStart??original.startedAt,finishedAt:original.timeEnd??original.finishedAt,executionStatus:original.timeRunning?'running':original.executionStatus};
+      const domain=roundTimes.get(plan.roundKey),start=timeNumber(task.startedAt),end=timeNumber(task.finishedAt);
+      const position=value=>domain.max===domain.min?50:Math.max(0,Math.min(100,(value-domain.min)/(domain.max-domain.min)*100));
+      const point=(value,kind)=>`<i class="rp-time-point ${kind}" style="left:${position(value)}%" aria-hidden="true"></i>`;
+      let marks='',note='';
+      if(task.startedAt&&start===null||task.finishedAt&&end===null){marks=start!==null?point(start,'rp-time-actual'):end!==null?point(end,'rp-time-actual'):'';note='时间格式无效 · 仅显示有效时间点，不绘制区间';}
+      else if(start!==null&&end!==null){
+        if(end<start)note='结束早于开始 · 不绘制区间';
+        else if(end===start){marks=point(start,'rp-time-actual');note='开始与结束为同一时间点';}
+        else if(task.timeKind!=='derived')marks=`<i class="rp-time-span rp-time-actual" data-time-kind="${task.timeKind||'actual'}" style="left:${position(start)}%;width:${position(end)-position(start)}%" aria-hidden="true"></i>`;
+      }else if(start!==null){
+        if(task.timeKind==='derived'&&task.timeOpen){note='分组范围截至快照，包含等待；尚未全部结束';}
+        else if(task.executionStatus==='running'&&domain.cutoff!==null&&domain.cutoff>=start){
+          marks=point(start,'rp-time-actual');
+          if(domain.cutoff>start)marks+=`<i class="rp-time-span rp-time-running" data-time-kind="snapshot" style="left:${position(start)}%;width:${position(domain.cutoff)-position(start)}%" aria-hidden="true"></i>`;
+          marks+=point(domain.cutoff,'rp-time-cutoff');note='运行中 · 截至快照 '+shortStamp(plan.capturedAt,false,true)+'；结束未知';
+        }else {marks=point(start,'rp-time-actual');note=task.executionStatus==='running'?'仅开始时间点 · 快照时间缺失或早于开始；结束未知':'仅开始时间点 · 结束未知';}
+      }else if(end!==null){marks=point(end,'rp-time-actual');note='仅结束时间点 · 开始未知';}
+      else note=(task.timeStartState||'历史未记录')+' / '+(task.timeEndState||'历史未记录');
+      const seenIntervals=new Set(start!==null&&end!==null?[start+':'+end]:[]);
+      for(const attempt of attemptsFor(original)){
+        if(['synthesis','group_termination','legacy_synthesis'].includes(attempt.kind)||attempt.timeBoundarySources?.started_at)continue;
+        const from=timeNumber(attempt.startedAt),to=timeNumber(attempt.finishedAt),key=from+':'+to;
+        if(from===null||to===null||to<from||seenIntervals.has(key))continue;
+        seenIntervals.add(key);
+        marks+=to===from?point(from,'rp-time-previous'):`<i class="rp-time-span rp-time-previous" data-time-kind="previous-attempt" style="left:${position(from)}%;width:${position(to)-position(from)}%" aria-hidden="true"></i>`;
+      }
+      const envelopeStart=timeNumber(task.envelopeStart),envelopeEnd=timeNumber(task.envelopeEnd);
+      if(envelopeStart!==null&&envelopeEnd!==null&&envelopeEnd>envelopeStart){
+        marks=`<i class="rp-time-span rp-time-envelope" data-time-kind="elapsed" style="left:${position(envelopeStart)}%;width:${position(envelopeEnd)-position(envelopeStart)}%" aria-hidden="true"></i>`+marks;
+        note+='；浅色连续范围包含重试间等待，不等于实际执行耗时';
+      }
+      if(task.timeKind==='derived')note='子任务范围推导 · '+note;
+      if(task.taskId===plan.rootId&&domain.boundary!==null&&domain.min!==null&&domain.boundary>=domain.min&&domain.boundary<=domain.max)marks+=`<i class="rp-time-point rp-time-replan" style="left:${position(domain.boundary)}%" aria-hidden="true"><span>${esc(shortStamp(plan.replanClosedAt,axisSameDay))} 重新规划</span></i>`;
+      const axis=axisLabel;
+      const full=(task.timeSource||'当前执行尝试原始记录')+'；展示开始：'+(task.startedAt||task.timeStartState||'未记录')+'；展示结束：'+(task.finishedAt||task.timeEndState||'未记录')+'；原始开始：'+(original.startedAt||'未记录')+'；原始结束：'+(original.finishedAt||'未记录')+'；'+axis+'；'+note+(task.taskId===plan.rootId&&domain.next?'；本轮重规划关闭时间：'+(plan.replanClosedAt||'未记录'):'')+'；计划未记录。时间按本地时区显示；原始时区保留在详情。';
+      // The visible range must describe the whole ribbon, not just the latest retry.
+      const rangeStart=envelopeStart??start,rangeEnd=envelopeEnd??end;
+      const displayStart=rangeStart!==null?new Date(rangeStart).toISOString():task.startedAt;
+      const displayEnd=rangeEnd!==null?new Date(rangeEnd).toISOString():task.finishedAt;
+      const sameDay=rangeStart!==null&&rangeEnd!==null&&new Date(rangeStart).toDateString()===new Date(rangeEnd).toDateString();
+      const crossYear=rangeStart!==null&&rangeEnd!==null&&new Date(rangeStart).getFullYear()!==new Date(rangeEnd).getFullYear();
+      const showSeconds=rangeStart!==null&&rangeEnd!==null&&Math.floor(rangeStart/60000)===Math.floor(rangeEnd/60000)&&rangeStart!==rangeEnd;
+      const open=rangeStart!==null&&end===null&&(task.timeOpen||task.executionStatus==='running'||envelopeEnd!==null);
+      const range=task.startedAt&&start===null||task.finishedAt&&end===null?'时间无效':rangeStart!==null&&rangeEnd!==null&&rangeEnd<rangeStart?'时间异常':rangeStart!==null&&rangeEnd!==null?shortStamp(displayStart,axisSameDay,crossYear,showSeconds)+' – '+shortStamp(displayEnd,sameDay,crossYear,showSeconds):start!==null?shortStamp(task.startedAt,axisSameDay)+' – 结束未知':end!==null?'开始未知 – '+shortStamp(task.finishedAt,axisSameDay):(task.timeStartState?.includes('未开始')?'尚未开始':'时间未记录');
+      const compactDuration=seconds=>(Math.floor(seconds/3600)?Math.floor(seconds/3600)+'小时':'')+(Math.floor(seconds%3600/60)?Math.floor(seconds%3600/60)+'分':'')+(seconds%60||seconds<60?seconds%60+'秒':'');
+      const spanSeconds=rangeStart!==null&&rangeEnd!==null&&rangeEnd>=rangeStart?Math.round((rangeEnd-rangeStart)/1000):null;
+      const retries=Math.max(0,Number(task.attempt||0)-1);
+      const duration=spanSeconds!==null?'历时 '+compactDuration(spanSeconds):'';
+      const flags=[open?(task.executionStatus==='running'&&task.timeKind!=='derived'?'进行中 · 截至快照':'截至快照'):task.timeKind==='derived'?'含子任务':'',retries?'重试 '+retries+' 次':'',task.timeSource?.includes('保底')?'含保底':''].filter(Boolean);
+      if(envelopeStart!==null&&envelopeEnd!==null&&envelopeEnd>envelopeStart&&position(envelopeEnd)-position(envelopeStart)>24){
+        const text=task.timeKind==='derived'?task.title:(retries?'含重试 '+retries+' 次':task.title);
+        marks+=`<span class="rp-bar-label ${task.timeKind==='derived'?'rp-bar-label-group':''}" style="left:${position(envelopeStart)}%;width:${position(envelopeEnd)-position(envelopeStart)}%" aria-hidden="true">${esc(text)}</span>`;
+      }
+      const accessible=range+'；'+duration+(flags.length?'；'+flags.join('；'):'')+'；'+full;
+      return `<div class="rp-table-time ${task.timeKind==='derived'?'rp-time-group':''} ${open?'rp-time-open':''}" title="${esc(accessible+'；'+(task.cumulativeTime||'')+'；'+(task.overallTime||''))}"><span class="rp-time-copy"><span class="rp-time-range">${esc(range)}</span><span class="rp-time-total">${esc([duration,...flags].filter(Boolean).join(' · '))}</span></span>${domain.min!==null?`<span class="rp-time-track" tabindex="0" role="img" aria-label="${esc(accessible)}" data-time-round="${esc(plan.roundKey)}" data-axis-start="${domain.min}" data-axis-end="${domain.max}" data-range-start="${rangeStart??''}" data-range-end="${rangeEnd??''}">${axisGrid}${marks}</span>`:'<span class="rp-time-track rp-time-empty" aria-hidden="true"></span>'}</div>`;
+
+    };
+    const replanCell = (task,plan) => {
+      if(!data.network)return '<span class="rp-replan-note">不适用 · 顺序步骤</span>';
+      if(task.taskId!==plan.rootId)return '<span class="rp-replan-note" title="重规划属于计划轮次，详见本轮主任务；不表示该子任务未发生重规划" aria-label="重规划属于计划轮次，详见本轮主任务">—</span>';
+      const next=roundTimes.get(plan.roundKey).next;
+      if(!next)return `<span class="rp-replan-note">${plan.taskLatestRound?'本轮未发生':'重规划未记录'}</span>`;
+      const closedLabel=!plan.replanClosedAt?'时间未记录':timeNumber(plan.replanClosedAt)===null?'时间无效 · '+plan.replanClosedAt:shortStamp(plan.replanClosedAt,false,true);
+      return `<details class="rp-table-replan" data-replan-round="${esc(plan.roundKey)}"><summary>本轮结束时重规划 1 次<span>${esc(closedLabel)}</span></summary><p>${esc(reasonExcerpt(plan.reason))}</p><div class="rp-replan-source"><p>轮次关闭 → 后继轮次；不是子任务事件。</p><p>closed_at：${esc(plan.replanClosedAt||'未记录')}</p><p>reason：${esc(plan.reason||'未记录')}</p><p>${esc(plan.roundKey)} → ${esc(next.roundKey)}</p></div></details>`;
+    };
+    const taskRows=[];let tableRootIndex=0;
+    for(const plan of data.plans){
+      const rows=tasksFor(plan.roundKey),byId=new Map(rows.map(t=>[t.taskId,t])),children=new Map(),seen=new Set();
+      rows.forEach(t=>{const parent=t.parentId&&byId.has(t.parentId)&&t.parentId!==t.taskId?t.parentId:'';if(!children.has(parent))children.set(parent,[]);children.get(parent).push(t);});
+      const add=(t,parent='',depth=0,number='1')=>{
+        if(seen.has(t.taskId))return;seen.add(t.taskId);
+        const key=keys.get(t),kids=(children.get(t.taskId)||[]).filter(k=>!seen.has(k.taskId));
+        const descendants=(node,visited=new Set())=>{if(visited.has(node.taskId))return [];visited.add(node.taskId);return [node,...(children.get(node.taskId)||[]).flatMap(child=>descendants(child,visited))];};
+        const leaves=descendants(t).filter(n=>n.leaf),solved=leaves.filter(n=>n.acceptedResolved===true||(!data.network&&n.outcome==='resolved')).length;
+        const groupInfo=kids.length?`<span class="rp-table-counts">${kids.length} 项子任务 · 底层已解决 ${solved}/${leaves.length}</span>`:'';
+        const toggle=kids.length?`<button type="button" class="rp-table-toggle" data-table-toggle="${key}" data-table-title="${esc(t.title)}" aria-expanded="false" aria-label="展开 ${esc(t.title)} 的子任务"><span aria-hidden="true">›</span></button>`:'<span class="rp-table-spacer" aria-hidden="true"></span>';
+        const row=[{html:`<div class="rp-table-task" style="--tree-indent:${Math.min(depth,4)*30}px"><span class="rp-table-marker ${depth?'rp-marker-child':'rp-marker-root'}" data-tone="${taskTone(t)}" aria-hidden="true">${depth?'':esc(number)}</span>${toggle}<div class="rp-table-name">${depth?`<span class="rp-table-number">${esc(number)}</span>`:''}<span class="rp-table-title">${esc(t.title)}</span>${groupInfo}</div></div>`},{html:`<span class="rp-table-round">${esc(t.epoch===''?'顺序步骤':'第 '+(Number(t.epoch)+1)+' 轮')}</span><span class="r-small rp-cell-label">${t.taskCurrent?'当前任务':'历史任务'}</span>`},{html:tag(t)},{html:`<span class="rp-table-executor">${esc(t.executor||'未记录')}</span>`},{html:executionTime(t,plan)},{html:replanCell(t,plan)},{html:`<span class="rp-summary-preview">${esc(t.summary||'总结未记录')}</span>`},{html:`<details class="rp-table-detail"><summary aria-label="${esc(t.title)} 的详情与执行记录" title="详情与执行记录"><span class="rp-visually-hidden">详情与执行记录</span><span class="rp-detail-chevron" aria-hidden="true">⌄</span></summary><div class="rp-table-detail-body"><strong>${esc(t.title)}</strong><p>任务实例：${esc(t.instanceTitle)} · ${esc(t.taskCurrent?'当前任务':'历史任务')}</p><p>层级：${esc(t.depth)} · 结果：${esc(t.outcome||'未记录')}</p>${taskBody(t)}</div></details>`}];
+        row.attrs=`data-table-key="${key}" data-table-parent="${parent}" data-table-depth="${depth}" data-table-hierarchy="${esc(number)}" ${parent?'hidden':''}`;taskRows.push(row);
+        kids.forEach((k,i)=>add(k,key,depth+1,number+'.'+(i+1)));
+      };
+      (children.get('')||[]).forEach(t=>add(t,'',0,String(++tableRootIndex)));rows.filter(t=>!seen.has(t.taskId)).forEach(t=>add(t,'',0,String(++tableRootIndex)));
+    }
+    const reviewRecords=data.attempts.filter(t=>['pending','accepted','rejected'].includes(t.reviewStatus)||t.reviewDecision||t.kind==='synthesis');
+    data.tasks.filter(t=>(['pending','accepted','rejected'].includes(t.reviewStatus)||t.reviewDecision)&&!reviewRecords.some(a=>a.roundKey===t.roundKey&&a.taskId===t.taskId&&a.attemptId===t.attemptId)).forEach(t=>reviewRecords.push({...t,taskTitle:t.title}));
+    const sheets=[
+      {name:'任务清单',content:table(['任务 / 层级','计划轮次','状态','执行者','执行时间','重新规划','总结','详情'],taskRows,'rp-task-table')},
+      {name:'执行尝试',content:table(['任务 / 计划轮次','次数 / 类型','状态 / 结果','执行者','实际开始','实际结束','摘要','详情'],data.attempts.map(a=>[a.taskTitle+' / '+(a.epoch===''?'顺序步骤':'第 '+(Number(a.epoch)+1)+' 轮'),a.number+' / '+a.kindLabel,a.status+' / '+(a.outcome||'未记录')+' / '+a.validity,a.executor,stamp(a.startedAt)+(a.timeBoundarySources?.started_at?'（保底）':''),stamp(a.finishedAt)+(a.timeBoundarySources?.finished_at?'（保底）':''),{html:`<span class="rp-summary-preview">${esc(a.summary||'暂无摘要')}</span>`},{html:`<details class="rp-table-detail"><summary>证据与执行配置</summary><p>任务实例：${esc(a.taskInstanceId)}<br>轮次标识：${esc(a.roundKey)}<br>节点 ID：${esc(a.taskId)}</p>${attemptMarkup(a)}${a.reviewDecision||a.reviewStatus?review(a):''}</details>`}]),'rp-attempt-table')},
+      {name:'验收历史',content:table(['任务实例','轮次','任务','Attempt ID','记录类型','验收状态','决定','验收者','验收时间','摘要','证据','有效性'],reviewRecords.map(a=>[a.instanceTitle,a.roundLabel,a.taskTitle,a.attemptId,a.kind==='synthesis'?'综合验收执行记录':'执行提交复核',a.kind==='synthesis'?'综合验收已记录':a.reviewLabel,a.reviewDecision,a.kind==='synthesis'?a.executor:a.reviewer,stamp(a.kind==='synthesis'?a.finishedAt:a.reviewedAt),a.kind==='synthesis'?a.summary:a.reviewSummary,a.kind==='synthesis'?a.evidence:a.reviewEvidence,a.validity]),'rp-review-table')},
+      {name:'证据索引',content:table(['任务实例','轮次','任务','来源','证据'],[...data.tasks.filter(t=>t.evidence).map(t=>[t.instanceTitle,t.roundLabel,t.title,'任务结果证据',t.evidence]),...data.attempts.filter(t=>t.evidence).map(t=>[t.instanceTitle,t.roundLabel,t.taskTitle,t.kindLabel,t.evidence]),...reviewRecords.filter(t=>t.reviewEvidence).map(t=>[t.instanceTitle,t.roundLabel,t.taskTitle,'主会话验收证据',t.reviewEvidence])],'rp-evidence-table')},
+      {name:'计划变更',content:table(['任务实例','轮次','本轮目标','快照时间','关闭时间','根节点','叶任务数','已解决','结束本轮的原因'],data.plans.map(p=>[p.instanceTitle,p.roundLabel,p.title,stamp(p.capturedAt),stamp(p.replanClosedAt??p.closedAt),p.rootId,p.leafCount,p.resolvedLeaves,p.reason]),'rp-plan-table')}
+    ];
+    const auditSection=list(data.auditRecords).length?`<section id="rp-closure-audit" class="rp-section"><h2>移交与收尾验收</h2><p>验收收尾保留原始未解决或取消结果，不作为已解决计数。</p>${data.auditRecords.map(a=>`<details class="rp-history-item" data-search-record><summary>${esc(a.instanceTitle)} · ${esc(a.kind)} · ${esc(a.id)}</summary>${evidence(JSON.stringify(a.record,null,2))}</details>`).join('')}</section>`:'';
+    const legacySection=data.legacyHistory?`<section id="rp-legacy" class="rp-section"><h2>SQLite 历史 · 只读</h2><p class="rp-note">来源 sqlite_v3；当前任务来自 JSON；SQLite 为独立历史来源，状态冲突不自动合并。旧状态按原值展示，不证明已按当前协议验收。旧库内容为有界兼容摘录。${data.legacyHistory.truncated?'任务历史已截断。':''}${data.legacyHistory.status==='unavailable'?'旧库来源不可用；当前 JSON 历史仍完整导出。':''}${esc(data.legacyHistory.warning||'')}</p>${list(data.legacyHistory.records).map(t=>`<details class="rp-history-item" data-search-record><summary>${esc(t.title)} · ${esc(t.status)} · ${esc(t.task_instance_id)}</summary>${legacyDetailsIncomplete(t)?'<p>兼容历史摘录不完整：节点已截断或详情不可用。</p>':''}${evidence(JSON.stringify(t,null,2))}</details>`).join('')}</section>`:'';
+    const active=data.tasks.find(t=>t.roundKey===data.currentRoundKey&&t.leaf&&t.executionStatus==='running');
+    const css=`
+    #task-progress-report{--r-paper:light-dark(#fbfaf6,#191b19);--r-ink:light-dark(#2b302b,#e9ede4);--r-muted:light-dark(#73796e,#a6af9f);--r-line:light-dark(#d9dfd2,#3a4335);--r-branch:light-dark(#c3cdbb,#53604b);--r-soft:light-dark(#f0f2e9,#272e23);--r-amber:light-dark(#a16e2e,#dcba83);--r-amber-soft:light-dark(#f6ecd9,#372e20);--r-green:light-dark(#3f7663,#9ac9af);background:var(--r-paper);color:var(--r-ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;padding:25px 34px 22px;text-align:left;isolation:isolate;overflow-wrap:anywhere}
+    #task-progress-report *{box-sizing:border-box}#task-progress-report [hidden]{display:none!important}#task-progress-report button{font:inherit;color:inherit}#task-progress-report button,#task-progress-report summary{touch-action:manipulation}#task-progress-report h1,#task-progress-report h2,#task-progress-report h3,#task-progress-report p{margin:0}#task-progress-report h1{font-size:27px;line-height:1.35;letter-spacing:-.8px;font-weight:400}#task-progress-report h2{font-size:16px;font-weight:500;line-height:1.5}#task-progress-report h3{font-size:13px;font-weight:500;line-height:1.5}#task-progress-report .r-muted{color:var(--r-muted)}#task-progress-report .r-small{font-size:11px;color:var(--r-muted)}#task-progress-report .r-green{color:var(--r-green)}#task-progress-report .r-amber{color:var(--r-amber)}#task-progress-report .r-top{display:flex;gap:20px;justify-content:space-between;align-items:center;padding-right:70px;margin-bottom:20px;font-size:12px}#task-progress-report .r-brand{font-weight:500}#task-progress-report .r-top-meta{font-size:11px;color:var(--r-muted)}#task-progress-report .r-title-row{display:flex;gap:26px;justify-content:space-between;align-items:end}#task-progress-report .r-verdict{font-size:11px;color:var(--r-muted);text-align:right;max-width:300px}#task-progress-report .r-verdict strong{font-weight:400;color:var(--r-green)}#task-progress-report .r-meta{display:flex;gap:15px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--r-muted)}#task-progress-report .r-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:1px solid var(--r-line);border-bottom:1px solid var(--r-line);margin-top:18px;padding:8px 0;flex-wrap:wrap}#task-progress-report .r-actions{display:flex;gap:15px;flex-wrap:wrap}#task-progress-report .r-tool{border:0;background:none;padding:5px 0;min-height:30px;font-size:12px;text-align:left}#task-progress-report .r-tool:hover{color:var(--r-green)}#task-progress-report .r-key{display:flex;align-items:center;gap:13px;font-size:11px;color:var(--r-muted);flex-wrap:wrap}#task-progress-report .r-key span{display:inline-flex;gap:5px;align-items:center}#task-progress-report .r-key-dot{display:inline-block;width:5px;height:5px;background:var(--r-green);border-radius:50%}#task-progress-report .r-key-diamond{display:inline-block;width:5px;height:5px;background:var(--r-amber);transform:rotate(45deg)}#task-progress-report .r-river{position:relative;margin-top:25px}#task-progress-report .r-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0}#task-progress-report .r-main-path{fill:none;stroke:var(--r-branch);stroke-width:1.5}#task-progress-report .r-focus-path{fill:none;stroke:var(--r-ink);stroke-width:1.8;opacity:.8}#task-progress-report .r-branch-path{fill:none;stroke:var(--r-line);stroke-width:1}#task-progress-report .r-branch-path.r-selected-branch{stroke:var(--r-green);stroke-width:1.5}#task-progress-report .r-plan,#task-progress-report .r-replan{position:relative;z-index:1}#task-progress-report .r-plan{padding-bottom:17px;min-height:99px}#task-progress-report .r-plan-content{position:relative;width:calc(41% - 30px)}#task-progress-report .r-plan[data-side=right] .r-plan-content{margin-left:calc(59% + 30px)}#task-progress-report .r-round{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:11px;color:var(--r-muted);margin-bottom:6px}#task-progress-report .r-round-index{font-variant-numeric:tabular-nums;font-weight:500;letter-spacing:.5px;color:var(--r-ink)}#task-progress-report .r-current{color:var(--r-green)}#task-progress-report .r-node{position:relative;min-width:0}#task-progress-report .r-main-dot{position:absolute;top:24px;width:11px;height:11px;border-radius:50%;background:var(--r-paper);border:1.5px solid var(--r-ink);z-index:3;transform:translate(-50%,-50%)}#task-progress-report .r-plan[data-side=left]>.r-main-dot{left:41%}#task-progress-report .r-plan[data-side=right]>.r-main-dot{left:59%}#task-progress-report .r-root-button{display:block;width:100%;border:0;background:none;padding:0;text-align:left;font-size:15px;line-height:1.45;font-weight:500;min-height:30px}#task-progress-report .r-root-button[aria-expanded=true]{color:var(--r-green)}#task-progress-report .r-root-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:7px 0 3px}#task-progress-report .r-children-toggle{border:0;background:none;padding:3px 0;color:var(--r-muted);font-size:11px;min-height:25px;text-align:left;display:inline-flex;gap:7px;align-items:center}#task-progress-report .r-children-toggle[aria-expanded=true]{color:var(--r-ink)}#task-progress-report .r-state{font-size:11px;color:var(--r-muted)}#task-progress-report .r-state.resolved{color:var(--r-green)}#task-progress-report .r-state.cancelled,#task-progress-report .r-state.failed{color:var(--r-amber)}#task-progress-report .r-children{position:relative;overflow:hidden}#task-progress-report .r-tree{padding:3px 0 1px}#task-progress-report .r-plan[data-side=left] .r-tree{margin-right:17px}#task-progress-report .r-plan[data-side=right] .r-tree{margin-left:17px}#task-progress-report .r-task{padding:5px 0 6px;position:relative}#task-progress-report .r-task-dot{position:absolute;top:15px;width:6px;height:6px;border-radius:50%;background:var(--r-paper);border:1px solid var(--r-branch);z-index:2;transform:translate(-50%,-50%)}#task-progress-report .r-plan[data-side=left] .r-task-dot{left:calc(100% + 11px)}#task-progress-report .r-plan[data-side=right] .r-task-dot{left:-11px}#task-progress-report .r-task-title{border:0;background:none;padding:0;min-height:23px;display:block;text-align:left;font-size:12px;line-height:1.5;width:100%}#task-progress-report .r-task-title:hover{color:var(--r-green)}#task-progress-report .r-task-title[aria-expanded=true]{color:var(--r-green)}#task-progress-report .r-task-meta{display:flex;gap:7px;align-items:baseline;justify-content:space-between;font-size:11px;color:var(--r-muted);margin-top:2px}#task-progress-report .r-task-time{font-variant-numeric:tabular-nums}#task-progress-report .r-child-bottom{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:2px}#task-progress-report .r-parallel{font-size:11px;color:var(--r-green)}#task-progress-report .r-detail{overflow:hidden}#task-progress-report .r-detail-inner{padding:9px 0 10px;font-size:12px;color:var(--r-muted)}#task-progress-report .r-detail-inner p+p{margin-top:6px}#task-progress-report .r-detail-summary{color:var(--r-ink);font-size:12px;margin-bottom:9px}#task-progress-report .r-times{display:grid;gap:3px;font-size:11px}#task-progress-report .r-source{margin-top:9px;font:11px/1.7 ui-monospace,SFMono-Regular,monospace;color:var(--r-muted);overflow-wrap:anywhere}#task-progress-report .r-details-label{font-size:11px;letter-spacing:.2px;color:var(--r-muted);margin-bottom:4px}#task-progress-report .r-attempts{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 9px}#task-progress-report .r-attempt{border:0;border-bottom:1px solid var(--r-line);background:none;padding:5px 0;font-size:11px;min-height:28px;text-align:left;color:var(--r-muted)}#task-progress-report .r-attempt[aria-pressed=true]{border-bottom-color:var(--r-ink);color:var(--r-ink)}#task-progress-report .r-attempt-body{font-size:11px;color:var(--r-muted)}#task-progress-report .r-attempt-body p+p{margin-top:5px}#task-progress-report .r-replan{margin:8px 0 26px;min-height:106px;padding-top:3px}#task-progress-report .r-turn-copy{width:calc(41% - 30px)}#task-progress-report .r-replan[data-side=right] .r-turn-copy{margin-left:calc(59% + 30px)}#task-progress-report .r-replan[data-side=left]>.r-main-dot{left:41%}#task-progress-report .r-replan[data-side=right]>.r-main-dot{left:59%}#task-progress-report .r-replan>.r-main-dot{top:17px;background:var(--r-amber);border:0;width:10px;height:10px;border-radius:1px;transform:translate(-50%,-50%) rotate(45deg)}#task-progress-report .r-turn-kicker{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--r-amber);margin-bottom:5px}#task-progress-report .r-turn-time{font-variant-numeric:tabular-nums;color:var(--r-muted)}#task-progress-report .r-turn-heading{font-size:14px;font-weight:500;margin-bottom:6px}#task-progress-report .r-turn-summary{font-size:12px;color:var(--r-muted);line-height:1.6}#task-progress-report .r-turn-toggle{border:0;background:none;padding:6px 0 0;font-size:11px;min-height:26px;color:var(--r-amber);text-align:left}#task-progress-report .r-impact-list{padding-left:15px;margin:8px 0 5px;font-size:11px}#task-progress-report .r-impact-list li+li{margin-top:5px}#task-progress-report .r-impact-label{font-size:11px;color:var(--r-amber);margin-top:12px}#task-progress-report .r-turn-reason{font-size:12px;line-height:1.7}#task-progress-report .r-date-break{position:relative;margin:0 0 22px;padding-top:9px;border-top:1px solid var(--r-line);font-size:11px;letter-spacing:1px;color:var(--r-muted);z-index:1}#task-progress-report .r-marker{position:absolute;left:0;top:0;width:21px;height:21px;border-radius:50%;border:1px solid var(--r-green);pointer-events:none;z-index:4;will-change:transform}#task-progress-report .r-marker::after{content:"";position:absolute;inset:5px;background:var(--r-green);border-radius:50%}#task-progress-report .r-node[data-selected=true]>.r-task-dot{border-color:var(--r-green);background:var(--r-green)}#task-progress-report .r-foot{border-top:1px solid var(--r-line);padding-top:16px;margin-top:20px;font-size:11px;color:var(--r-muted)}#task-progress-report .r-foot p+p{margin-top:7px}#task-progress-report .r-live{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}#task-progress-report .r-empty{font-size:11px;color:var(--r-muted)}
+    @media(max-width:760px){#task-progress-report{padding:22px 24px}#task-progress-report .r-title-row{align-items:start;gap:18px}#task-progress-report h1{font-size:24px}#task-progress-report .r-verdict{max-width:240px}#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy{width:calc(43% - 24px)}#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{margin-left:calc(57% + 24px)}#task-progress-report .r-plan[data-side=left]>.r-main-dot,#task-progress-report .r-replan[data-side=left]>.r-main-dot{left:43%}#task-progress-report .r-plan[data-side=right]>.r-main-dot,#task-progress-report .r-replan[data-side=right]>.r-main-dot{left:57%}#task-progress-report .r-root-button{font-size:14px}#task-progress-report .r-task-meta{flex-wrap:wrap;gap:2px 7px}#task-progress-report .r-turn-heading{font-size:13px}}
+    @media(max-width:540px){#task-progress-report{padding:19px 17px}#task-progress-report .r-top{padding-right:70px;gap:5px;flex-direction:column;align-items:start;margin-bottom:17px}#task-progress-report .r-title-row{flex-direction:column;gap:10px}#task-progress-report h1{font-size:23px}#task-progress-report .r-verdict{text-align:left;max-width:none}#task-progress-report .r-meta{gap:5px 11px}#task-progress-report .r-toolbar{gap:5px;padding:7px 0}#task-progress-report .r-actions{gap:13px}#task-progress-report .r-key{gap:10px}#task-progress-report .r-river{margin-top:21px}#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy,#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{width:calc(100% - 70px);margin-left:70px}#task-progress-report .r-plan[data-side=left]>.r-main-dot,#task-progress-report .r-replan[data-side=left]>.r-main-dot{left:17px}#task-progress-report .r-plan[data-side=right]>.r-main-dot,#task-progress-report .r-replan[data-side=right]>.r-main-dot{left:43px}#task-progress-report .r-plan[data-side] .r-tree{margin-left:14px;margin-right:0}#task-progress-report .r-plan[data-side] .r-task-dot{left:-10px}#task-progress-report .r-round{flex-wrap:wrap;gap:2px 7px}#task-progress-report .r-task{padding-top:6px;padding-bottom:7px}#task-progress-report .r-replan{margin-bottom:23px}#task-progress-report .r-task-meta{font-size:11px}#task-progress-report .r-root-button{font-size:14px}#task-progress-report .r-turn-kicker{gap:4px 7px}#task-progress-report .r-turn-heading{font-size:14px}}
+    @media(pointer:coarse){#task-progress-report .r-root-button,#task-progress-report .r-task-title,#task-progress-report .r-tool,#task-progress-report .r-children-toggle,#task-progress-report .r-attempt,#task-progress-report .r-turn-toggle{min-height:36px}#task-progress-report .r-tool{min-height:42px}}
+
+      body{margin:0;background:light-dark(#fbfaf6,#191b19);color-scheme:light dark}#task-progress-report{max-width:1500px;min-height:100vh;margin:auto}#task-progress-report button{cursor:pointer}#task-progress-report button:focus-visible,#task-progress-report summary:focus-visible,#task-progress-report input:focus-visible{outline:2px solid var(--r-green);outline-offset:4px}#task-progress-report summary{cursor:pointer}#task-progress-report .rp-top{display:flex;justify-content:space-between;gap:16px;font-size:12px;padding-bottom:20px}#task-progress-report .rp-hero h1{font-size:27px;max-width:1000px}#task-progress-report .rp-hero p{margin-top:10px}#task-progress-report .rp-metrics{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:18px;font-size:12px;color:var(--r-muted)}#task-progress-report .rp-delivery{color:var(--r-green);font-size:16px}#task-progress-report .rp-tabs{display:flex;gap:20px;border-bottom:1px solid var(--r-line);margin-top:22px}#task-progress-report .rp-tabs button{border:0;background:none;padding:12px 4px;font-size:14px}#task-progress-report [role=tab][aria-selected=true]{color:var(--r-green);box-shadow:inset 0 -2px var(--r-green)}#task-progress-report .rp-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:13px 0}#task-progress-report .rp-controls input{font:inherit;background:var(--r-paper);color:var(--r-ink);border:1px solid var(--r-line);padding:8px;min-width:160px;max-width:100%;width:280px;border-radius:4px}#task-progress-report .rp-controls button{background:none;border:0;padding:8px 0;font-size:12px}#task-progress-report .r-instance-title{padding-top:24px;border-top:1px solid var(--r-line);margin:12px 0 5px}#task-progress-report .r-instance>.r-small{margin-bottom:24px}#task-progress-report .r-root-dot{position:absolute;top:15px;right:-24px;width:6px;height:6px;border:1px solid var(--r-branch);border-radius:50%;background:var(--r-paper)}#task-progress-report .r-plan[data-side=right] .r-root-dot{right:auto;left:-24px}#task-progress-report .r-tree .r-tree{margin-left:14px}#task-progress-report .r-plan{padding-bottom:34px}#task-progress-report .r-round-time{margin:3px 0}#task-progress-report .r-root-button{margin-top:8px}#task-progress-report .r-replan{padding-bottom:16px}#task-progress-report .r-turn-reason{font-size:13px;white-space:pre-line;margin-top:7px}#task-progress-report .r-detail{overflow:hidden}#task-progress-report .rp-task-detail>summary{font-size:11px;color:var(--r-muted);padding:7px 0}#task-progress-report .rp-task-detail[open]>summary{display:none}#task-progress-report .rp-node-body p+p{margin-top:7px}#task-progress-report .rp-node-body details{margin:9px 0}#task-progress-report .rp-subdetails>summary{font-size:12px;color:var(--r-green)}#task-progress-report .rp-attempt,#task-progress-report .rp-review{padding:9px 0 10px 10px;border-left:1px solid var(--r-line);margin:9px 0}#task-progress-report .rp-evidence{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 ui-monospace,monospace}#task-progress-report .rp-section{padding-top:25px}#task-progress-report .rp-section h2{margin-bottom:8px}#task-progress-report .rp-history-item{border-bottom:1px solid var(--r-line);padding:10px 0}#task-progress-report .rp-table-task{display:block}#task-progress-report .rp-cell-label{display:block;font-size:10px;margin-top:4px}#task-progress-report .rp-summary-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}#task-progress-report .rp-task-table td:first-child{min-width:180px;width:23%}#task-progress-report .rp-task-table td:nth-child(7){min-width:180px;width:24%}#task-progress-report .rp-table-detail>summary{color:var(--r-green);white-space:nowrap}#task-progress-report .rp-table-detail[open]{min-width:260px}#task-progress-report .rp-book-tabs{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}#task-progress-report .rp-book-tabs button{background:none;border:0;padding:8px 4px;font-size:12px}#task-progress-report .rp-book-grid{overflow:auto;border:1px solid var(--r-line);max-width:100%}#task-progress-report table{border-collapse:collapse;min-width:1000px;width:100%;font-size:12px}#task-progress-report th{position:sticky;top:0;text-align:left;background:var(--r-soft);font-weight:500}#task-progress-report th,#task-progress-report td{padding:9px 12px;border-bottom:1px solid var(--r-line);vertical-align:top;min-width:100px;max-width:360px;white-space:pre-line;overflow-wrap:anywhere}#task-progress-report .rp-source{margin-top:28px;border-top:1px solid var(--r-line);padding-top:12px;font-size:12px;color:var(--r-muted)}#task-progress-report .rp-footer{margin-top:22px;font-size:11px;color:var(--r-muted)}#task-progress-report .rp-small,#task-progress-report .rp-note{font-size:12px;color:var(--r-muted)}#task-progress-report .rp-search-hit{background:var(--r-soft);border-radius:3px}#task-progress-report .rp-empty{padding:18px 0}#task-progress-report .rp-announcement{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
+      @media(max-width:540px){#task-progress-report{padding:18px 14px}#task-progress-report .rp-top{flex-direction:column;gap:5px}#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy,#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{width:calc(100% - 60px);margin-left:60px}#task-progress-report .r-plan[data-side] .r-root-dot{left:-17px;right:auto}#task-progress-report .rp-controls{gap:4px 14px}#task-progress-report .rp-controls label{width:100%}#task-progress-report .rp-controls input{width:100%}#task-progress-report .r-task-meta{font-size:10px}#task-progress-report .r-tree .r-tree{margin-left:7px}}
+      @media(prefers-reduced-motion:reduce){#task-progress-report *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+      @media print{body{color-scheme:light}#task-progress-report{padding:0;max-width:none}#task-progress-report .rp-tabs,#task-progress-report .rp-controls,#task-progress-report .r-svg{display:none}#task-progress-report #rp-panel-timeline{display:block!important}#task-progress-report #rp-panel-table{display:none!important}#task-progress-report .r-instance,#task-progress-report .r-plan,#task-progress-report .r-replan{display:block!important}#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy,#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{width:auto;margin-left:32px}#task-progress-report .r-main-dot{left:12px!important}#task-progress-report .r-plan,#task-progress-report .r-replan{break-inside:avoid}#task-progress-report .r-detail,#task-progress-report .r-children{height:auto!important}}
+    `;
+
+    const attentionCss=`
+      #task-progress-report [data-tone=neutral]{--s-ink:#626D7D;--s-wash:#EEF1F5;--s-mark:"○"}
+      #task-progress-report [data-tone=danger]{--s-ink:#AB3543;--s-wash:#FCECEF;--s-mark:"!"}
+      #task-progress-report [data-tone=attention]{--s-ink:#96530D;--s-wash:#FFF1DB;--s-mark:"!"}
+      #task-progress-report [data-tone=running]{--s-ink:#2B60BF;--s-wash:#EAF1FF;--s-mark:"●"}
+      #task-progress-report [data-tone=replan]{--s-ink:#7950A9;--s-wash:#F2ECFA;--s-mark:"◆"}
+      #task-progress-report [data-tone=success]{--s-ink:#347358;--s-wash:#EDF6F0;--s-mark:"✓"}
+      #task-progress-report .r-state,#task-progress-report .rp-concern{display:inline-flex;align-items:center;gap:5px;color:var(--s-ink);background:var(--s-wash);padding:3px 7px;border-radius:5px;font-size:11px;line-height:1.45;font-weight:500}
+      #task-progress-report .r-state::before,#task-progress-report .rp-concern::before{content:var(--s-mark);font-size:10px;font-weight:700}
+      #task-progress-report .rp-delivery{color:var(--s-ink,var(--r-muted))}
+      #task-progress-report .r-node>.r-root-dot,#task-progress-report .r-node>.r-task-dot{border-color:var(--s-ink);background:var(--s-wash)}
+      #task-progress-report .r-node[data-tone=danger]>[data-task],#task-progress-report .r-node[data-tone=attention]>[data-task]{box-shadow:inset 3px 0 var(--s-ink);background:var(--s-wash);padding:7px 10px;border-radius:5px}
+      #task-progress-report .r-node[data-tone=running]>[data-task]{color:var(--s-ink)}
+      #task-progress-report .r-task-meta{flex-wrap:wrap;gap:5px 8px}
+      #task-progress-report .rp-attention{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0 2px;font-size:12px}
+      #task-progress-report .rp-attention>strong{font-weight:500;margin-right:3px}
+      #task-progress-report .rp-legend{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:16px;font-size:11px}
+      #task-progress-report .rp-legend>span{display:inline-flex;align-items:center;gap:5px;color:var(--s-ink)}
+      #task-progress-report .rp-legend i{font-style:normal;font-size:10px}
+      #task-progress-report .r-replan>.r-main-dot{background:#7950A9;box-shadow:0 0 0 5px #F2ECFA}
+      #task-progress-report .r-turn-kicker,#task-progress-report .r-turn-toggle{color:#7950A9}
+      #task-progress-report .r-turn-time{color:#7950A9;font-weight:500}
+      #task-progress-report .r-round-time,#task-progress-report .r-turn-time{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin:8px 0;color:var(--r-ink);font-variant-numeric:tabular-nums}
+      #task-progress-report .r-time-label{font-size:11px;font-weight:500;color:var(--r-muted)}
+      #task-progress-report .r-round-time strong,#task-progress-report .r-turn-time strong{font-size:clamp(16px,1.6vw,21px);font-weight:650;line-height:1.3;letter-spacing:.01em;overflow-wrap:anywhere}
+      #task-progress-report .r-turn-time strong{color:#7950A9}
+      #task-progress-report .r-event-gap{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:5px 9px;margin:5px 0 7px;padding:7px 10px;border-radius:7px;background:var(--r-soft);color:var(--r-muted)}
+      #task-progress-report .r-event-gap span{font-size:11px}
+      #task-progress-report .r-event-gap strong{font-size:16px;font-weight:650;color:var(--r-ink);font-variant-numeric:tabular-nums}
+
+      /* Make plan boundaries scannable independently of task-card content. */
+      #task-progress-report .r-round{margin:0 0 12px}
+      #task-progress-report .r-round-index{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid color-mix(in srgb,var(--r-green) 25%,transparent);border-radius:9px;background:color-mix(in srgb,var(--r-green) 10%,var(--r-paper));color:var(--r-green);font-size:17px;line-height:1.25;font-weight:750;letter-spacing:.02em;box-shadow:0 3px 12px color-mix(in srgb,var(--r-green) 8%,transparent)}
+      #task-progress-report .rp-round-current .r-round-index{background:var(--r-green);border-color:var(--r-green);color:#fff}
+      #task-progress-report .r-turn-copy{border-left:3px solid #B89AE0;padding:13px 15px;background:linear-gradient(100deg,#f5effd,color-mix(in srgb,var(--r-paper) 94%,#f5effd));border-radius:0 12px 12px 0;box-shadow:0 5px 16px #7950a90b}
+      #task-progress-report .r-turn-kicker{display:inline-flex;align-items:center;padding:5px 10px;margin-bottom:8px;background:#eadff8;border-radius:7px;color:#69449c;font-size:16px;font-weight:750;line-height:1.3;letter-spacing:.01em}
+      @media(max-width:540px){#task-progress-report .r-round-index{font-size:15px}#task-progress-report .r-turn-kicker{font-size:14px}#task-progress-report .r-turn-copy{padding:11px 12px}}
+
+      /* A/C task ledger: a light parent band, inline hierarchy and continuous SVG rails. */
+      #task-progress-report .rp-book-grid:has(.rp-task-table){border:0;overflow:auto;padding:0 0 12px}
+      #task-progress-report .rp-table-canvas{position:relative;min-width:100%;width:max-content}
+      #task-progress-report .rp-table-canvas:has(.rp-task-table){width:100%;min-width:1280px}
+      #task-progress-report .rp-table-connectors{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:visible}
+      #task-progress-report .rp-table-connectors path{fill:none;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+      #task-progress-report .rp-task-table{border-collapse:separate;border-spacing:0;min-width:1280px;table-layout:fixed;width:100%}
+      #task-progress-report .rp-task-table th{position:sticky;top:0;z-index:3;background:var(--r-soft);border:0;padding:14px 12px;font-size:12px;font-weight:600;letter-spacing:.015em;color:var(--r-muted)}
+      #task-progress-report .rp-task-table th:first-child{width:21%;border-radius:7px 0 0 7px;padding-left:22px}
+      #task-progress-report .rp-task-table th:nth-child(2){width:6%}
+      #task-progress-report .rp-task-table th:nth-child(3){width:8%}
+      #task-progress-report .rp-task-table th:nth-child(4){width:6%}
+      #task-progress-report .rp-task-table th:nth-child(5){width:40%}
+      #task-progress-report .rp-task-table th:nth-child(6){width:8%}
+      #task-progress-report .rp-task-table th:nth-child(7){width:8%}
+      #task-progress-report .rp-task-table th:last-child{width:3%;border-radius:0 7px 7px 0;padding-left:0;padding-right:0;text-align:center}
+      #task-progress-report .rp-task-table td{padding:14px 12px;line-height:1.65;border:0;border-bottom:1px solid color-mix(in srgb,var(--r-line) 65%,transparent);vertical-align:middle;color:var(--r-muted);background:transparent;min-width:0;max-width:none;width:auto}
+      #task-progress-report .rp-task-table td:first-child{padding-left:18px;width:auto;min-width:0}
+      #task-progress-report .rp-task-table td:nth-child(8){min-width:0;width:auto;position:relative;padding:0;text-align:center}
+      #task-progress-report .rp-task-table tr[data-table-depth="0"]>td{background:color-mix(in srgb,var(--r-green) 7%,var(--r-paper));border-top:7px solid var(--r-paper);border-bottom:7px solid var(--r-paper)}
+      #task-progress-report .rp-task-table tr[data-table-depth="0"]>td:first-child{border-radius:10px 0 0 10px;box-shadow:none}
+      #task-progress-report .rp-task-table tr[data-table-depth="0"]>td:last-child{border-radius:0 10px 10px 0}
+      #task-progress-report .rp-task-table tr:not([data-table-depth="0"]):hover>td{background:color-mix(in srgb,var(--r-soft) 45%,transparent)}
+      #task-progress-report .rp-task-table .rp-table-task{display:flex;align-items:center;gap:0;position:relative;padding-inline-start:var(--tree-indent);min-height:30px}
+      #task-progress-report .rp-table-marker{display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:2;flex:none;border-radius:50%}
+      #task-progress-report .rp-marker-root{width:30px;height:30px;background:linear-gradient(145deg,color-mix(in srgb,var(--r-green) 65%,white),var(--r-green));color:white;font-size:16px;font-weight:600;box-shadow:0 2px 6px color-mix(in srgb,var(--r-green) 20%,transparent)}
+      #task-progress-report .rp-marker-child{width:12px;height:12px;margin:0 9px;background:var(--s-ink);box-shadow:0 0 0 4px var(--r-paper)}
+      #task-progress-report .rp-task-table .rp-table-toggle{display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:2;flex:none;border:0;background:transparent;box-shadow:none;width:27px;height:30px;margin:0 2px;border-radius:5px;color:var(--r-ink);font-size:24px;line-height:1}
+      #task-progress-report .rp-task-table .rp-table-toggle>span{display:block;transition:transform .16s}
+      #task-progress-report .rp-task-table .rp-table-toggle[aria-expanded=true]>span{transform:rotate(90deg)}
+      #task-progress-report .rp-task-table .rp-table-toggle:hover{background:var(--r-soft);color:var(--r-green)}
+      #task-progress-report .rp-table-spacer{display:inline-block;flex:none;width:10px}
+      #task-progress-report .rp-task-table .rp-table-name{position:relative;z-index:2;min-width:0;line-height:1.65}
+      #task-progress-report .rp-task-table .rp-table-title{font-size:14px;font-weight:500;color:var(--r-ink);overflow-wrap:anywhere}
+      #task-progress-report .rp-task-table tr[data-table-depth="0"] .rp-table-title{font-size:15px;font-weight:650}
+      #task-progress-report .rp-table-number{display:inline;margin-right:12px;color:var(--r-muted);font-size:12px;font-variant-numeric:tabular-nums}
+      #task-progress-report .rp-table-counts{display:block;color:var(--r-muted);font-size:11px;font-weight:400;margin-top:3px}
+      #task-progress-report .rp-task-table .rp-cell-label{font-size:10px;margin:3px 0 0;line-height:1.5}
+      #task-progress-report .rp-table-round,#task-progress-report .rp-table-executor{color:var(--r-ink);font-size:12px}
+      #task-progress-report .rp-table-time,#task-progress-report .rp-time-head{display:grid;grid-template-columns:145px minmax(0,1fr);align-items:center;column-gap:14px;font-variant-numeric:tabular-nums}
+      #task-progress-report .rp-table-time{font-size:11px;min-height:34px;white-space:normal}
+      #task-progress-report .rp-time-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+      #task-progress-report .rp-time-range{color:var(--r-ink);line-height:1.45;font-size:12px;font-weight:550;overflow-wrap:anywhere}
+      #task-progress-report .rp-time-total{color:var(--r-muted);font-size:10px;line-height:1.6}
+      #task-progress-report .rp-axis-labels{display:block;position:relative;height:34px;font-weight:500;font-size:10px;white-space:nowrap;border-bottom:1px solid var(--r-line)}
+      #task-progress-report .rp-axis-labels>span{position:absolute;bottom:8px;transform:translateX(-50%)}
+      #task-progress-report .rp-axis-labels>span:first-child{transform:none}
+      #task-progress-report .rp-axis-labels>span:last-child{transform:translateX(-100%)}
+      #task-progress-report .rp-time-head small{display:block;font-size:10px;font-weight:400;margin-top:5px}
+      #task-progress-report .rp-time-grid{position:absolute;top:-20px;bottom:-20px;width:1px;background:color-mix(in srgb,var(--r-line) 50%,transparent);pointer-events:none}
+      #task-progress-report .rp-time-track:focus-visible{outline:2px solid var(--r-green);outline-offset:6px}
+      #task-progress-report .rp-time-legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 14px;color:var(--r-muted);font-size:11px}
+      #task-progress-report .rp-time-legend span{display:inline-flex;align-items:center;gap:6px}
+      #task-progress-report .rp-time-legend i{display:inline-block;width:18px;height:6px;border-radius:3px;background:#3478ed}
+      #task-progress-report .rp-time-legend .rp-leg-envelope{background:#cbdcf7}
+      #task-progress-report .rp-time-legend .rp-leg-previous{background:#558de9}
+      #task-progress-report .rp-time-legend .rp-leg-running{background:repeating-linear-gradient(135deg,#548ff1 0 5px,#8ab4f8 5px 9px)}
+      #task-progress-report .rp-time-legend .rp-leg-replan{width:0;height:14px;border-radius:0;background:transparent;border-left:2px dashed #e95b63}
+      #task-progress-report .rp-time-track{display:block;height:34px;position:relative;background:transparent;border-radius:5px;min-width:0}
+      #task-progress-report .rp-time-empty{opacity:.5}
+      #task-progress-report .rp-time-span{position:absolute;top:8px;height:18px;border-radius:5px;transform-origin:left center}
+      #task-progress-report .rp-time-envelope{top:7px;height:20px;background:linear-gradient(90deg,#d9e8fd,#c9ddfa);border-radius:5px;box-shadow:inset 0 0 0 1px #3478ed1a}
+      #task-progress-report .rp-time-group .rp-time-envelope{top:4px;height:26px;background:linear-gradient(90deg,#e7f1ff,#c5dcfb);border:1px solid #4388ee;box-sizing:border-box;border-radius:5px;box-shadow:0 2px 8px #3478ed14,inset 0 1px #ffffffbb}
+      #task-progress-report .rp-time-group .rp-time-envelope:before,#task-progress-report .rp-time-group .rp-time-envelope:after{content:"";position:absolute;top:7px;height:10px;width:10px;border:1.5px solid #3478ed;background:#fff;border-radius:50%;box-sizing:border-box}
+      #task-progress-report .rp-time-group .rp-time-envelope:before{left:-4px}
+      #task-progress-report .rp-time-group .rp-time-envelope:after{right:-4px}
+      #task-progress-report .rp-time-group .rp-time-range{font-weight:650}
+      #task-progress-report .rp-time-actual{background:linear-gradient(90deg,#286be5,#438efa);box-shadow:0 1px 4px #3478ed40}
+      #task-progress-report .rp-time-previous{background:#558de9;top:18px;height:8px}
+      #task-progress-report .rp-time-running{top:8px;height:18px;background:linear-gradient(90deg,#3478ed,#70d9f6,#3478ed);background-size:200% 100%;animation:rp-flow 2.8s linear infinite}
+      #task-progress-report .rp-time-open.rp-time-group .rp-time-envelope:after{background:#3478ed;box-shadow:0 0 0 3px #76c5ff55,0 0 10px #58baffaa;animation:rp-pulse 2.5s ease-in-out infinite}
+      @keyframes rp-flow{to{background-position:-200% 0}}
+      @keyframes rp-pulse{50%{box-shadow:0 0 0 5px #76c5ff22,0 0 14px #58baffaa}}
+      #task-progress-report .rp-time-point{position:absolute;top:11px;height:12px;width:3px;transform:translateX(-50%)}
+      #task-progress-report .rp-time-cutoff{background:#3478ed;width:2px;opacity:.8}
+      #task-progress-report .rp-time-replan{top:-10px;height:48px;width:0;border-left:2px dashed #e95b63;z-index:2}
+      #task-progress-report .rp-time-replan>span{position:absolute;left:5px;top:-14px;padding:1px 5px;border-radius:4px;background:#fff0f0;color:#bf3f4a;font:600 10px/1.4 system-ui;white-space:nowrap;animation:rp-replan-appear 600ms ease-out both}
+      @keyframes rp-replan-appear{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+      #task-progress-report .rp-bar-label{position:absolute;top:8px;height:18px;display:flex;align-items:center;padding:0 8px;box-sizing:border-box;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#fff;font-size:10px;font-weight:600;pointer-events:none}
+      #task-progress-report .rp-bar-label-group{top:4px;height:26px;justify-content:center;color:#174582}
+
+      /* One time-bar grammar for parent and child; shapes do not change bounds. */
+      #task-progress-report .rp-track-control{display:flex;justify-content:flex-end;align-items:center;gap:9px;font-size:12px;color:var(--r-muted);margin:0 0 10px}
+      #task-progress-report #rp-track-style{font:inherit;color:var(--r-ink);background:var(--r-paper);border:1px solid var(--r-line);border-radius:7px;padding:7px 25px 7px 10px;min-height:34px}
+      #task-progress-report[data-track-style] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:10px;height:14px;background:#dce8fa;border:0;border-radius:8px;box-shadow:none;overflow:visible}
+      #task-progress-report[data-track-style] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:before,#task-progress-report[data-track-style] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:after{content:none;animation:none;box-shadow:none}
+      #task-progress-report[data-track-style] .rp-time-span.rp-time-actual,#task-progress-report[data-track-style] .rp-time-span.rp-time-previous,#task-progress-report[data-track-style] .rp-time-span.rp-time-running{top:10px;height:14px;border-radius:8px;box-shadow:none}
+      #task-progress-report[data-track-style] .rp-time-span.rp-time-actual,#task-progress-report[data-track-style] .rp-time-span.rp-time-previous{background:#326de0}
+      #task-progress-report[data-track-style] .rp-bar-label{display:none}
+      #task-progress-report[data-track-style=ink] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:16px;height:2px;background:#8ba7d0;border-radius:0}
+      #task-progress-report[data-track-style=ink] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:before,#task-progress-report[data-track-style=ink] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:after{content:"";position:absolute;top:-4px;width:8px;height:8px;border:1.5px solid #326de0;background:white;border-radius:50%;box-sizing:border-box}
+      #task-progress-report[data-track-style=ink] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:13px;height:8px;border-radius:4px}
+      #task-progress-report[data-track-style=mist] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:4px;height:26px;background:transparent;border-top:7px solid #dce8fa;border-bottom:1px solid #dce8fa;border-radius:0;box-sizing:border-box}
+      #task-progress-report[data-track-style=mist] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:16px;height:9px;border-radius:2px}
+      #task-progress-report[data-track-style=outline] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:5px;height:24px;border:1px solid #8eafe5;background:#f6faff;border-radius:5px;box-sizing:border-box}
+      #task-progress-report[data-track-style=outline] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:9px;height:16px;border-radius:3px}
+      #task-progress-report[data-track-style=dotted] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:16px;height:2px;border-top:2px dotted #92acd3;background:transparent;border-radius:0}
+      #task-progress-report[data-track-style=dotted] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:before,#task-progress-report[data-track-style=dotted] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:after{content:"";position:absolute;top:-4px;width:6px;height:6px;background:#91a9d1;transform:rotate(45deg)}
+      #task-progress-report[data-track-style=dotted] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:12px;height:6px;border-radius:0}
+      #task-progress-report[data-track-style=stripe] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:8px;height:18px;border-radius:0;background:repeating-linear-gradient(135deg,#e2ebf9 0 4px,#f2f6fc 4px 8px)}
+      #task-progress-report[data-track-style=stripe] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:8px;height:18px;border-radius:0}
+      #task-progress-report[data-track-style=bracket] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:8px;height:18px;border:0;border-left:2px solid #7196ce;border-right:2px solid #7196ce;border-bottom:1px solid #7196ce;background:transparent;border-radius:0;box-sizing:border-box}
+      #task-progress-report[data-track-style=bracket] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:13px;height:8px;border-radius:3px}
+      #task-progress-report[data-track-style=ruler] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:8px;height:18px;border-radius:2px;background:repeating-linear-gradient(90deg,#b2c8e9 0 1px,#eaf1fb 1px 8px);box-shadow:inset 0 1px #b2c8e9,inset 0 -1px #b2c8e9}
+      #task-progress-report[data-track-style=ruler] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:13px;height:8px;border-radius:1px}
+      #task-progress-report[data-track-style=beads] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:14px;height:6px;border-radius:8px;background:repeating-linear-gradient(90deg,#a8c1e7 0 4px,transparent 4px 8px)}
+      #task-progress-report[data-track-style=beads] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:before,#task-progress-report[data-track-style=beads] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:after{content:"";position:absolute;top:-2px;width:10px;height:10px;border-radius:50%;background:white;border:2px solid #84a8dc;box-sizing:border-box}
+      #task-progress-report[data-track-style=beads] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:12px;height:10px;border-radius:8px}
+      #task-progress-report[data-track-style=ribbon] :is(.rp-time-group,.rp-table-time) .rp-time-envelope{top:7px;height:20px;border-radius:0;background:#e1ebf9;clip-path:polygon(0 0,calc(100% - 7px) 0,100% 50%,calc(100% - 7px) 100%,0 100%,7px 50%)}
+      #task-progress-report[data-track-style=ribbon] .rp-time-span:is(.rp-time-actual,.rp-time-previous,.rp-time-running){top:7px;height:20px;border-radius:0}
+      #task-progress-report[data-track-style] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:before{left:0}
+      #task-progress-report[data-track-style] :is(.rp-time-group,.rp-table-time) .rp-time-envelope:after{right:0}
+      #task-progress-report[data-track-style=beads] .rp-leg-envelope{background:repeating-linear-gradient(90deg,#a8c1e7 0 4px,transparent 4px 8px)}
+      #task-progress-report[data-track-style=ink] .rp-leg-envelope{height:2px;border-radius:0;background:#8ba7d0}
+      #task-progress-report[data-track-style=dotted] .rp-leg-envelope{height:0;border-top:2px dotted #92acd3;border-radius:0;background:transparent}
+      #task-progress-report[data-track-style=outline] .rp-leg-envelope{height:10px;border:1px solid #8eafe5;background:#f6faff;border-radius:2px}
+      #task-progress-report[data-track-style=stripe] .rp-leg-envelope{height:8px;border-radius:0;background:repeating-linear-gradient(135deg,#e2ebf9 0 4px,#f2f6fc 4px 8px)}
+      #task-progress-report[data-track-style=ruler] .rp-leg-envelope{border-radius:0;background:repeating-linear-gradient(90deg,#b2c8e9 0 1px,#eaf1fb 1px 5px)}
+      #task-progress-report[data-track-style=bracket] .rp-leg-envelope{height:8px;border-left:2px solid #7196ce;border-right:2px solid #7196ce;border-bottom:1px solid #7196ce;background:transparent;border-radius:0}
+      #task-progress-report[data-track-style=ribbon] .rp-leg-envelope{border-radius:0;clip-path:polygon(0 0,85% 0,100% 50%,85% 100%,0 100%,15% 50%)}
+      #task-progress-report .rp-replan-note{font-size:11px;color:var(--r-muted)}
+      #task-progress-report .rp-table-replan{font-size:11px;line-height:1.7;color:var(--r-ink)}
+      #task-progress-report .rp-table-replan>summary{cursor:pointer;color:#96505b}
+      #task-progress-report .rp-table-replan>summary span{display:block;color:var(--r-muted);font-variant-numeric:tabular-nums}
+      #task-progress-report .rp-replan-source{font-size:10px;overflow-wrap:anywhere}
+
+      #task-progress-report .rp-table-time small{display:inline-block;width:28px;color:var(--r-muted);font-size:10px}
+      #task-progress-report .rp-task-table .rp-summary-preview{color:var(--r-muted);line-height:1.75;-webkit-line-clamp:3;font-size:12px}
+      #task-progress-report .rp-task-table td:nth-child(3) .r-state{white-space:nowrap;font-size:11px;padding:5px 7px}
+      #task-progress-report .rp-task-table .rp-table-detail{position:relative;text-align:left}
+      #task-progress-report .rp-task-table .rp-table-detail>summary{position:relative;z-index:2;list-style:none;display:flex;align-items:center;justify-content:center;min-height:36px;color:var(--r-muted)}
+      #task-progress-report .rp-task-table .rp-table-detail>summary::-webkit-details-marker{display:none}
+      #task-progress-report .rp-detail-chevron{display:inline-block;font-size:20px;line-height:1}
+      #task-progress-report .rp-table-detail[open] .rp-detail-chevron{transform:rotate(180deg)}
+      #task-progress-report .rp-task-table .rp-table-detail[open]{min-width:0;z-index:6}
+      #task-progress-report .rp-table-detail-body{position:absolute;right:0;top:36px;z-index:6;width:min(760px,calc(100vw - 64px));max-height:65vh;overflow:auto;background:var(--r-paper);border:1px solid var(--r-line);border-radius:9px;padding:20px;text-align:left;box-shadow:0 10px 35px #26375526;color:var(--r-ink);white-space:normal}
+      #task-progress-report .rp-table-detail-body>strong{font-size:15px;display:block;margin-bottom:10px}
+      #task-progress-report .rp-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      #task-progress-report .rp-task-table tr[hidden]{display:none}
+      @media(prefers-reduced-motion:reduce){#task-progress-report .rp-table-toggle>span{transition:none}}
+      #task-progress-report .r-round-current>.r-main-dot{border-color:var(--r-green);box-shadow:0 0 0 5px var(--r-soft)}
+      #task-progress-report .r-plan:not(.rp-round-current)>.r-main-dot{border-color:var(--r-muted)}
+      #task-progress-report .r-child-bottom .rp-concern{padding:2px 6px;font-size:10px}
+      /* Task boundaries stay local; numbering carries deep hierarchy after the indent cap. */
+      #task-progress-report .r-node{border:1px solid var(--r-line);border-radius:9px;background:var(--r-paper);padding:0;margin-top:9px;min-width:0}
+      #task-progress-report .r-node-index{display:block;padding:10px 12px 0;font-size:10px;line-height:1.4;font-weight:600;letter-spacing:.3px;font-variant-numeric:tabular-nums;color:var(--r-muted)}
+      #task-progress-report .r-node>[data-task]{margin:0;padding:5px 12px 7px;font-size:14px;line-height:1.55;font-weight:600;width:100%;min-width:0;overflow-wrap:anywhere}
+      #task-progress-report .r-root-node>[data-task]{font-size:15px}
+      #task-progress-report .r-node[data-tone=danger]>[data-task],#task-progress-report .r-node[data-tone=attention]>[data-task]{box-shadow:none;background:none;border-radius:0;padding:5px 12px 7px;color:var(--r-ink)}
+      #task-progress-report .r-node>.r-task-meta{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:0 12px 10px;margin:0}
+      #task-progress-report .r-node>.r-task-meta>.r-state{flex:0 0 auto;max-width:100%;white-space:normal;word-break:keep-all;overflow-wrap:normal}
+      #task-progress-report .r-state::before,#task-progress-report .rp-concern::before{flex-shrink:0}
+      #task-progress-report .r-task-time{font-size:10px;line-height:1.6;max-width:100%;color:var(--r-muted)}
+      #task-progress-report .r-node>.r-detail{padding:0 12px}
+      #task-progress-report .r-child-bottom{border-top:1px solid var(--r-line);margin:0;padding:7px 12px;gap:5px 8px}
+      #task-progress-report .r-children-toggle{font-size:11px;gap:8px;align-items:flex-start;width:100%;line-height:1.6}
+      #task-progress-report .r-group-symbol{font-size:13px;line-height:1.4;width:12px;flex-shrink:0}
+      #task-progress-report .r-group-counts{display:flex;gap:3px 12px;flex-wrap:wrap}
+      #task-progress-report .r-group-counts>span{display:block}
+      #task-progress-report .r-plan[data-side] .r-tree{margin:0;padding:0;min-width:0}
+      #task-progress-report .r-children{border-left:1px solid var(--r-branch);margin:0 8px 8px;padding-left:8px}
+      #task-progress-report .r-node[data-depth="1"]>.r-children{margin:0 6px 6px;padding-left:6px}
+      #task-progress-report .r-node:not([data-depth="0"]):not([data-depth="1"])>.r-children{border-left:0;margin:0 0 0;padding:0}
+      #task-progress-report .r-node:not([data-depth="0"]):not([data-depth="1"])>.r-children>.r-tree>.r-node{border-radius:6px;margin-top:7px}
+      /* Group surfaces and branch connectors keep the parent-child relationship visible. */
+      #task-progress-report .r-root-node{border-color:var(--r-branch);box-shadow:0 3px 16px rgba(38,55,90,.06)}
+      #task-progress-report .r-root-node>.r-node-index{color:var(--r-green)}
+      #task-progress-report .r-parent-ref{font-weight:400;color:var(--r-muted);margin-left:6px}
+      #task-progress-report .r-node>.r-child-bottom{background:var(--r-soft)}
+      #task-progress-report .r-children{border-left:2px solid var(--r-branch);background:var(--r-soft);border-radius:0 0 7px 7px;margin:0 8px 8px;padding:1px 8px 8px 12px}
+      #task-progress-report .r-children>.r-tree>.r-node{position:relative;background:var(--r-paper)}
+      #task-progress-report .r-children>.r-tree>.r-node::before{content:"";position:absolute;left:-12px;top:21px;width:11px;border-top:2px solid var(--r-branch)}
+      #task-progress-report .r-node[data-depth="1"]>.r-children{border-left:2px solid var(--r-branch);margin:0 6px 6px;padding:1px 6px 6px 9px}
+      #task-progress-report .r-node[data-depth="1"]>.r-children>.r-tree>.r-node::before{left:-9px;width:8px}
+      #task-progress-report .r-node:not([data-depth="0"]):not([data-depth="1"])>.r-children{border-left:2px solid var(--r-branch);margin:0 0 0;padding:1px 0 0 3px}
+      #task-progress-report .r-node:not([data-depth="0"]):not([data-depth="1"])>.r-children>.r-tree>.r-node::before{left:-3px;width:2px}
+      #task-progress-report .r-task-dot{display:none}
+      #task-progress-report .r-root-dot{top:28px}
+      @media(max-width:540px){#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy,#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{width:calc(100% - 70px);margin-left:70px}#task-progress-report .r-plan[data-side=left]>.r-main-dot,#task-progress-report .r-replan[data-side=left]>.r-main-dot{left:17px}#task-progress-report .r-plan[data-side=right]>.r-main-dot,#task-progress-report .r-replan[data-side=right]>.r-main-dot{left:43px}#task-progress-report .r-plan[data-side] .r-root-dot{left:-24px;right:auto}}
+      @media(max-width:540px){#task-progress-report .r-plan-content,#task-progress-report .r-turn-copy,#task-progress-report .r-plan[data-side=right] .r-plan-content,#task-progress-report .r-replan[data-side=right] .r-turn-copy{width:calc(100% - 42px);margin-left:42px}#task-progress-report .r-plan[data-side=left]>.r-main-dot,#task-progress-report .r-replan[data-side=left]>.r-main-dot{left:6px}#task-progress-report .r-plan[data-side=right]>.r-main-dot,#task-progress-report .r-replan[data-side=right]>.r-main-dot{left:18px}#task-progress-report .r-plan[data-side] .r-root-dot{left:-13px}#task-progress-report .r-node-index{padding:9px 9px 0}#task-progress-report .r-node>[data-task],#task-progress-report .r-node[data-tone=danger]>[data-task],#task-progress-report .r-node[data-tone=attention]>[data-task]{padding:5px 9px 7px}#task-progress-report .r-node>.r-task-meta{padding:0 9px 9px}#task-progress-report .r-node>.r-detail{padding:0 9px}#task-progress-report .r-child-bottom{padding:7px 9px}#task-progress-report .r-group-counts{display:block}#task-progress-report .r-children{margin:0 5px 5px;padding-left:7px}#task-progress-report .r-children>.r-tree>.r-node::before{left:-7px;width:6px}#task-progress-report .r-node[data-depth="1"]>.r-children{margin:0 4px 4px;padding-left:5px}#task-progress-report .r-node[data-depth="1"]>.r-children>.r-tree>.r-node::before{left:-5px;width:4px}}
+    `;
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Task Progress · ${esc(data.taskTitle)}</title><style>${css}${themeCss}${attentionCss}</style></head><body><main id="task-progress-report" ${themeAttributes}><div class="rp-top"><strong>TASK PROGRESS</strong><span>${esc(data.mode)} · 离线执行报告</span>${themeControls}</div><header class="rp-hero"><h1>${esc(data.taskTitle)}</h1><p class="r-small">会话 ${esc(data.sessionId)} · 数据冻结于 ${esc(stamp(data.currentPlan?.capturedAt||data.sourceUpdatedAt))}</p><div class="rp-metrics"><span class="rp-metric">最终交付 <strong class="rp-delivery" data-tone="${deliveryTone}">${esc(delivery)}</strong></span><span>当前轮已解决 ${currentStats.resolved}/${currentStats.total} 项叶任务</span><span>已结束 ${currentStats.ended}/${currentStats.total}${currentStats.endedUnresolved?' · '+currentStats.endedUnresolved+' 项已结束未解决':''}</span><span id="rp-state-counts">${currentStats.running} 项执行中 · ${currentStats.pendingReview} 项待主会话验收</span><span>${currentPlans.length} 轮计划 · ${data.archivedTaskCount} 个历史任务</span></div><p class="r-small">当前推进：${esc(active?.title||'暂无执行中任务')}</p>${attention?`<div class="rp-attention" aria-label="当前轮需关注的叶任务"><strong>当前需关注</strong>${attention}</div>`:''}${legend}</header><div class="rp-tabs" role="tablist" aria-label="报告视图"><button type="button" role="tab" id="rp-tab-timeline" aria-controls="rp-panel-timeline" aria-selected="true" data-view="timeline">时间线</button><button type="button" role="tab" id="rp-tab-table" aria-controls="rp-panel-table" aria-selected="false" tabindex="-1" data-view="table">表格</button></div><div class="rp-controls"><label><span class="r-small">搜索记录 </span><input type="search" id="rp-search" placeholder="任务、摘要、执行者或 ID" autocomplete="off"></label><button type="button" data-action="expand-all">展开子任务</button><button type="button" data-action="collapse-all">全部收起</button><span class="r-small" id="rp-search-count" role="status" aria-live="polite"></span></div><section id="rp-panel-timeline" role="tabpanel" aria-labelledby="rp-tab-timeline"><section id="rp-river" class="r-river"><svg class="r-svg" aria-hidden="true"><path class="r-main-path"></path><g class="r-branches"></g></svg>${timelineMarkup}</section><p class="rp-note">时间取自原始记录；重规划时间来自旧轮关闭快照，不作为子任务开始时间。</p></section><section id="rp-panel-table" role="tabpanel" aria-labelledby="rp-tab-table" hidden><section id="rp-workbook" class="rp-section"><h2>完整数据表</h2><p class="rp-small">${data.tasks.length} 个节点 · ${data.attempts.length} 条执行记录 · 包含所有任务实例与轮次；展开行详情查看证据、身份与验收。</p>${trackControls}<p class="rp-small rp-time-guide">${esc(axisLabel)} · 所有任务和轮次共用同一刻度；时间按本地时区显示。</p><div class="rp-time-legend" aria-label="执行时间图例"><span><i class="rp-leg-envelope"></i>任务区间 · 含等待</span><span><i class="rp-leg-current"></i>实际执行 · 含重试</span><span><i class="rp-leg-running"></i>进行中 · 截至快照</span><span><i class="rp-leg-replan"></i>重新规划</span></div><div class="rp-book-tabs" role="tablist" aria-label="工作表">${sheets.map((s,i)=>`<button type="button" role="tab" id="rp-sheet-tab-${i}" aria-controls="rp-sheet-panel-${i}" aria-selected="${i===0}" tabindex="${i===0?'0':'-1'}" data-sheet-index="${i}">${s.name}</button>`).join('')}</div>${sheets.map((s,i)=>`<div id="rp-sheet-panel-${i}" class="rp-sheet-panel" role="tabpanel" aria-labelledby="rp-sheet-tab-${i}" ${i?'hidden':''}>${s.content}</div>`).join('')}<p class="rp-small">原始 XLSX 同时保留日期与数值类型、筛选和冻结表头。</p></section></section><p id="rp-search-empty" class="rp-empty" hidden>没有匹配记录。可更换关键词或清空搜索。</p>${auditSection}${legacySection}<details class="rp-source"><summary>数据来源与记录边界</summary><p>已结束包含完成、失败、取消；已解决仅统计叶任务 outcome=resolved 且通过当前验收协议。叶任务全部完成不代表根任务已综合验收。旧记录不推断验收。</p><p>时间与原因取自原始快照；未开始、尚未结束与历史未记录分别标注。分组区间包含所有子任务与历史尝试，综合验收时间单独保留。累计执行耗时按执行尝试逐次相加（含取消、失效及重试，排除综合验收/分组收尾），整体历时包含重试间等待；缺失或无效区间不捏造为零，明确标记记录不完整。不推断重规划造成的取消或不同任务之间的语义沿袭。执行身份与配置由调用方填报，未经宿主认证。</p><p>主会话模型：${esc(data.mainSession?.model||'未记录')} / 思维强度 ${esc(data.mainSession?.reasoning_effort||'未记录')} · ${esc(data.mainSessionEvidence)}</p><p>状态修订号 ${esc(data.revision)} · 任务实例 ${esc(data.currentPlan?.taskInstanceId||'未记录')}</p></details><footer class="rp-footer">TASK PROGRESS · 报告生成于 ${esc(stamp(data.generatedAt))}</footer><span id="rp-live" class="rp-announcement" role="status" aria-live="polite"></span></main><script>${themeScript}
+(()=>{
+  const root=document.getElementById('task-progress-report'),$=id=>document.getElementById(id),all=s=>Array.from(root.querySelectorAll(s));
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)'),animations=new Map();let frame=0,view='timeline',query='',searchSnapshot=null;
+  function drawTable(){
+    const svg=root.querySelector('.rp-table-connectors');if(!svg||!svg.getClientRects().length)return;
+    const canvas=svg.parentElement,rect=canvas.getBoundingClientRect(),visible=tableRows.filter(row=>!row.hidden),paths=[];
+    svg.setAttribute('width',String(canvas.scrollWidth));svg.setAttribute('height',String(canvas.scrollHeight));svg.setAttribute('viewBox','0 0 '+canvas.scrollWidth+' '+canvas.scrollHeight);
+    const marker=row=>row.querySelector('.rp-table-marker'),point=row=>{const b=marker(row).getBoundingClientRect();return {x:b.left+b.width/2-rect.left,y:b.top+b.height/2-rect.top,r:b.height/2};};
+    visible.forEach(row=>{const parent=tableByKey.get(row.dataset.tableParent);if(!parent||parent.hidden)return;const a=point(parent),b=point(row);if(b.x<=a.x)return;const corner=Math.min(6,(b.x-a.x)/2),path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M '+a.x+' '+(a.y+a.r)+' V '+(b.y-corner)+' Q '+a.x+' '+b.y+' '+(a.x+corner)+' '+b.y+' H '+(b.x-b.r-5));path.setAttribute('stroke',getComputedStyle(marker(parent)).backgroundColor==='rgba(0, 0, 0, 0)'?getComputedStyle(root).getPropertyValue('--r-green'):getComputedStyle(marker(parent)).backgroundColor);path.dataset.tableFrom=parent.dataset.tableKey;path.dataset.tableTo=row.dataset.tableKey;paths.push(path);});
+    svg.replaceChildren(...paths);
+  }
+  function draw(){frame=0;drawTable();const river=$('rp-river');if(!river.getClientRects().length)return;const rect=river.getBoundingClientRect(),point=e=>{const b=e.getBoundingClientRect();return{x:b.left+b.width/2-rect.left,y:b.top+b.height/2-rect.top};},visible=e=>e.getClientRects().length&&e.getBoundingClientRect().height;
+    let d='';all('.r-instance').forEach(instance=>{const anchors=Array.from(instance.querySelectorAll('[data-main-key]')).filter(visible).map(point);anchors.forEach((b,i)=>{if(!i){d+=' M '+b.x+' '+b.y;return;}const a=anchors[i-1],dy=b.y-a.y;d+=' C '+a.x+' '+(a.y+dy*.56)+' '+b.x+' '+(b.y-dy*.56)+' '+b.x+' '+b.y;});});
+    const svg=root.querySelector('.r-svg');svg.setAttribute('viewBox','0 0 '+rect.width+' '+rect.height);svg.querySelector('.r-main-path').setAttribute('d',d);
+    const dots=new Map(all('[data-dot]').filter(visible).map(e=>[e.dataset.dot,point(e)]));const paths=[];
+    all('[data-node-key]').filter(e=>visible(e)&&!e.dataset.parentKey).forEach(e=>{const b=dots.get(e.dataset.nodeKey),a=point(e.closest('.r-plan').querySelector('[data-main-key]'));if(!a||!b)return;const bend=a.x+(b.x-a.x)*.4;paths.push('M '+a.x+' '+a.y+' C '+bend+' '+a.y+' '+bend+' '+b.y+' '+b.x+' '+b.y);});
+    svg.querySelector('.r-branches').replaceChildren(...paths.map(d=>{const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('class','r-branch-path');p.setAttribute('d',d);return p;}));
+    if(animations.size)scheduleDraw();
+  }
+  function scheduleDraw(){if(!frame)frame=requestAnimationFrame(draw);}
+  function box(button,open,animate=true){
+    const target=$(button.getAttribute('aria-controls'));if(!target)return;
+    // Sample the in-flight presentation before cancelling, so a rapid reversal stays continuous.
+    const from=target.hidden?0:target.getBoundingClientRect().height,old=animations.get(target);
+    if(old){old.cancel();animations.delete(target);}
+    target.hidden=false;target.style.height='auto';
+    const details=button.hasAttribute('data-task')?target.querySelector('.rp-task-detail'):null;
+    if(details&&open)details.open=true;
+    const to=open?target.scrollHeight:0;button.setAttribute('aria-expanded',String(open));
+    const symbol=button.querySelector('.r-group-symbol');if(symbol)symbol.textContent=open?'−':'＋';
+    if(button.hasAttribute('data-turn'))button.textContent='原因全文与关闭快照 '+(open?'−':'＋');
+    const finish=()=>{target.hidden=!open;target.style.height='';if(details)details.open=open;animations.delete(target);scheduleDraw();};
+    if(animate&&!reduced.matches&&typeof target.animate==='function'){
+      const animation=target.animate([{height:from+'px'},{height:to+'px'}],{duration:340,easing:'cubic-bezier(.22,.8,.24,1)'});
+      animations.set(target,animation);animation.onfinish=finish;
+    }else finish();scheduleDraw();
+  }
+  function activateTab(button,selector,panelSelector){all(selector).forEach(t=>{const selected=t===button;t.setAttribute('aria-selected',String(selected));t.tabIndex=selected?0:-1;});all(panelSelector).forEach(p=>p.hidden=p.id!==button.getAttribute('aria-controls'));scheduleDraw();}
+  function snapshot(){return {buttons:all('[data-group],[data-task],[data-turn]').filter(b=>b.getAttribute('aria-expanded')==='true').map(b=>b.getAttribute('aria-controls')),details:all('details').filter(d=>d.open)};}
+  function restore(saved){all('[data-group],[data-task],[data-turn]').forEach(b=>box(b,saved.buttons.includes(b.getAttribute('aria-controls')),false));all('details').forEach(d=>d.open=saved.details.includes(d));}
+  const tableOpen=new Set(),tableRows=all('[data-table-key]'),tableByKey=new Map(tableRows.map(row=>[row.dataset.tableKey,row]));
+  function updateTable(){
+    const visible=new Set();
+    if(query){tableRows.filter(row=>row.textContent.toLocaleLowerCase().includes(query)).forEach(row=>{let item=row,seen=new Set();while(item&&!seen.has(item.dataset.tableKey)){seen.add(item.dataset.tableKey);visible.add(item.dataset.tableKey);item=tableByKey.get(item.dataset.tableParent);}});}
+    else tableRows.forEach(row=>{let item=row,show=true,seen=new Set();while(item.dataset.tableParent){if(seen.has(item.dataset.tableKey)){show=false;break;}seen.add(item.dataset.tableKey);if(!tableOpen.has(item.dataset.tableParent)){show=false;break;}item=tableByKey.get(item.dataset.tableParent);if(!item){show=false;break;}}if(show)visible.add(row.dataset.tableKey);});
+    let revealIndex=0;tableRows.forEach(row=>{const revealing=row.hidden&&visible.has(row.dataset.tableKey);row.hidden=!visible.has(row.dataset.tableKey);if(revealing&&!reduced.matches&&view==='table'&&typeof row.animate==='function'){row.animate([{opacity:0},{opacity:1}],{duration:260,delay:Math.min(revealIndex++*28,160),easing:'ease-out'});const track=row.querySelector('.rp-time-track');if(track)track.querySelectorAll('.rp-time-span,.rp-bar-label').forEach(bar=>bar.animate([{opacity:0,transform:'scaleX(.04)'},{opacity:1,transform:'scaleX(1)'}],{duration:420,delay:Math.min(revealIndex*28,160),easing:'cubic-bezier(.22,.8,.24,1)'}));}const b=row.querySelector('[data-table-toggle]');if(b){const open=query?tableRows.some(child=>child.dataset.tableParent===row.dataset.tableKey&&visible.has(child.dataset.tableKey)):tableOpen.has(row.dataset.tableKey);b.setAttribute('aria-expanded',String(open));b.setAttribute('aria-label',(open?'收起 ':'展开 ')+b.dataset.tableTitle+' 的子任务');b.querySelector('span').textContent='›';}});scheduleDraw();
+  }
+  function applySearch(){query=$('rp-search').value.trim().toLocaleLowerCase();if(query&&!searchSnapshot)searchSnapshot=snapshot();if(!query&&searchSnapshot){restore(searchSnapshot);searchSnapshot=null;}
+    all('.rp-search-hit').forEach(e=>e.classList.remove('rp-search-hit'));all('[data-report-row]:not([data-table-key])').forEach(r=>r.hidden=!!query&&!r.textContent.toLocaleLowerCase().includes(query));updateTable();let hits=0;
+    if(query){all('[data-group],[data-task],[data-turn]').forEach(b=>box(b,false,false));all('details').forEach(d=>d.open=false);
+      const matches=all('[data-search-record]').filter(e=>{const own=e.classList.contains('rp-node')?e.querySelector('[data-task]').textContent+' '+e.querySelector('.r-task-meta').textContent+' '+e.querySelector('.rp-node-body').textContent:e.textContent;return own.toLocaleLowerCase().includes(query);});
+      hits=matches.length;matches.forEach(e=>{e.classList.add('rp-search-hit');for(let p=e;p&&p!==root;p=p.parentElement){if(p.classList.contains('r-children')){const b=all('[data-group]').find(b=>b.getAttribute('aria-controls')===p.id);if(b)box(b,true,false);}if(p.tagName==='DETAILS')p.open=true;}const b=e.querySelector('[data-task],[data-turn]');if(b)box(b,true,false);});
+    }
+    const rowHits=all('.rp-sheet-panel:not([hidden]) [data-report-row]').filter(r=>!r.hidden).length;const count=view==='table'?rowHits:hits;$('rp-search-count').textContent=query?count+' 条匹配记录':'';$('rp-search-empty').hidden=!query||count>0;scheduleDraw();
+  }
+  function syncActions(){all('[data-action=expand-all],[data-action=collapse-all]').forEach(action=>action.hidden=view==='table'&&$('rp-sheet-panel-0').hidden);}
+  root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!root.contains(b))return;
+    if(b.hasAttribute('data-table-toggle')){const key=b.dataset.tableToggle;if(tableOpen.has(key))tableOpen.delete(key);else tableOpen.add(key);updateTable();$('rp-live').textContent=(tableOpen.has(key)?'展开':'收起')+'表格子任务';}
+    else if(b.hasAttribute('data-view')){view=b.dataset.view;activateTab(b,'[data-view]','#rp-panel-timeline,#rp-panel-table');syncActions();applySearch();}
+    else if(b.hasAttribute('data-sheet-index')){activateTab(b,'[data-sheet-index]','.rp-sheet-panel');syncActions();applySearch();}
+    else if(b.hasAttribute('data-group')||b.hasAttribute('data-task')||b.hasAttribute('data-turn')){box(b,b.getAttribute('aria-expanded')!=='true');$('rp-live').textContent=(b.getAttribute('aria-expanded')==='true'?'展开':'收起')+'：'+b.textContent;}
+    else if(b.dataset.action==='expand-all'){if(view==='table'){all('[data-table-toggle]').forEach(t=>tableOpen.add(t.dataset.tableToggle));updateTable();}else all('[data-group]').forEach(t=>box(t,true));$('rp-live').textContent='已展开全部子任务，详情仍可单独展开';}
+    else if(b.dataset.action==='collapse-all'){if(view==='table'){tableOpen.clear();updateTable();all('#rp-panel-table details').forEach(d=>d.open=false);}else{all('[data-group],[data-task],[data-turn]').forEach(t=>box(t,false));all('#rp-panel-timeline details').forEach(d=>d.open=false);}$('rp-live').textContent='子任务与详情已收起';}
+  });
+  root.addEventListener('keydown',e=>{const tab=e.target.closest('[role=tab]');if(!tab||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=Array.from(tab.closest('[role=tablist]').querySelectorAll('[role=tab]')),i=tabs.indexOf(tab),next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[next].click();tabs[next].focus();});
+  $('rp-search').addEventListener('input',applySearch);$('rp-theme').addEventListener('change',scheduleDraw);root.addEventListener('toggle',scheduleDraw,true);window.addEventListener('resize',scheduleDraw);window.addEventListener('beforeprint',()=>{animations.forEach(a=>a.finish());draw();});if(typeof ResizeObserver==='function')new ResizeObserver(scheduleDraw).observe($('rp-river'));reduced.addEventListener('change',()=>{animations.forEach(a=>a.finish());if(reduced.matches)root.querySelectorAll('.rp-task-table tr,.rp-time-track,.rp-time-span,.rp-bar-label').forEach(el=>el.getAnimations().forEach(animation=>animation.cancel()));scheduleDraw();});if(location.hash==='#table')$('rp-tab-table').click();scheduleDraw();
+})();
 </scr`+`ipt></body></html>`;
-    return html;
   }
 
   function base64FromBytes(bytes) {
@@ -1276,7 +1743,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     if (node.records_included === false && recordContext) return recordHistoryPlaceholder(node, prefix, openDetails, recordContext, false);
     const attempts = list(node.attempts).map((attempt, index) => ({ ...attempt, recordKey: attempt.attempt_id || 'attempt-' + index }));
     // Legacy group acceptances did not have an attempt; retain their evidence too.
-    list(node.invalidated_results).filter(result => !result.attempt_id).forEach((result, index) => attempts.push({ ...result, recordKey: 'legacy-' + index }));
+    list(node.invalidated_results).filter(result => !result.attempt_id || !list(node.attempts).some(attempt=>attempt.attempt_id===result.attempt_id)).forEach((result, index) => attempts.push({ ...result, recordKey: 'legacy-' + index }));
     if (!attempts.length) return null;
     const key = prefix + ':attempts';
     const history = document.createElement('details'); history.className = 'detail-group attempt-history'; history.dataset.key = key; history.open = openDetails.get(key) || false;
@@ -1289,7 +1756,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const kindLabel = attempt.kind === 'synthesis' && !['failed', 'cancelled'].includes(attempt.execution_status) ? '综合验收 · ' : attempt.kind === 'group_termination' || attempt.kind === 'synthesis' ? '分组收尾 · ' : '';
       title.textContent = '第 ' + (attempt.attempt || index + 1) + ' 次 · ' + kindLabel + status + (attempt.invalidated_by ? ' · 已失效' : '');
       const body = document.createElement('div'); body.className = 'detail-group-content';
-      body.append(field('执行配置', executionSummary(attempt.assignment, attempt.execution_status) || '未记录'), field('开始 / 结束', date(attempt.started_at) + ' / ' + date(attempt.finished_at)));
+      body.append(field('执行配置', executionSummary(attempt.assignment, attempt.execution_status) || '未记录'), field('开始 / 结束', (attempt.started_at?date(attempt.started_at):'历史未记录') + ' / ' + (attempt.finished_at?date(attempt.finished_at):attempt.execution_status==='running'?'尚未结束':'历史未记录')));
       body.append(field('配置来源', metadataEvidence(attempt.assignment), 'metadata-provenance'));
       body.append(responsibilityDetails(attempt, attempt.planned_assignment, record.dataset.key, openDetails));
       if (attempt.invalidated_by) body.append(field('失效原因', '任务 ' + attempt.invalidated_by + ' 已重试，此次结果保留作历史。'));
@@ -1507,6 +1974,9 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
         body.append(field('本任务规划', p.planning_status==='required'?'尚未规划':'第 '+(Number(p.epoch || 0)+1)+' 轮'));
         body.append(auditDetails(p, prefix, openDetails));
       }
+      const timing = executionTiming(node, byId, children, timeContext?.cutoff || rootContext?.progress?.archived_at || rootContext?.progress?.updated_at || '');
+      body.append(field(timing.timeKind==='derived'?'子任务执行时间（推导）':'当前尝试时间', (timing.timeStart ? date(timing.timeStart) : timing.timeStartState) + ' / ' + (timing.timeEnd ? date(timing.timeEnd) : timing.timeEndState)),field('时间来源',timing.timeSource+'；'+timing.timeEvidence),field('累计与历时',timing.cumulativeTime+'\n'+timing.overallTime));
+      if(timing.timeKind==='derived'&&(node.started_at||node.finished_at))body.append(field('综合验收 / 分组收尾时间',date(node.started_at)+' / '+date(node.finished_at)));
       const responsibility = responsibilityDetails(node, node.planned_assignment, prefix + ':' + id, openDetails, {
         compact: true, omitSubmissionSummary: !!resultSummary && printable(resultSummary) === printable(node.submission?.summary)
       });
@@ -1559,7 +2029,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     nodes.forEach(node => appendRoot(node.id));
     return fragment;
   }
-  function linearSteps(steps, prefix, openDetails, timeContext = null) {
+  function linearSteps(steps, prefix, openDetails, timeContext = null, snapshotAt = '') {
     const fragment = document.createDocumentFragment();
     steps.forEach((step, position) => {
       if (!step || typeof step !== 'object') return;
@@ -1567,9 +2037,9 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const li = document.createElement('li'); li.className = 'step ' + info.key;
       const index = String(step.index ?? position + 1);
       const hasNote = typeof step.note === 'string' && step.note.trim().length > 0;
-      const container = document.createElement(hasNote ? 'details' : 'div');
-      if (hasNote) { container.dataset.key = prefix + ':' + index; container.open = openDetails.get(container.dataset.key) || false; }
-      const row = document.createElement(hasNote ? 'summary' : 'div'); row.className = 'step-main';
+      const container = document.createElement('details');
+      container.dataset.key = prefix + ':' + index; container.open = openDetails.get(container.dataset.key) || false;
+      const row = document.createElement('summary'); row.className = 'step-main';
       const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true'); icon.textContent = info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : String(position + 1);
       const title = document.createElement('span'); title.className = 'step-title'; title.textContent = String(step.description || '未命名步骤');
       appendRetryBadge(title, step.attempt);
@@ -1580,6 +2050,9 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       appendElapsed(right, step, timeContext);
       row.append(icon, title, right); container.append(row);
       if (hasNote) { const note = document.createElement('div'); note.className = 'note'; note.textContent = step.note; container.append(note); }
+      const timing=executionTiming(step,new Map(),new Map(),timeContext?.cutoff||snapshotAt);
+      const times=document.createElement('div');times.className='task-details';times.append(field('当前尝试时间',(timing.timeStart?date(timing.timeStart):timing.timeStartState)+' / '+(timing.timeEnd?date(timing.timeEnd):timing.timeEndState)),field('累计与历时',timing.cumulativeTime+'\n'+timing.overallTime));
+      const attempts=attemptHistory(step,prefix+':'+index,openDetails);if(attempts)times.append(attempts);container.append(times);
       li.append(container); fragment.append(li);
     });
     return fragment;
@@ -1905,7 +2378,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     } else setText('step-count', total + ' 个步骤');
     if (network) { renderNetwork(progress, nodes, openDetails); syncButton(); return; }
     $('steps').className = 'steps';
-    reconcileChildren($('steps'), linearSteps(steps, taskScope(progress) + ':steps', openDetails));
+    reconcileChildren($('steps'), linearSteps(steps, taskScope(progress) + ':steps', openDetails, null, progress.updated_at || progress.created_at || ''));
     syncButton();
   }
   $('export-all').addEventListener('click', exportCurrentProgress);
