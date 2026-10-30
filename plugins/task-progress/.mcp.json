@@ -2,7 +2,8 @@
   "mcpServers": {
     "task_progress": {
       "command": "python",
-      "args": ["${PLUGIN_ROOT}/mcp_bridge.py"],
+      "args": ["mcp_bridge.py"],
+      "cwd": ".",
       "enabled": true,
       "startup_timeout_sec": 180,
       "tool_timeout_sec": 30

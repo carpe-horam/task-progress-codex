@@ -253,12 +253,11 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("0600", result.stderr)
 
-    def test_plugin_configuration_uses_http_without_session_process_command(self):
+    def test_plugin_configuration_starts_bridge_from_plugin_root(self):
         config = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["task_progress"]
-        self.assertEqual(config["url"], "http://127.0.0.1:53421/mcp")
-        self.assertIn("http-headers.json", config["http_headers_helper"])
-        for key in ("command", "args", "cwd", "env_vars"):
-            self.assertNotIn(key, config)
+        self.assertEqual(config["command"], "python")
+        self.assertEqual(config["args"], ["mcp_bridge.py"])
+        self.assertEqual(config["cwd"], ".")
 
 
 if __name__ == "__main__":
