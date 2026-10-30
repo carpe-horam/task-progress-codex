@@ -78,6 +78,37 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def _valid_boundary(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        return datetime.fromisoformat(value).tzinfo is not None
+    except (ValueError, TypeError, OverflowError):
+        return False
+
+
+def _ensure_time_bounds(item: dict[str, Any], boundary: str, reason: str) -> None:
+    """Close missing boundaries without claiming that an unstarted task executed."""
+    sources = item.get("time_boundary_sources") or {}
+    for field in ("finished_at", "started_at"):
+        original = item.get(field)
+        if not _valid_boundary(original):
+            if original:
+                sources["original_" + field] = original
+            item[field] = boundary if field == "finished_at" else item["finished_at"]
+            sources[field] = reason if field == "finished_at" else "unknown_start_fallback"
+    if sources:
+        item["time_boundary_sources"] = sources
+
+
+def _close_snapshot_times(data: dict[str, Any], boundary: str, reason: str) -> None:
+    items = data.get("nodes", {}).values() if isinstance(data.get("nodes"), dict) else data.get("steps", [])
+    for item in items:
+        _ensure_time_bounds(item, boundary, reason)
+        for attempt in [*item.get("attempts", []), *item.get("invalidated_results", [])]:
+            _ensure_time_bounds(attempt, boundary, reason)
+
+
 def _elapsed_seconds(started_at: Any, *, now: datetime | None = None) -> int | None:
     if not isinstance(started_at, str) or not started_at:
         return None
@@ -567,6 +598,7 @@ def cancel_request(session_id: str, task_instance_id: str, request_id: str, reas
         if network:
             network["request_cancelled"] = True
             network["nodes"][network["root_id"]].update(execution_status="cancelled", summary=why)
+            _close_snapshot_times(network, item["cancelled_at"], "request_cancel_fallback")
         _write(sid, data)
     return get_progress_view(sid)
 
@@ -628,9 +660,11 @@ def _reconcile_handoffs(document: dict[str, Any]) -> None:
                         break
                     proofs.append({**deepcopy(mapping), "accepted_result": deepcopy(node)})
                 else:
+                    closed_at = _now()
+                    _close_snapshot_times(source, closed_at, "handoff_fallback")
                     source.setdefault("handoff_closures", []).append({
                         "handoff_id": handoff["handoff_id"], "source_fingerprint": fingerprint,
-                        "source_epoch": source.get("epoch", 0), "closed_at": _now(),
+                        "source_epoch": source.get("epoch", 0), "closed_at": closed_at,
                         "summary": handoff["summary"], "evidence": deepcopy(handoff["evidence"]),
                         "reviewer": deepcopy(handoff["reviewer"]), "accepted_targets": proofs})
                     break
@@ -751,8 +785,12 @@ def review_task_closure(session_id: str, task_instance_id: str, task_id: str, re
             if not current.get("children") and not _node_is_terminal(current):
                 raise ProgressError("子树仍有未执行叶，不能用父级收尾验收跳过。")
             pending.extend(current.get("children", []))
+        reviewed_at = _now()
+        if decision == "accept":
+            for nid in pending:
+                _ensure_time_bounds(data["nodes"][nid], reviewed_at, "closure_fallback")
         data.setdefault("closure_reviews", []).append({**content, "review_id": rid, "epoch": data.get("epoch", 0),
-            "reviewed_at": _now()})
+            "reviewed_at": reviewed_at})
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
     return get_progress_view(sid, task_instance_id=task_instance_id)
@@ -845,16 +883,18 @@ def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str |
         raise ProgressError("当前任务尚未完成；继续目标请 get_progress 后 decompose_task，重规划请 rebuild_task_network。只有用户明确开启新目标时，才传 new_task_reason 说明新目标及旧工作处理方式。")
 
 
-def _task_archive_snapshot(data: dict[str, Any], reason: str | None = None) -> dict[str, Any]:
+def _task_archive_snapshot(data: dict[str, Any], reason: str | None = None, *, archived_at: str | None = None) -> dict[str, Any]:
     # Exclude task history before building the snapshot, keeping archives flat.
     current = {key: deepcopy(value) for key, value in data.items()
                if key not in ("task_history", "session_work_state", "session_work")}
+    archived_at = archived_at if _valid_boundary(archived_at) else _now()
+    _close_snapshot_times(current, archived_at, "archive_fallback")
     snapshot = _progress_payload(current)
     for key in ("task_context", "context_revisions"):
         if key in current:
             snapshot[key] = deepcopy(current[key])
     snapshot.pop("task_history", None)
-    snapshot["archived_at"] = _now()
+    snapshot["archived_at"] = archived_at
     if reason:
         snapshot["archive_reason"] = reason.strip()
     return deepcopy(snapshot)
@@ -884,17 +924,17 @@ def _parallel_archive_key(data: dict[str, Any]) -> str:
 
 def _parallel_archive_snapshot(data: dict[str, Any]) -> dict[str, Any]:
     root = data["nodes"][data["root_id"]]
-    snapshot = _task_archive_snapshot(data, "并行任务已完成综合验收。")
-    snapshot.update(archive_kind="parallel", request_id=data["parallel_request_id"],
-        archive_key=_parallel_archive_key(data),
-        archived_at=root.get("finished_at") or data.get("updated_at") or data.get("created_at"))
     closure = _handoff_closure(data)
-    if closure:
-        snapshot.update(archive_reason="移交目标已验收；保留来源未解决/取消结果。", archived_at=closure["closed_at"],
-                        handoff_closure=deepcopy(closure))
     review = _closure_review(data)
+    archived_at = (closure.get("closed_at") if closure else None) or (review.get("reviewed_at") if review and review["decision"] == "accept" else None) or root.get("finished_at") or data.get("updated_at") or data.get("created_at") or _now()
+    snapshot = _task_archive_snapshot(data, "并行任务已完成综合验收。", archived_at=archived_at)
+    snapshot.update(archive_kind="parallel", request_id=data["parallel_request_id"],
+        archive_key=_parallel_archive_key(data))
+    if closure:
+        snapshot.update(archive_reason="移交目标已验收；保留来源未解决/取消结果。",
+                        handoff_closure=deepcopy(closure))
     if review and review["decision"] == "accept":
-        snapshot.update(archive_reason="父级已明确验收收尾；原始结果保持不变。", archived_at=review["reviewed_at"],
+        snapshot.update(archive_reason="父级已明确验收收尾；原始结果保持不变。",
                         closure_review=deepcopy(review))
     return snapshot
 
@@ -933,6 +973,7 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "status": step["status"],
             "started_at": step.get("started_at"),
             "finished_at": step.get("finished_at"),
+            **({"time_boundary_sources": deepcopy(step["time_boundary_sources"])} if step.get("time_boundary_sources") else {}),
             "attempt": step.get("attempt", 0),
             "attempt_id": step.get("attempt_id"),
             "attempts": deepcopy(step.get("attempts", [])),
@@ -1734,6 +1775,7 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
     _require_execution_metadata(assignment, dispatch_required=kind == "execution")
     assignment = _stamp_assignment(assignment or {}, scope="attempt_start")
     node.pop("invalidated_by", None)
+    node.pop("time_boundary_sources", None)
     node["attempt"] = int(node.get("attempt", 0)) + 1
     node["attempt_id"] = str(uuid.uuid4())
     node["assignment"] = dict(assignment)
@@ -1775,12 +1817,16 @@ def _record_attempt_result(node: dict[str, Any]) -> None:
         node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
             "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status"
         )})
+        if not _valid_boundary(node["attempts"][-1].get("started_at")):
+            node["attempts"][-1]["started_at"] = node.get("started_at")
+            node["attempts"][-1]["time_boundary_sources"] = deepcopy(node.get("time_boundary_sources", {}))
 
 
 def _reset_execution(node: dict[str, Any]) -> None:
     node.update(execution_status="pending", outcome=None, summary="", evidence=[],
                 assignment={}, attempt_id=None, started_at=None, finished_at=None,
                 dispatch=None, submission=None, review=None, review_status=None)
+    node.pop("time_boundary_sources", None)
 
 
 def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> None:
@@ -1959,6 +2005,7 @@ def update_task(
             node["evidence"] = evidence
         if execution_status in TERMINAL_EXECUTION_STATUSES:
             node["finished_at"] = _now()
+            _ensure_time_bounds(node, node["finished_at"], "termination_fallback")
         if (execution_status == "finished" and not node.get("children")
                 and node.get("assignment", {}).get("execution_mode") == "subagent"):
             dispatch = node.get("dispatch") or {}
@@ -2132,12 +2179,14 @@ def rebuild_task_network(
         _assert_no_pending_reviews(data, "重规划")
         if any(node.get("execution_status") == "running" for node in data["nodes"].values()):
             raise ProgressError("仍有任务处于 running，核实或结束这些尝试后再重建网络。")
+        closed_at = _now()
+        _close_snapshot_times(data, closed_at, "replan_fallback")
         data["history"].append({
             "epoch": data["epoch"],
             "root_id": data["root_id"],
             "task_title": data["task_title"],
             "reason": reason.strip(),
-            "closed_at": _now(),
+            "closed_at": closed_at,
             "nodes": data["nodes"],
             "handoffs": deepcopy(data.get("handoffs", [])),
             "handoff_closures": deepcopy(data.get("handoff_closures", [])),
@@ -2480,12 +2529,14 @@ def update_step(
                                   summary=note or step.get("note", ""))
             step["started_at"] = None
             step["finished_at"] = None
+            step.pop("time_boundary_sources", None)
             step.pop("assignment", None)
             step["attempt_id"] = None
             step["legacy_attempt"] = False
         elif status == "in_progress":
             if previous_status != "in_progress" or not step["started_at"]:
                 _require_execution_metadata(normalized_assignment)
+                step.pop("time_boundary_sources", None)
                 step["started_at"] = _now()
                 # A new run (including reopening a completed step) gets a fresh
                 # snapshot so fields from an earlier dispatch cannot linger.
@@ -2516,6 +2567,7 @@ def update_step(
         elif status == "completed":
             if previous_status != "completed":
                 step["finished_at"] = _now()
+            _ensure_time_bounds(step, step["finished_at"] or _now(), "termination_fallback")
             if normalized_assignment is not None and previous_status in ("in_progress", "completed"):
                 snapshot = step.get("assignment", {})
                 changed = [
@@ -2539,6 +2591,9 @@ def update_step(
                 status=status, execution_status="finished" if status == "completed" else "running",
                 finished_at=step["finished_at"], summary=step.get("note", ""),
             )
+            if status == "completed" and not _valid_boundary(step["attempts"][-1].get("started_at")):
+                step["attempts"][-1]["started_at"] = step["started_at"]
+                step["attempts"][-1]["time_boundary_sources"] = deepcopy(step.get("time_boundary_sources", {}))
         _write(sid, data)
         response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)

@@ -71,7 +71,7 @@ async function main() {
   const saved = await page.evaluate(()=>window.host.calls.findLast(call=>call.name==='save_export_files').result.structuredContent.files);
   const html = saved.find(file=>file.name.endsWith('.html')).path;
   const report = await host.browser.newPage(); await report.goto('file://'+html);
-  assert.equal(await report.locator('#rp-archives > .rp-history-item').count(),2);
+  assert.equal(await report.locator('#rp-archives > .r-instance[data-archived-instance]').count(),2);
   const text = await report.locator('#rp-archives').textContent();
   assert(text.includes('completion-one synthesis') && text.includes('completion-two synthesis'));
   const xlsx = saved.find(file=>file.name.endsWith('.xlsx')).path;

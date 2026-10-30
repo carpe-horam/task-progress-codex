@@ -40,23 +40,26 @@ async function main(){
   r=await host.rpc('update_step',{...linear,step_index:0,status:'completed',attempt_id:attempt});
   await checkReport(r,async report=>{
     assert.equal(await report.locator('.rp-delivery').textContent(),'尚未完成');
-    assert.match(await report.locator('.rp-metric').first().textContent(),/1\s*\/ 2/);
-    await report.locator('#rp-sheet-tab-1').click();
-    const tasks=report.locator('#rp-sheet-panel-1');
+    assert.match(await report.locator('.rp-metrics').textContent(),/已结束\s*1\s*\/\s*2/);
+    await report.locator('#rp-tab-table').click();
+    await report.getByRole('tab',{name:'任务清单',exact:true}).click();
+    const tasks=report.locator('.rp-task-table');
     assert.equal(await tasks.locator('tbody tr').count(),2);
-    await tasks.getByText('First',{exact:true}).waitFor();
-    await tasks.getByText('Second',{exact:true}).waitFor();
+    await tasks.locator('.rp-table-task').first().waitFor();
+    assert.deepEqual(await tasks.locator('.rp-table-title').allTextContents(),['First','Second']);
   });
   r=await host.rpc('update_step',{...linear,step_index:1,status:'in_progress',assignment});
   attempt=r.structuredContent.progress.steps[1].attempt_id;
   await checkReport(r,async report=>{
     assert.equal(await report.locator('.rp-delivery').textContent(),'尚未完成');
-    assert.match(await report.locator('.rp-delivery').locator('..').textContent(),/1 项执行中/);
+    assert.match(await report.locator('.rp-metrics').textContent(),/1 项执行中/);
   });
   r=await host.rpc('update_step',{...linear,step_index:1,status:'completed',attempt_id:attempt});
   await checkReport(r,async report=>{
     assert.equal(await report.locator('.rp-delivery').textContent(),'已解决');
-    assert.match(await report.locator('.rp-metric').first().textContent(),/2\s*\/ 2/);
+    assert.equal(await report.locator('.rp-delivery').getAttribute('data-tone'),'success');
+    assert.equal(await report.locator('.rp-attention').count(),0,'accepted completed report has no current attention warning');
+    assert.match(await report.locator('.rp-metrics').textContent(),/已结束\s*2\s*\/\s*2/);
   });
   results.push('F03: partial/running/completed linear reports use overall task status and normalized counts');
 
@@ -66,17 +69,17 @@ async function main(){
     r=await host.rpc('update_task',{...binding(r),task_id:'root',execution_status:status,summary:'ROOT_TERMINATION_'+status,evidence:['ROOT_TERMINATION_EVIDENCE_'+status],assignment});
     await checkReport(r,async report=>{
       assert.equal(await report.locator('.rp-delivery').textContent(),status==='failed'?'执行失败':'已取消');
+      assert.equal(await report.locator('.rp-delivery').getAttribute('data-tone'),status==='failed'?'danger':'neutral','termination cannot show as green completion');
       assert(!(await report.locator('body').textContent()).includes('仍在进行'));
-      assert((await report.locator('#rp-sheet-panel-0').textContent()).includes('2 项已结束未解决'));
-      assert((await report.locator('.rp-delivery').locator('..').textContent()).includes('2 项已结束未解决'));
+      assert((await report.locator('.rp-metrics').textContent()).includes('2 项已结束未解决'));
       const root=report.locator('#rp-current [data-node-id="root"]');
       assert.equal(await root.count(),1);
       const text=await root.textContent();
       assert(text.includes('ROOT_TERMINATION_'+status));
       assert(text.includes('ROOT_TERMINATION_EVIDENCE_'+status));
       assert(text.includes('分组收尾'));
-      assert.equal(await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').count(),1);
-      assert((await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').textContent()).includes('ROOT_TERMINATION_'+status));
+      assert.equal(await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').count(),1);
+      assert((await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').textContent()).includes('ROOT_TERMINATION_'+status));
     });
   }
   results.push('F04/F05: failed and cancelled roots preserve delivery, termination evidence and attempts');
@@ -85,17 +88,21 @@ async function main(){
   r=await host.rpc('update_task',{...binding(r),task_id:'root',execution_status:'finished',outcome:'resolved',summary:'ROOT_ACCEPTANCE_UNIQUE_SUMMARY',evidence:['ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'],assignment});
   await checkReport(r,async report=>{
     assert.equal(await report.locator('.rp-delivery').textContent(),'已解决');
+    assert.equal(await report.locator('.rp-delivery').getAttribute('data-tone'),'success');
+    assert.equal(await report.locator('.rp-attention').count(),0,'accepted completed report has no current attention warning');
     const root=report.locator('#rp-current [data-node-id="root"]');
     assert.equal(await root.count(),1);
     const text=await root.textContent();
     assert(text.includes('ROOT_ACCEPTANCE_UNIQUE_SUMMARY'));
     assert(text.includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
     assert(text.includes('综合验收'));
-    assert.equal(await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').count(),1);
-    assert((await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').textContent()).includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
-    assert.match(await report.locator('.rp-metric').first().textContent(),/2\s*\/ 2/);
+    assert.equal(await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').count(),1);
+    assert((await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').textContent()).includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
+    assert.match(await report.locator('.rp-metrics').textContent(),/已结束\s*2\s*\/\s*2/);
+    await report.locator('#rp-tab-table').click();
     await report.locator('#rp-sheet-tab-3').click();
-    await report.locator('#rp-sheet-panel-3').getByText('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE',{exact:true}).waitFor();
+    // A task result and its synthesis attempt may independently reference the same evidence.
+    await report.locator('#rp-sheet-panel-3').getByText('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE',{exact:true}).first().waitFor();
   });
   const archived=await host.rpc('init_task_network',{...binding(r),task_title:'Next after acceptance',atomic_reason:'one fixture'});
   await checkReport(archived,async report=>{
@@ -105,8 +112,8 @@ async function main(){
     assert(text.includes('ROOT_ACCEPTANCE_UNIQUE_SUMMARY'));
     assert(text.includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
     assert(text.includes('综合验收'));
-    assert.equal(await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').count(),1);
-    assert((await root.locator(':scope > .rp-subdetails.rp-node-body .rp-attempt').textContent()).includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
+    assert.equal(await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').count(),1);
+    assert((await root.locator(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').textContent()).includes('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE'));
   });
   results.push('F05: current and archived HTML include root acceptance summary/evidence/synthesis attempts without counting the root as an extra leaf');
 

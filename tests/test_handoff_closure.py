@@ -171,7 +171,15 @@ class HandoffClosureTests(unittest.TestCase):
         self.assertEqual(self.p(history=True)['task_history'],[])
         self.closure(source,'accept','final-closure')
         self.assertEqual(self.p(source)['status'],'closed')
-        self.assertEqual(self.raw()['session_work_state']['instances'][source]['nodes'],original)
+        closed=deepcopy(self.raw()['session_work_state']['instances'][source]['nodes'])
+        self.assertIsNotNone(closed['root']['started_at'])
+        self.assertIsNotNone(closed['root']['finished_at'])
+        self.assertEqual(closed['root']['time_boundary_sources']['finished_at'],'closure_fallback')
+        for key in closed:
+            for field in ('started_at','finished_at','time_boundary_sources'):
+                if field in original[key]: closed[key][field]=original[key][field]
+                else: closed[key].pop(field,None)
+        self.assertEqual(closed,original)
         self.assertEqual(self.p(history=True)['task_history'][0]['resolved_leaf_count'],2)
         self.assertEqual(self.p(source)['closure_review']['decision'],'accept')
         self.start(source,'integrate',SUB,retry=True)

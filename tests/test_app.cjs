@@ -137,8 +137,7 @@ async function main() {
   assert((await report.locator('body').textContent()).includes('浏览器隔离检查'));
   record('export_real_click','pass',{files:exports,html_loaded:true});
   // Save only the generated fixture workbook for independent XML/package validation.
-  const endedMetric=report.locator('.rp-metric').filter({hasText:'已结束'}).locator('.rp-number');
-  assert((await endedMetric.textContent()).includes('1/ 2 项'));
+  assert.match(await report.locator('.rp-metrics').textContent(),/已结束\s*1\s*\/\s*2/);
 
   // Observe an actual 5-second polling interval, with backend state changed silently.
   const bRunning=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'running',assignment:fixtureAssignment});

@@ -1,6 +1,6 @@
 {
   "name": "task-progress",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "自动保存多步骤任务的 HTN 计划、依赖与验收证据；写入仅回身份状态，模型按需分层查询，面板独立读取。",
   "author": {
     "name": "machengling",
