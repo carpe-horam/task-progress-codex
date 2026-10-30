@@ -63,6 +63,10 @@ class SelectiveWireTests(unittest.TestCase):
         self.assertEqual(submitted['affected']['review_status'], 'pending')
         self.write('review_task', task_id='work', attempt_id=aid, decision='accept', summary=LONG,
                    evidence=['fixture://' + LONG], reviewer=MAIN)
+        revision = self.read()['state_revision']
+        self.write('review_stage_inventory', task_id='work', attempt_id=aid, expected_state_revision=revision,
+                   decisions=[{'task_id':'work','decision':'continue','reason':'Continue open work'},
+                              {'task_id':'other','decision':'continue','reason':'Still planned'}])
         self.write('reassign_task', task_id='other', assignment=MAIN, reason='Fixture adjustment', reviewer=MAIN)
         self.write('decompose_task', task_id='other', tasks=[{'id': 'child', 'title': 'Child', 'assignment': MAIN}])
         self.write('update_task_context', goal=LONG[:12000], constraints=['Fixture'], acceptance_criteria=['Proof'],

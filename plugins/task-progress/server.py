@@ -1316,6 +1316,7 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         raise ProgressError(f"父任务 {parent_id} 不存在。")
     if parent.get("execution_status") in TERMINAL_EXECUTION_STATUSES:
         raise ProgressError("已结束的任务不能继续分解。")
+    is_addition = bool(parent.get("children"))
     ids = set(nodes) | _historical_ids(data)
     new_nodes: list[tuple[str, dict[str, Any]]] = []
     for item in tasks:
@@ -1338,6 +1339,17 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         if profile is not None and profile not in PROFILES:
             raise ProgressError(f"任务 {node_id} 的 profile 必须是 {PROFILES} 之一。")
         node = _new_node(node_id, title.strip(), parent_id)
+        reason = item.get("addition_reason")
+        precedes = item.get("precedes", [])
+        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+            raise ProgressError(f"任务 {node_id} 的 addition_reason 必须非空。")
+        if not isinstance(precedes, list) or not all(isinstance(value, str) for value in precedes) or len(precedes) != len(set(precedes)):
+            raise ProgressError(f"任务 {node_id} 的 precedes 必须是无重复 ID 列表。")
+        if precedes and not reason:
+            raise ProgressError("插入既有任务的前置条件时必须提供 addition_reason。")
+        if is_addition or reason is not None or precedes:
+            node["addition_reason"] = reason.strip() if reason else "未记录（旧调用）"
+            node["is_added"] = True
         node["depends_on"] = list(dependencies)
         node["dependency_policy"] = policy
         node["profile"] = profile
@@ -1352,13 +1364,28 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         new_nodes.append((node_id, node))
     for node_id, node in new_nodes:
         nodes[node_id] = node
-    try:
-        _validate_network(data)
-    except ProgressError:
-        for node_id, _ in new_nodes:
-            nodes.pop(node_id, None)
-        _validate_network(data)
-        raise
+    for item, (node_id, node) in zip(tasks, new_nodes):
+        for successor_id in item.get("precedes", []):
+            successor = nodes.get(successor_id)
+            if successor is None or successor_id in {key for key, _ in new_nodes}:
+                raise ProgressError(f"后继 {successor_id} 必须是已有任务。")
+            # Changing an already started branch would falsify its execution history.
+            stack = [successor_id]
+            while stack:
+                current = nodes[stack.pop()]
+                if current.get("execution_status") != "pending" or current.get("attempt") or current.get("review_status") == "pending":
+                    raise ProgressError(f"后继 {successor_id} 或其子任务已开始；请先协调并重规划，不能修改既有执行历史。")
+                stack.extend(current.get("children", []))
+            successor.setdefault("depends_on", []).append(node_id)
+        # Persist a useful stable order for same-parent consumers as well as
+        # the dependency edge used by scheduling and the UI's topological sort.
+        sibling_targets = [v for v in item.get("precedes", []) if nodes[v].get("parent_id") == parent_id]
+        if sibling_targets:
+            order = list(nodes)
+            order.remove(node_id)
+            order.insert(min(order.index(v) for v in sibling_targets), node_id)
+            data["nodes"] = nodes = {key: nodes[key] for key in order}
+    _validate_network(data)
 
 
 def _node_is_terminal(node: dict[str, Any]) -> bool:
@@ -1752,6 +1779,10 @@ def decompose_task(
                 raise ProgressError("分解运行中的任务必须提供当前 attempt_id；请先协调停止旧执行者。")
             if attempt_id is not None and attempt_id != parent.get("attempt_id"):
                 raise ProgressError("attempt_id 不匹配，不能用旧尝试分解当前任务。")
+        # Validate on an isolated copy: new edges must never partially mutate a
+        # stored plan when validation fails.
+        data = deepcopy(data)
+        parent = data["nodes"].get(task_id)
         _add_tasks(data, task_id, tasks)
         if task_id == data.get("root_id"):
             data["planning_status"] = "planned"
@@ -1771,10 +1802,18 @@ def decompose_task(
     return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
 
 
+def _supersede_stage_inventory(node: dict[str, Any], reason: str) -> None:
+    attempt_id = node.pop("stage_inventory_due_attempt", None)
+    if attempt_id:
+        node.setdefault("stage_inventories", []).append({"attempt_id": attempt_id, "status": "superseded",
+                                                       "reason": reason, "recorded_at": _now()})
+
+
 def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, kind: str = "execution") -> None:
     _require_execution_metadata(assignment, dispatch_required=kind == "execution")
     assignment = _stamp_assignment(assignment or {}, scope="attempt_start")
     node.pop("invalidated_by", None)
+    _supersede_stage_inventory(node, "阶段重新执行，旧结果的待盘点提醒已失效。")
     node.pop("time_boundary_sources", None)
     node["attempt"] = int(node.get("attempt", 0)) + 1
     node["attempt_id"] = str(uuid.uuid4())
@@ -1823,6 +1862,7 @@ def _record_attempt_result(node: dict[str, Any]) -> None:
 
 
 def _reset_execution(node: dict[str, Any]) -> None:
+    _supersede_stage_inventory(node, "前驱结果变化，阶段结果及待盘点提醒已失效。")
     node.update(execution_status="pending", outcome=None, summary="", evidence=[],
                 assignment={}, attempt_id=None, started_at=None, finished_at=None,
                 dispatch=None, submission=None, review=None, review_status=None)
@@ -2030,6 +2070,9 @@ def update_task(
             node["review_status"] = "pending"
             node["review"] = None
         _record_attempt_result(node)
+        if (node.get("parent_id") == data.get("root_id") and execution_status in TERMINAL_EXECUTION_STATUSES
+                and node.get("review_status") != "pending"):
+            node["stage_inventory_due_attempt"] = node.get("attempt_id")
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data, archive_before=archive_before)
         response_snapshot = _capture_response_snapshot(sid)
@@ -2130,11 +2173,50 @@ def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, s
         node["review_status"] = "accepted" if decision == "accept" else "rejected"
         node["outcome"] = submission["outcome"] if decision == "accept" else "open"
         _record_attempt_result(node)
+        if node.get("parent_id") == data.get("root_id"):
+            node["stage_inventory_due_attempt"] = attempt_id
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
         response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
     return _tool_result("主会话验收决定已独立记录；原始执行提交保持不变。", progress, sid, response_snapshot=response_snapshot)
+
+
+def review_stage_inventory(session_id: str, task_id: str, attempt_id: str,
+                           decisions: list[dict[str, Any]], expected_state_revision: int,
+                           task_instance_id: str | None = None) -> dict[str, Any]:
+    """Record a coordinator's disposition of every currently unresolved leaf."""
+    sid = _normalize_session_id(session_id)
+    with _session_lock(sid):
+        data, stage = _current_task(sid, task_id, task_instance_id)
+        if not isinstance(expected_state_revision, int) or isinstance(expected_state_revision, bool) or _read_order(sid)["state_revision"] != expected_state_revision:
+            raise ProgressError("状态已变化；请重新读取并盘点当前任务树。")
+        if (not attempt_id or stage.get("stage_inventory_due_attempt") != attempt_id
+                or stage.get("attempt_id") != attempt_id or not _node_is_terminal(stage)):
+            raise ProgressError("阶段盘点绑定的 attempt 已过期或无需盘点。")
+        if not isinstance(decisions, list):
+            raise ProgressError("decisions 必须为列表。")
+        unresolved = {key for key, node in data["nodes"].items()
+                      if not node.get("children") and not (node.get("execution_status") == "finished"
+                      and node.get("outcome") == "resolved" and node.get("review_status") != "pending")}
+        normalized = []
+        for item in decisions:
+            if (not isinstance(item, dict) or not isinstance(item.get("task_id"), str)
+                    or item.get("task_id") not in unresolved or item.get("decision") not in ("continue", "obsolete", "covered")):
+                raise ProgressError("每项必须引用未解决叶任务并选择 continue、obsolete 或 covered。")
+            reason = item.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ProgressError("每项盘点必须记录具体原因和证据或下一步。")
+            normalized.append({"task_id": item["task_id"], "decision": item["decision"], "reason": reason.strip()})
+        if len(normalized) != len(unresolved) or {x["task_id"] for x in normalized} != unresolved:
+            raise ProgressError("盘点必须恰好覆盖当前全部未解决叶任务；请刷新任务树后重试。")
+        stage.setdefault("stage_inventories", []).append({"attempt_id": attempt_id, "decisions": normalized, "reviewed_at": _now()})
+        stage.pop("stage_inventory_due_attempt", None)
+        data["revision"] = int(data.get("revision", 0)) + 1
+        _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
+    progress = _progress_payload(data)
+    return _tool_result("阶段盘点已记录；任务原状态和执行历史未被更改。", progress, sid, response_snapshot=response_snapshot)
 
 
 def get_ready_tasks(session_id: str, task_instance_id: str | None = None) -> dict[str, Any]:
@@ -2280,9 +2362,10 @@ def _project_execution_records(progress: dict[str, Any], include_records: bool) 
             reviews.append(source)
         record.update(records_included=include_records, attempt_count=len(attempts), review_record_count=len(reviews),
                       invalidated_result_count=len(source.get("invalidated_results", [])),
-                      reassignment_count=len(source.get("reassignment_history", [])))
+                      reassignment_count=len(source.get("reassignment_history", [])),
+                      stage_inventory_count=len(source.get("stage_inventories", [])))
         if not include_records:
-            for key in ("attempts", "invalidated_results", "reassignment_history"):
+            for key in ("attempts", "invalidated_results", "reassignment_history", "stage_inventories"):
                 record.pop(key, None)
         records.append(record)
     projected[field] = records
@@ -2677,18 +2760,18 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 # Public query responses are selective. The app-only reader above retains its
 # complete current snapshot so UI/export traffic never enters model tool results.
 _QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
-_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history")
+_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories")
 _HISTORY_KINDS = ("history", "task_history", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
                     "percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary")
-_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "attempt_id")
+_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
                            "bind_task_agent", "review_task", "reassign_task", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
-                           "handoff_request", "review_task_closure"))
+                           "handoff_request", "review_task_closure", "review_stage_inventory"))
 
 
 def _query_integer(value: Any, name: str, minimum: int, maximum: int | None = None) -> int:
@@ -2769,6 +2852,11 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
     output["split_review_due_count"] = len(due)
     output["split_review_due_ids"] = list(due)[:20]
     output["split_review_due_ids_has_more"] = len(due) > 20
+    inventory_due = [{"task_id": n["id"], "attempt_id": n["stage_inventory_due_attempt"]}
+                     for n in nodes if n.get("stage_inventory_due_attempt")]
+    output["stage_inventory_due"] = inventory_due[:20]
+    output["stage_inventory_due_count"] = len(inventory_due)
+    output["stage_inventory_due_has_more"] = len(inventory_due) > 20
     if p.get("legacy_history_warning"):
         output["legacy_history_warning"] = p["legacy_history_warning"][:500]
     work = source.get("session_work") or {}
@@ -2858,7 +2946,16 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
             ack.update(request_task_instance_id=request.get("task_instance_id"), request_status=request.get("status"))
     ack["split_review_due_count"] = len(p.get("split_review_due", []))
     ack["next_query"] = {"tool": "get_progress", "view": "overview"}
-    return {"content": [{"type": "text", "text": "已请求展示进度；实际模式由宿主决定。" if name == "render_progress" else "已记录。"}], "structuredContent": ack}
+    stage_done = bool(target and target.get("stage_inventory_due_attempt") and target.get("parent_id") == p.get("root_id")
+                      and target.get("execution_status") in TERMINAL_EXECUTION_STATUSES
+                      and target.get("review_status") != "pending"
+                      and (name == "review_task" or (name == "update_task" and args.get("execution_status") in TERMINAL_EXECUTION_STATUSES)))
+    if stage_done:
+        ack["stage_inventory_due"] = True
+    message = "已请求展示进度；实际模式由宿主决定。" if name == "render_progress" else "已记录。"
+    if stage_done:
+        message += " 主要阶段已结束：继续下一阶段前盘点未闭环任务是否继续、过期或被覆盖，记录原因、证据及后续动作。"
+    return {"content": [{"type": "text", "text": message}], "structuredContent": ack}
 
 
 def _wire_result(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -3275,6 +3372,8 @@ def _task_schema() -> dict[str, Any]:
         "properties": {
             "id": {"type": "string", "description": "当前 task_instance_id 生命周期内唯一的节点 ID；重规划时也不可复用"},
             "title": {"type": "string", "description": "任务标题"},
+            "addition_reason": {"type": "string", "minLength": 1, "description": "执行中追加任务的具体原因；保留为追加标记与审计信息。"},
+            "precedes": {"type": "array", "items": {"type": "string"}, "description": "依赖此新增任务的已有后继 ID；原子加入依赖并排序。后继及其子任务必须尚未开始，且必须提供 addition_reason。"},
             "depends_on": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -3297,6 +3396,19 @@ def _task_schema() -> dict[str, Any]:
 
 
 TOOLS = [
+    {
+        "name": "review_stage_inventory", "title": "记录阶段任务盘点",
+        "description": "主会话在主要阶段结束后盘点全部未解决叶任务。逐项记录继续、过期或已被覆盖及原因/证据或下一步；只记录判断，不改变任务状态或执行历史。基于最新 state_revision 和阶段 attempt；并发变化时重读任务树。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+            "task_id": {"type": "string"}, "attempt_id": {"type": "string"},
+            "expected_state_revision": {"type": "integer", "minimum": 0},
+            "decisions": {"type": "array", "items": {"type": "object", "properties": {
+                "task_id": {"type": "string"}, "decision": {"type": "string", "enum": ["continue", "obsolete", "covered"]},
+                "reason": {"type": "string", "minLength": 1}}, "required": ["task_id", "decision", "reason"]}}
+        }, "required": ["session_id", "task_id", "attempt_id", "expected_state_revision", "decisions"]},
+        "_meta": _data_tool_meta(),
+    },
     {
         "name": "reassign_task", "title": "显式调整计划执行者",
         "description": "仅改派 pending 叶任务，保留 planned_assignment 和改派历史。需主会话 reviewer 与具体 reason；不能转移 running/已结束 attempt，结束后改派须显式重规划。声明未经宿主核验。",
@@ -3450,7 +3562,7 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。拆分应形成至少两个有独立结果边界的子任务；若只能得到一个子任务，保持原节点并补充摘要或依赖即可，无需为形式增加层级。此为规划提示，不改变单子任务追加的兼容行为。拆分时评估可并行的独立工作，默认委派给子智能体；每个子任务都必须提供 assignment.execution_mode（分组节点设 main_session，叶节点按分工设 main_session/subagent）。主会话负责总计划、派发、协调、集成和父级验收；子智能体只执行派发范围并向主会话报告，不验收父节点。Task Progress 不会自动派发。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id；旧尝试以 cancelled 保留，父任务转为等待子任务验收。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -3701,6 +3813,10 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "review_task": lambda args: review_task(
         args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decision"),
         args.get("summary"), args.get("evidence"), args.get("reviewer"), args.get("task_instance_id"),
+    ),
+    "review_stage_inventory": lambda args: review_stage_inventory(
+        args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decisions"),
+        args.get("expected_state_revision"), args.get("task_instance_id"),
     ),
     "consume_display_intent": lambda args: consume_display_intent(args.get("session_id"), args.get("view_id"), args.get("display_intent")),
     "register_ui_view": lambda args: register_ui_view(

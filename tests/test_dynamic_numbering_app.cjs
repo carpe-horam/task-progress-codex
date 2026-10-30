@@ -132,6 +132,19 @@ async function main() {
   const currentNumbers=await historyFrame.locator('#steps > .step[data-root-role="main"] .step-title').evaluateAll(es=>Object.fromEntries(es.map(e=>[e.querySelector('.step-id')?.textContent,e.querySelector('.task-number')?.textContent])));
   assert.equal(currentNumbers['new-first'],'1-1');assert.equal(currentNumbers['new-second'],'1-2');
   cases.push('Actual replan recomputes current numbering while historical snapshot keeps its own order');
+  const live = await host.rpc('init_task_network',{task_title:'Real insertion fixture',tasks:[task('first'),task('later',['first'])]});
+  const liveBinding={session_id:live.structuredContent.session_id,task_instance_id:live.structuredContent.progress.task_instance_id};
+  await host.rpc('decompose_task',{...liveBinding,task_id:'root',tasks:[{...task('added',['first']),precedes:['later'],addition_reason:'Discovered prerequisite'}]});
+  const liveSnapshot=await host.rawRpc('get_progress_view',{...liveBinding});
+  const livePage=await host.page(),liveFrame=await host.mount(livePage,'main',liveSnapshot);
+  const addedRow=liveFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:added"]');
+  const laterRow=liveFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:later"]');
+  assert.equal(await addedRow.locator(':scope > summary .task-number').textContent(),'1-2');
+  assert.equal(await laterRow.locator(':scope > summary .task-number').textContent(),'1-3');
+  assert.equal(await addedRow.locator(':scope > summary .added-badge').textContent(),'追加');
+  assert.equal(await addedRow.locator(':scope > summary .added-badge').getAttribute('title'),'追加原因：Discovered prerequisite');
+  cases.push('Real backend insertion changes dependency and displays added badge and reason');
+  await livePage.close();
   assert.deepEqual(host.errors,[]);
   if(artifacts){
     fs.mkdirSync(artifacts,{recursive:true});

@@ -60,3 +60,9 @@ See [request routing guidance](../plugins/task-progress/skills/track-progress/re
 Backend owner: `plugins/task-progress/server.py`, Python backend tests except the policy-specific test. UI owner: `plugins/task-progress/app.html`, JavaScript browser tests/helpers. Workflow owner: skill, hooks guidance, READMEs, CHANGELOG, and policy-specific hook/skill tests. Root owns this contract and integration reports/commit. All work shares the existing worktree; no commits or installation by subagents.
 
 Acceptance covers planned-role mismatch rejection; explicit reassignment; genuine dispatch ID binding without snapshot mutation; before/after-review dependency gates; rejection/retry/stale-review behavior; group role/evidence/unresolved-child gates; legacy reads; and visible pending/accepted/rejected review data in both the app and export.
+
+## 阶段盘点与追加任务
+
+主要阶段（根任务的直接子阶段）结束后，主会话应在推进下一阶段前读取 `get_progress` 的 `stage_inventory_due`，分页查看任务树并核对未解决任务的证据。对每个未解决叶任务判断继续、过期或已被后续结果覆盖，使用 `review_stage_inventory` 将 `continue`、`obsolete` 或 `covered` 及具体原因、证据或下一步绑定到该阶段的 attempt。提交使用读取时的 `state_revision`；状态变化时重新读取。盘点记录不会自动取消任务、修改依赖或把 open 改为 resolved；需要继续或关闭时按已有重试、重规划、移交和收尾规则操作。盘点提醒可恢复，但不阻止并行任务或强制停止后续执行，最终仍依赖主会话执行盘点。
+
+使用 `decompose_task` 追加问题时，在新增节点填写 `addition_reason`，并通过 `precedes` 指定依赖这个新增节点的已有后继；新增节点自己的前置仍用 `depends_on`。服务端原子校验并更新后继依赖，界面按依赖顺序显示“追加”及原因。后继或其子任务已经开始时拒绝静默修改，须先协调并显式重规划。旧调用不提供原因时保留兼容，标记为“未记录（旧调用）”，不推测历史原因。
