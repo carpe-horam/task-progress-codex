@@ -77,6 +77,43 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(server.get_progress(self.sid)["structuredContent"]["progress"]["stage_inventory_due"], [])
         self.assertEqual(self.node("b")["execution_status"], "pending")
 
+    def test_stage_inventory_allows_empty_decisions_only_for_existing_due(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B"})
+        self.start("a"); self.finish("a")
+        self.start("b"); self.finish("b")
+        overview = server.get_progress(self.sid)["structuredContent"]
+        attempt = self.node("a")["attempt_id"]
+        server.review_stage_inventory(self.sid, "a", attempt, [], overview["state_revision"])
+        self.assertEqual(self.node("a")["stage_inventories"][-1]["decisions"], [])
+        revision = server.get_progress(self.sid)["structuredContent"]["state_revision"]
+        self.assertRejectedUnchanged(lambda: server.review_stage_inventory(self.sid, "a", attempt, [], revision))
+
+    def test_stage_inventory_truncated_overview_can_be_recovered_from_tree_pages(self):
+        tasks = [{"id": f"task_{i}", "title": f"Task {i}"} for i in range(21)]
+        self.add(*tasks)
+        for task in tasks:
+            self.start(task["id"]); self.finish(task["id"])
+        overview = server.get_progress(self.sid)["structuredContent"]
+        self.assertEqual(overview["progress"]["stage_inventory_due_count"], 21)
+        self.assertTrue(overview["progress"]["stage_inventory_due_has_more"])
+        self.assertEqual(len(overview["progress"]["stage_inventory_due"]), 20)
+        revision = overview["state_revision"]
+        reminders = {}
+        offset = 0
+        while True:
+            page = server.get_progress(self.sid, view="tree", depth=1, offset=offset, limit=7,
+                                       expected_state_revision=revision)["structuredContent"]["progress"]
+            reminders.update({node["id"]: node["stage_inventory_due_attempt"] for node in page["nodes"]
+                              if node.get("stage_inventory_due_attempt")})
+            if not page["pagination"]["has_more"]:
+                break
+            offset = page["pagination"]["next_offset"]
+        self.assertEqual(set(reminders), {task["id"] for task in tasks})
+        server.review_stage_inventory(self.sid, "task_20", reminders["task_20"], [], revision)
+        self.assertRejectedUnchanged(lambda: server.review_stage_inventory(self.sid, "task_0", reminders["task_0"], [], revision))
+        current = server.get_progress(self.sid)["structuredContent"]
+        server.review_stage_inventory(self.sid, "task_0", reminders["task_0"], [], current["state_revision"])
+
     def test_idle_session_locks_are_released_in_a_long_lived_service(self):
         import gc
         import uuid

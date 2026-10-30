@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">Interactive demo</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.5">Get 0.2.5</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.6">Get 0.2.6</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -29,7 +29,7 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-Task Progress 0.2.5 installs or updates the shared local service on first connection. **Restart Codex** after installation. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
+Task Progress 0.2.6 installs or updates the shared local service on first connection. **Restart Codex** after installation. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
 
 ## Getting started
 
