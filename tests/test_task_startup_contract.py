@@ -68,6 +68,10 @@ class TaskStartupContractTests(unittest.TestCase):
         self.assertEqual(progress["planning_note"], "One self-contained documentation lookup")
         started = server.update_task(sid, "root", "running", assignment={"execution_mode": "main_session"})
         self.assertEqual(started["structuredContent"]["progress"]["nodes"][0]["execution_status"], "running")
+        attempt = started["structuredContent"]["progress"]["nodes"][0]["attempt_id"]
+        finished = server.update_task(sid, "root", "finished", outcome="resolved", attempt_id=attempt)
+        node = finished["structuredContent"]["progress"]["nodes"][0]
+        self.assertEqual((node["execution_status"], node["outcome"]), ("finished", "resolved"))
 
     def test_initialization_retry_is_idempotent_and_conflicts_are_rejected(self):
         tasks = [

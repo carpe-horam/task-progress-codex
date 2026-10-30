@@ -16,7 +16,7 @@ PLUGIN = ROOT / "plugins" / "task-progress"
 spec = importlib.util.spec_from_file_location("delegation_policy_server", PLUGIN / "server.py")
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
-SKILL = PLUGIN / "skills" / "track-progress" / "SKILL.md"
+REFERENCES = PLUGIN / "skills" / "track-progress" / "references"
 
 
 class DelegationPolicyTests(unittest.TestCase):
@@ -32,7 +32,9 @@ class DelegationPolicyTests(unittest.TestCase):
         self.examples = {
             name: json.loads(body) for name, body in re.findall(
                 r"<!-- delegation-example:(\w+) -->\s*```json\s*(.*?)\s*```",
-                SKILL.read_text(), re.S,
+                "\n".join((REFERENCES / name).read_text() for name in (
+                    "htn-planning.md", "htn-dispatch.md", "htn-review.md",
+                )), re.S,
             )
         }
         initialized = self.rpc("init_task_network", task_title="Exercise published delegation workflow")
