@@ -1,8 +1,8 @@
 # 安装与服务管理
 
-[返回 README](../README.md) · [0.2.1 历史发布说明](releases/0.2.1.md)
+[返回 README](../README.md) · [0.2.2 发布说明](releases/0.2.2.md)
 
-本文描述 Task Progress 0.2.1 的跨平台自动服务启动与管理。需要固定版本时，可在首次添加 Marketplace 时使用 `--ref <release-tag>`。
+本文描述 Task Progress 0.2.2 的跨平台自动服务启动与管理。需要固定版本时，可在首次添加 Marketplace 时使用 `--ref <release-tag>`。
 
 ### 平台与运行前提
 

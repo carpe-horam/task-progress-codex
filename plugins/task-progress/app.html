@@ -60,6 +60,8 @@ h1{font-size:18px;line-height:1.35}
 .step-main{grid-template-columns:20px minmax(0,1fr) auto;gap:7px}
 .step-icon{width:19px;height:19px}
 .step-title{padding-top:1px;font-size:12px;line-height:1.35}
+.retry-badge{display:inline-block;margin-left:6px;padding:1px 5px;border:1px solid #705937;border-radius:4px;background:#3b3021;color:#f0ca8b;font-size:10px;font-weight:600;line-height:1.5;white-space:nowrap;vertical-align:1px}
+:root[data-theme="light"] .retry-badge{color:#80551c;background:#fff3dd;border-color:#dfc18e}
 .step-right{gap:6px;padding-top:2px;font-size:9px}
 .step-elapsed{font-size:9px}
 .task-tree .children{margin-top:5px;margin-left:6px;padding-left:10px}
@@ -1408,6 +1410,11 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
     const number = document.createElement('span'); number.className = 'task-number';
     number.textContent = value; return number;
   }
+  function appendRetryBadge(title, attempt) {
+    if (!Number.isSafeInteger(attempt) || attempt <= 1) return;
+    const badge = document.createElement('span'); badge.className = 'retry-badge';
+    badge.textContent = '↻ 已重试 ' + (attempt - 1) + ' 次'; title.append(badge);
+  }
   function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false, timeContext = null, rootContext = null, rootStart = 1) {
     const fragment = document.createDocumentFragment();
     const byId = new Map(nodes.map(node => [String(node.id), node]));
@@ -1468,6 +1475,9 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const title = document.createElement('span'); title.className = 'step-title';
       const titleText = document.createElement('span'); titleText.className = 'task-title-text'; titleText.textContent = String(node.title || '未命名任务');
       title.append(taskNumber(number), titleText);
+      // Group attempts also include synthesis/closure records, so their count
+      // does not describe retries of an execution task.
+      if (!childIds.length) appendRetryBadge(title, node.attempt);
       if (id === String(rootId) && rootContext) {
         li.dataset.taskInstance = rootContext.progress.task_instance_id || ''; li.dataset.rootRole = rootContext.role;
         const role=document.createElement('span'); role.className='root-role'; role.textContent=rootContext.role==='main'?'主任务':'并行任务'; title.insertBefore(role, titleText);
@@ -1562,6 +1572,7 @@ document.addEventListener('keydown',e=>{const tab=e.target.closest('[data-sheet-
       const row = document.createElement(hasNote ? 'summary' : 'div'); row.className = 'step-main';
       const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true'); icon.textContent = info.key === 'completed' ? '✓' : info.key === 'running' ? '●' : String(position + 1);
       const title = document.createElement('span'); title.className = 'step-title'; title.textContent = String(step.description || '未命名步骤');
+      appendRetryBadge(title, step.attempt);
       appendExecutionSummary(title, step.assignment, step.status);
       const right = document.createElement('span'); right.className = 'step-right';
       const label = document.createElement('span'); label.textContent = timeContext && info.key === 'running' ? timeContext.runningLabel : info.label; right.append(label);
