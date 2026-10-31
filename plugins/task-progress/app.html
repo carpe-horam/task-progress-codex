@@ -432,7 +432,7 @@ h1{font-size:18px;line-height:1.35}
       elapsed.textContent = timeContext.label + ' —';
       elapsed.title = '开始 ' + date(item.started_at) + '；快照截止时间未记录';
     } else if (terminal && finish === null) {
-      elapsed.textContent = '当前尝试耗时 —';
+      elapsed.textContent = '耗时 —';
       elapsed.title = '开始 ' + date(item.started_at) + '；未记录结束时间';
     } else {
       const seconds = Math.max(0, Math.floor(((finish ?? cutoff ?? Date.now()) - start) / 1000));
@@ -440,8 +440,8 @@ h1{font-size:18px;line-height:1.35}
       const minutes = Math.floor(seconds % 3600 / 60);
       const remaining = seconds % 60;
       const duration = hours ? hours + '小时' + minutes + '分' + remaining + '秒' : minutes ? minutes + '分' + remaining + '秒' : remaining + '秒';
-      elapsed.textContent = (finish !== null ? '当前尝试耗时 ' : timeContext ? timeContext.label + '（当前尝试） ' : '当前尝试已用 ') + duration;
-      elapsed.title = '开始 ' + date(item.started_at) + (finish !== null ? '；结束 ' + date(item.finished_at) : timeContext ? '；快照截止 ' + date(timeContext.cutoff) : '；每 5 秒刷新');
+      elapsed.textContent = (finish !== null ? '耗时 ' : timeContext ? timeContext.label + ' ' : '已用 ') + duration;
+      elapsed.title = '当前尝试；开始 ' + date(item.started_at) + (finish !== null ? '；结束 ' + date(item.finished_at) : timeContext ? '；快照截止 ' + date(timeContext.cutoff) : '；每 5 秒刷新');
     }
     target.classList.add('has-elapsed'); target.append(elapsed);
   }
