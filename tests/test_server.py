@@ -16,6 +16,37 @@ ASSIGNMENT = {"execution_mode": "main_session", "model": "test-fixture", "reason
 
 
 class ProgressTests(unittest.TestCase):
+    def test_same_failure_retry_review_and_streak_boundaries(self):
+        self.add({"id": "a", "title": "A"}, {"id": "b", "title": "B"})
+        def end(reason=None, status="failed", outcome=None):
+            aid = self.node("a")["attempt_id"]
+            args = {"session_id": self.sid, "task_id": "a", "execution_status": status, "attempt_id": aid}
+            if outcome is not None:
+                args["outcome"] = outcome
+            if reason is not None:
+                args["failure_reason"] = reason
+            server.TOOL_HANDLERS["update_task"](args)
+        def retry():
+            args = {"session_id": self.sid, "task_id": "a", "execution_status": "running", "retry": True, "assignment": ASSIGNMENT}
+            return server._wire_result("update_task", args, server.update_task(**args))
+        self.start("a"); end("network timeout")
+        self.assertNotIn("retry_review_due", retry()["structuredContent"])
+        end("请求一直超时", "finished", "open")
+        warning = retry()
+        self.assertEqual(warning["structuredContent"]["retry_review_due"]["consecutive_attempts"], 2)
+        self.assertEqual([a["failure_reason"] for a in warning["structuredContent"]["retry_review_due"]["recent_attempts"]], ["network timeout", "请求一直超时"])
+        self.assertIn("判断是否为相同或相关问题", warning["content"][0]["text"])
+        end("different reason")
+        self.assertEqual(retry()["structuredContent"]["retry_review_due"]["consecutive_attempts"], 3)
+        end(None)
+        warning = retry()["structuredContent"]["retry_review_due"]
+        self.assertEqual(warning["consecutive_attempts"], 4)
+        self.assertEqual(warning["recent_attempts"][-1]["failure_reason"], "")
+        with self.assertRaises(server.ProgressError):
+            server.update_task(self.sid, "a", "finished", outcome="resolved", attempt_id=self.node("a")["attempt_id"], failure_reason="bad")
+        end(status="finished", outcome="resolved")
+        self.assertNotIn("retry_review_due", retry()["structuredContent"])
+
     def test_append_inserts_real_pending_dependency_with_reason_atomically(self):
         self.add({"id": "first", "title": "First"}, {"id": "later", "title": "Later", "depends_on": ["first"]})
         self.add({"id": "inserted", "title": "New issue", "depends_on": ["first"],
