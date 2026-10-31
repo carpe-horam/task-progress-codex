@@ -1854,11 +1854,29 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
 def _record_attempt_result(node: dict[str, Any]) -> None:
     if node.get("attempts") and node.get("attempt_id"):
         node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
-            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status"
+            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status", "failure_reason"
         )})
         if not _valid_boundary(node["attempts"][-1].get("started_at")):
             node["attempts"][-1]["started_at"] = node.get("started_at")
             node["attempts"][-1]["time_boundary_sources"] = deepcopy(node.get("time_boundary_sources", {}))
+
+
+def _retry_review(node: dict[str, Any]) -> dict[str, Any] | None:
+    streak = []
+    for attempt in reversed(node.get("attempts", [])[:-1]):
+        if (attempt.get("kind", "execution") != "execution"
+                or not (attempt.get("execution_status") == "failed"
+                or (attempt.get("execution_status") == "finished" and attempt.get("outcome") == "open"))):
+            break
+        streak.append(attempt)
+    if len(streak) < 2:
+        return None
+    return {"task_id": node["id"], "consecutive_attempts": len(streak),
+            "recent_attempts": [{"attempt_id": item.get("attempt_id"),
+                                 "failure_reason": (item.get("failure_reason") or "")[:500],
+                                 "summary": (item.get("summary") or "")[:500],
+                                 "truncated": len(item.get("failure_reason") or "") > 500 or len(item.get("summary") or "") > 500}
+                                for item in reversed(streak[:2])]}
 
 
 def _reset_execution(node: dict[str, Any]) -> None:
@@ -1923,6 +1941,7 @@ def update_task(
     retry: bool = False,
     assignment: dict[str, Any] | None = None,
     task_instance_id: str | None = None,
+    failure_reason: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     node_id = _validate_node_id(task_id)
@@ -1940,6 +1959,12 @@ def update_task(
         raise ProgressError("retry=true 只适用于重新进入 running 状态。")
     if not isinstance(summary, str):
         raise ProgressError("summary 必须是字符串。")
+    if failure_reason is not None:
+        if not isinstance(failure_reason, str) or not failure_reason.strip():
+            raise ProgressError("failure_reason 必须是非空字符串。")
+        if not (execution_status == "failed" or (execution_status == "finished" and outcome == "open")):
+            raise ProgressError("failure_reason 仅适用于 failed 或 finished/open 的尝试。")
+        failure_reason = failure_reason.strip()
     if evidence is None:
         evidence = []
     if not isinstance(evidence, list) or not all(isinstance(item, str) for item in evidence):
@@ -1959,6 +1984,8 @@ def update_task(
         node = data["nodes"].get(node_id)
         if node is None:
             raise ProgressError(f"当前 epoch 中不存在任务 {node_id}；旧 epoch 的结果不会覆盖新计划。")
+        if failure_reason is not None and node.get("children"):
+            raise ProgressError("failure_reason 仅适用于叶任务的执行尝试。")
         previous_status = node["execution_status"]
         if (data.get("parallel_request_id") and execution_status == "running" and not node.get("children")
                 and (normalized_assignment or node.get("assignment") or {}).get("execution_mode") != "subagent"):
@@ -2039,6 +2066,10 @@ def update_task(
                 _begin_attempt(node, normalized_assignment, kind=kind)
         node["execution_status"] = execution_status
         node["outcome"] = outcome
+        if previous_status != "running" and execution_status == "running":
+            node.pop("failure_reason", None)
+        if failure_reason is not None:
+            node["failure_reason"] = failure_reason
         if summary:
             node["summary"] = summary
         if evidence:
@@ -2077,7 +2108,10 @@ def update_task(
         _write(sid, data, archive_before=archive_before)
         response_snapshot = _capture_response_snapshot(sid)
     progress = _progress_payload(data)
-    return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
+    result = _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
+    if retry and execution_status == "running":
+        result["structuredContent"]["retry_review_due"] = _retry_review(node)
+    return result
 
 
 def _current_task(sid: str, task_id: str, task_instance_id: str | None):
@@ -2955,6 +2989,12 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
     message = "已请求展示进度；实际模式由宿主决定。" if name == "render_progress" else "已记录。"
     if stage_done:
         message += " 主要阶段已结束：继续下一阶段前盘点未闭环任务是否继续、过期或被覆盖，记录原因、证据及后续动作。"
+    retry_review = source.get("retry_review_due")
+    if name == "update_task" and retry_review:
+        ack["retry_review_due"] = retry_review
+        message += (f" 连续 {retry_review['consecutive_attempts']} 次未解决：请比较回执中的最近两次原因和摘要，"
+                    "判断是否为相同或相关问题；如有需要，评估优化或重新规划任务并记录判断与下一步。"
+                    "信息不足时读取 attempts 记录，不要假定原因相同。")
     return {"content": [{"type": "text", "text": message}], "structuredContent": ack}
 
 
@@ -3593,6 +3633,7 @@ TOOLS = [
                 },
                 "outcome": {"type": "string", "enum": list(OUTCOMES), "description": "finished 时必填，区分已解决与仍开放"},
                 "summary": {"type": "string"},
+                "failure_reason": {"type": "string", "description": "叶任务 failed 或 finished/open 时记录明确的失败原因；连续两次未解决后重试会提供最近原因和摘要，提示 agent 判断是否相关。"},
                 "evidence": {"type": "array", "items": {"type": "string"}},
                 "attempt_id": {"type": "string", "description": "running 任务返回的当前尝试 ID"},
                 "retry": {"type": "boolean", "description": "从终态重新进入 running 时设为 true"},
@@ -3851,6 +3892,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("retry", False),
         args.get("assignment"),
         args.get("task_instance_id"),
+        args.get("failure_reason"),
     ),
     "get_ready_tasks": lambda args: get_ready_tasks(args.get("session_id"), args.get("task_instance_id")),
     "rebuild_task_network": lambda args: rebuild_task_network(

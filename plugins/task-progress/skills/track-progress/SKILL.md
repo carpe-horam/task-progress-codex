@@ -47,6 +47,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 遇到以下情况时，执行对应动作；多项同时发生时，分别处理。
 
 - **任务开始、状态变化、等待、阻塞或完成** → 及时更新对应节点。真实工作仍在运行时保持 `running`，不要把等待记成完成。
+- **叶任务失败或以 open 收尾** → 原因明确时填写 `failure_reason`，不明确时不猜测。重试回执出现 `retry_review_due` 时，结合最近尝试的原因和摘要判断问题是否相同或相关；必要时评估优化或重新规划，记录判断和下一步；详见 [重试与重规划](references/htn-retry.md)。
 - **主会话切换到其他工作** → 检查原叶节点是否有独立继续的实际工作。若没有，先以 `finished/open` 收束并记录剩余工作；恢复时用新 attempt 重试。真实运行中的工作可保持 `running`。详见 [规划与执行生命周期](references/planning-and-lifecycle.md)。
 - **主会话完成自执行叶任务** → 按实际结果收束，不把未解决工作记为成功。
 - **子智能体报告 `finished`** → 这只是待复核提交。先读 [HTN 验收](references/htn-review.md)；主会话读取 submission 和 evidence，再调用 `review_task` 接受或退回。待复核结果不能放行依赖。
