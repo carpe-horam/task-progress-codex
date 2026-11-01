@@ -88,7 +88,7 @@ async function main() {
     const oldFrame = await mount('old',first);
     const running=await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Complete isolated lifecycle fixture'}});
     await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'finished',outcome:'resolved',attempt_id:running.structuredContent.progress.nodes[0].attempt_id});
-    const second = await rpc('init_task_network',{session_id:sessionId,task_title:'当前任务',atomic_reason:'Isolated lifecycle current fixture'});
+    const second = await rpc('init_task_network',{session_id:sessionId,task_relationship:'independent',new_task_reason:'Independent lifecycle fixture',task_title:'当前任务',atomic_reason:'Isolated lifecycle current fixture'});
     const latestFrame = await mount('latest',second);
     await latestFrame.locator('#task-title').filter({hasText:'当前任务'}).waitFor();
     const tabFrame = await mount('tab',second,'fullscreen');

@@ -40,7 +40,7 @@ class StateRevisionFixTests(unittest.TestCase):
         self.temp.cleanup()
 
     def initialize(self, sid=None, key="request-A", title="Task A"):
-        return server.init_task_network(title, sid, atomic_reason="One isolated operation", request_id=key, new_task_reason="Explicit new fixture target; prior stopped fixture archived")
+        return server.init_task_network(title, sid, atomic_reason="One isolated operation", request_id=key, new_task_reason="Explicit new fixture target; prior stopped fixture archived", task_relationship="independent")
 
     def unchanged_on_rejection(self, sid, action):
         before = server._session_file(sid).read_bytes() if server._session_file(sid).exists() else None
@@ -301,7 +301,7 @@ print(json.dumps([r["session_id"],r["progress"]["task_instance_id"],r["progress"
                 old = content(server.init_task_network("Old task", sid, atomic_reason="One old task"))
                 old_source = dict(view_sequence=old["view_sequence"], state_revision=old["state_revision"], task_instance_id=old["progress"]["task_instance_id"])
                 server.register_ui_view(sid, "tab", **old_source, display_mode=initial_mode, mode_generation=0)
-                new = content(server.init_task_network("New task", sid, atomic_reason="One new task", new_task_reason="New view fixture target; old pending fixture archived"))
+                new = content(server.init_task_network("New task", sid, atomic_reason="One new task", new_task_reason="New view fixture target; old pending fixture archived", task_relationship="independent"))
                 new_source = dict(view_sequence=new["view_sequence"], state_revision=new["state_revision"], task_instance_id=new["progress"]["task_instance_id"])
                 server.register_ui_view(sid, "new-inline", **new_source, mode_generation=0)
                 # generation 1's fullscreen registration carries the polled new

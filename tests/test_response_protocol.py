@@ -49,7 +49,7 @@ class ResponseProtocolTests(unittest.TestCase):
     def test_compact_default_and_mutation_preserve_full_history_on_demand(self):
         server.rebuild_task_network(self.sid, "Plan revision")
         result = server.init_task_network("Explicit next goal", self.sid,
-            atomic_reason="One lookup", new_task_reason="User requests new goal; old plan remains unresolved")
+            atomic_reason="One lookup", new_task_reason="User requests new goal; old plan remains unresolved", task_relationship="independent")
         p = progress(result)
         self.assertFalse(p["history_included"])
         self.assertEqual(p["history_summary"], {"task_count": 1, "plan_count": 0, "legacy_task_count": 0})
@@ -70,15 +70,41 @@ class ResponseProtocolTests(unittest.TestCase):
 
     def test_explicit_new_goal_cannot_archive_running_or_pending_review_work(self):
         aid = self.start()
-        self.unchanged_error(lambda: server.init_task_network("New", self.sid, new_task_reason="New user target"), "运行")
+        self.unchanged_error(lambda: server.init_task_network("New", self.sid, new_task_reason="New user target", task_relationship="independent"), "运行")
         server.bind_task_agent(self.sid, "work", aid, "/root/actual")
         server.update_task(self.sid, "work", "finished", "resolved", "Output", ["fixture://output"], aid)
-        self.unchanged_error(lambda: server.init_task_network("New", self.sid, new_task_reason="New user target"), "待验收")
+        self.unchanged_error(lambda: server.init_task_network("New", self.sid, new_task_reason="New user target", task_relationship="independent"), "待验收")
         p = progress(server.get_progress_view(self.sid))
         self.assertEqual(p["pending_review_count"], 1)
         action = next(x for x in p["next_actions"] if "review_task(work)" in x)
         for token in (aid, "decision=accept|reject", "summary", "evidence", "main_session"):
             self.assertIn(token, action)
+
+    def test_replan_preserves_identity_and_requires_explicit_independent_replacement(self):
+        self.unchanged_error(lambda: server.init_task_network("Goal next plan", self.sid,
+            new_task_reason="Archive and start a new plan for the same goal"), "rebuild_task_network")
+        self.unchanged_error(lambda: server.init_progress(["Next plan"], session_id=self.sid,
+            new_task_reason="Continue the same goal"), "rebuild_task_network")
+        rebuilt = progress(server.rebuild_task_network(self.sid, "Continue the same goal"))
+        self.assertEqual(rebuilt["task_instance_id"], self.instance)
+        self.assertEqual(rebuilt["epoch"], 1)
+        self.assertEqual(rebuilt["history_summary"]["plan_count"], 1)
+        self.assertEqual(rebuilt["history_summary"]["task_count"], 0)
+        self.unchanged_error(lambda: server.init_task_network("Independent", self.sid,
+            task_relationship="independent"), "new_task_reason")
+
+    def test_resolved_task_still_requires_independent_declaration(self):
+        p = progress(server.init_task_network("Atomic" , atomic_reason="Single fixture"))
+        sid, iid = p["session_id"], p["task_instance_id"]
+        started = progress(server.update_task(sid, p["root_id"], "running", assignment=MAIN))
+        aid = next(node for node in started["nodes"] if node["id"] == p["root_id"])["attempt_id"]
+        server.update_task(sid, p["root_id"], "finished", "resolved", "Done", ["fixture://done"], aid)
+        with self.assertRaisesRegex(server.ProgressError, "rebuild_task_network"):
+            server.init_task_network("Next plan", sid, new_task_reason="New plan for same goal")
+        next_task = progress(server.init_task_network("Other goal", sid, atomic_reason="Single fixture",
+            task_relationship="independent", new_task_reason="Independent next goal; previous resolved"))
+        self.assertNotEqual(next_task["task_instance_id"], iid)
+        self.assertEqual(next_task["history_summary"]["task_count"], 1)
 
     def test_spawn_alias_is_pending_until_actual_returned_id_is_bound(self):
         aid = self.start({**SUB, "agent_name": "planned-alias"})

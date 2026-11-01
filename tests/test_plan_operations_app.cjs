@@ -1,0 +1,62 @@
+/* Actual isolated server + simulated host: lazy snapshot/revision UI. */
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+const {createHost} = require('./browser_host.cjs');
+let host;
+async function main() {
+  host = await createHost();
+  const main = {execution_mode:'main_session', self_execution_reason:'Isolated browser fixture'};
+  const init = await host.rpc('init_task_network', {task_title:'Snapshot fixture', tasks:[
+    {id:'a', title:'A', assignment:main}, {id:'b', title:'B', assignment:main, depends_on:['a']}]});
+  const sid=init.structuredContent.session_id, iid=init.structuredContent.task_instance_id;
+  await host.rpc('snapshot_task_network',{session_id:sid, task_instance_id:iid, snapshot_id:'before', reason:'Capture without stopping'});
+  const overview=await host.rpc('get_progress',{session_id:sid, task_instance_id:iid});
+  await host.rpc('revise_task_plan',{session_id:sid, task_instance_id:iid, task_id:'b', reason:'Independent B',
+    expected_epoch:overview.structuredContent.progress.epoch, expected_revision:overview.structuredContent.progress.revision, depends_on:[]});
+  const compact=await host.rpc('get_progress_view',{session_id:sid});
+  const page=await host.page(), frame=await host.mount(page,'main',compact);
+  assert((await frame.locator('#history-title').textContent()).includes('快照 1 · 修订 1'));
+  await frame.locator('#history-title').click();
+  await frame.locator('#history-list').filter({hasText:'计划快照'}).waitFor();
+  const history=await frame.locator('#history-list').textContent();
+  assert(history.includes('Capture without stopping') && history.includes('Independent B'));
+  await page.close();
+  const longReason='x'.repeat(29999)+'😀</script>TAIL';
+  await host.rpc('snapshot_task_network',{session_id:sid,task_instance_id:iid,snapshot_id:'long',reason:longReason});
+  const next=await host.rpc('init_task_network',{session_id:sid,task_title:'Independent fixture',atomic_reason:'One fixture',
+    task_relationship:'independent',new_task_reason:'Independent test target'});
+  const nextId=next.structuredContent.task_instance_id;
+  await host.rpc('snapshot_task_network',{session_id:sid,task_instance_id:nextId,snapshot_id:'current',reason:'Current snapshot'});
+  const peer=await host.rpc('route_request',{session_id:sid,task_instance_id:nextId,request_id:'peer',request_text:'Parallel fixture',
+    task_title:'Peer fixture',mode:'parallel',reason:'Isolated peer',acceptance_criteria:['Delivery']});
+  const peerId=peer.structuredContent.request_task_instance_id;
+  await host.rpc('snapshot_task_network',{session_id:sid,task_instance_id:peerId,snapshot_id:'peer-snapshot',reason:'Parallel snapshot'});
+  const current=await host.rpc('get_progress_view',{session_id:sid});
+  const exp=await host.exportReport(current);
+  const html=await exp.report.locator('#rp-plan-operations').textContent();
+  assert(html.includes('历史任务') && html.includes('当前任务') && html.includes('并行任务') && html.includes('peer-snapshot') && html.includes('原位修订') && html.includes('😀</script>TAIL'));
+  const save=await exp.hostPage.evaluate(()=>window.host.calls.findLast(c=>c.name==='save_export_files'));
+  const workbook=save.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path;
+  execFileSync('python3',['-c',`import json,sys,zipfile,xml.etree.ElementTree as E
+ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main','r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+with zipfile.ZipFile(sys.argv[1]) as z:
+ w=E.fromstring(z.read('xl/workbook.xml')); sheets=w.find('s:sheets',ns); index=next(i for i,s in enumerate(sheets,1) if s.attrib['name']=='快照与修订')
+ rows=E.fromstring(z.read(f'xl/worksheets/sheet{index}.xml')).findall('.//s:row',ns)
+ groups={}
+ for row in rows[1:]:
+  vals={''.join(c.attrib['r'].rstrip('0123456789')):''.join(c.itertext()) for c in row.findall('s:c',ns)}
+  groups.setdefault(vals['E'],[]).append((int(vals['I']),vals['J']))
+ stored=json.load(open(sys.argv[2])); expected={x['snapshot_id']:x for t in stored['task_history'] for x in t.get('plan_snapshots',[])}
+ expected.update({x['revision_id']:x for t in stored['task_history'] for x in t.get('plan_revisions',[])})
+ expected.update({x['snapshot_id']:x for x in stored['plan_snapshots']})
+ for peer in stored.get('session_work_state',{}).get('instances',{}).values(): expected.update({x['snapshot_id']:x for x in peer.get('plan_snapshots',[])})
+ assert set(groups)==set(expected),(groups.keys(),expected.keys())
+ for key,parts in groups.items(): assert json.loads(''.join(v for _,v in sorted(parts)))==expected[key],key
+ assert len(groups['long'])>1
+`,workbook,path.join(host.temp,'sessions',sid+'.json')]);
+  await exp.report.close(); await exp.hostPage.close();
+  assert.deepEqual(host.errors,[]);
+  console.log('Snapshot and revision displayed and exported, including archived records, exact JSON and long Unicode chunks.');
+}
+main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>host?.close());

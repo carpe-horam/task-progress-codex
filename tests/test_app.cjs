@@ -158,7 +158,7 @@ async function main() {
   await rpc('update_task',{session_id:sid,task_id:'root-e1',execution_status:'finished',outcome:'resolved',summary:'Browser fixture children verified',evidence:['isolated-browser-fixture'],assignment:fixtureAssignment});
 
   // Cross-task late notifications cannot restore an archived task.
-  let next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务'});
+  let next=await rpc('init_task_network',{session_id:sid,task_title:'新的任务',task_relationship:'independent',new_task_reason:'Independent UI fixture'});
   next=await rpc('get_progress_view',{session_id:sid,include_history:true});
   const archivedC=next.structuredContent.progress.task_history[0].nodes.find(n=>n.id==='c');
   assert.deepEqual(archivedC.attempts.map(attempt=>attempt.attempt),[1,2]);

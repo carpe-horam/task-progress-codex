@@ -91,7 +91,7 @@ async function main() {
     const sessionId = old.structuredContent.session_id;
     const oldRunning=await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Complete isolated view fixture before new task'}});
     await rpc('update_task',{session_id:sessionId,task_id:'root',execution_status:'finished',outcome:'resolved',attempt_id:oldRunning.structuredContent.progress.nodes[0].attempt_id});
-    await rpc('init_task_network',{session_id:sessionId,task_title:'Current task',atomic_reason:'One isolated UI fixture'});
+    await rpc('init_task_network',{session_id:sessionId,task_relationship:'independent',new_task_reason:'Independent view fixture',task_title:'Current task',atomic_reason:'One isolated UI fixture'});
     const staleFull = await mount('stale-full',old,'fullscreen');
     await staleFull.locator('#task-title').filter({hasText:'Current task'}).waitFor({timeout:8000});
     await staleFull.locator('.card:not(.inline-stale)').waitFor({state:'visible'});

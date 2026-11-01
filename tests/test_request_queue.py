@@ -269,7 +269,7 @@ class RequestQueueTests(unittest.TestCase):
         self.assert_rejected(lambda: server.init_task_network("Bypass queue", session_id=self.sid, new_task_reason="Try replace"))
         server.cancel_request(self.sid, self.a, "B", "User withdrew queued request")
         self.assertTrue(self.p()["session_work"]["can_finish_session"])
-        replacement = server.init_task_network("Next goal", session_id=self.sid)
+        replacement = server.init_task_network("Next goal", session_id=self.sid, task_relationship="independent", new_task_reason="Distinct next fixture goal")
         self.assertFalse(replacement["structuredContent"]["session_work"]["can_finish_session"])
 
     def test_archived_origin_never_becomes_current_return_target(self):

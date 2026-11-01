@@ -16,7 +16,7 @@
 - 线性任务转 HTN 时，不要在同一任务实例混用 `update_step` 与 `update_task`。在同一 `session_id` 下初始化 HTN 网络会把旧线性任务归档为历史；新网络沿用原目标，摘要已完成工作并保留其证据，只将未完成工作分解为新节点，避免把已完成部分伪装成待重做。若不值得转换，就继续原线性任务。
 - 每个 Codex 会话复用一个 `session_id`。首次初始化可让工具生成并返回 ID；保存它，之后本会话的新任务必须显式传入同一个 ID，不为每个任务生成新 ID。插件按 `session_id` 隔离历史，换成新 ID 就会新建另一套任务记录，旧任务不会出现在新卡片的历史中。
 - 恢复当前任务时调用 `get_progress({"session_id":"<本会话 ID>"})`，根据返回的数据模式继续执行，并保存当前 `task_instance_id`；不要调用初始化工具来恢复。
-- 当前会话没有未收束工作或独立请求时，新任务使用 `init_task_network`；同一 `session_id` 下会归档旧任务并返回新的 `task_instance_id`。处理中收到的独立请求走 `route_request`，排队项用 `activate_request` 切换，不能用初始化跳过队列或原任务。不要为新任务生成另一套 `session_id`，也不要用 `rebuild_task_network` 代替独立请求登记。
+- 当前会话没有未收束工作或独立请求时，独立新目标使用 `init_task_network`，复用 `session_id` 并填写 `task_relationship="independent"` 和 `new_task_reason`；旧任务归档并返回新的 `task_instance_id`。同一目标的新计划使用 `rebuild_task_network`，不因旧计划完成或要求归档而换实例。处理中收到的独立请求走 `route_request`，排队项用 `activate_request` 切换，不能用初始化跳过队列或原任务。不要为新任务生成另一套 `session_id`，也不要用 `rebuild_task_network` 代替独立请求登记。
 - 若环境提供内置计划工具，可同步维护可检查清单；它不能替代插件中的实际状态。
 
 ### 开工前粗拆分与执行中动态补充（必须）
