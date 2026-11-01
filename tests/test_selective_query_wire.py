@@ -55,6 +55,8 @@ class SelectiveWireTests(unittest.TestCase):
 
     def test_mutation_receipts_have_routing_identity_and_never_contain_snapshot(self):
         started = self.write('update_task', task_id='work', execution_status='running', assignment=SUB)
+        captured = self.write('snapshot_task_network', snapshot_id='wire-snapshot', reason='Capture running task')
+        self.assertEqual(captured['snapshot_id'], 'wire-snapshot')
         aid = started['attempt_id']
         self.assertEqual(started['affected']['id'], 'work')
         self.write('bind_task_agent', task_id='work', attempt_id=aid, agent_name='fixture-worker')
@@ -68,6 +70,9 @@ class SelectiveWireTests(unittest.TestCase):
                    decisions=[{'task_id':'work','decision':'continue','reason':'Continue open work'},
                               {'task_id':'other','decision':'continue','reason':'Still planned'}])
         self.write('reassign_task', task_id='other', assignment=MAIN, reason='Fixture adjustment', reviewer=MAIN)
+        current = self.read()['progress']
+        self.write('revise_task_plan', task_id='other', reason='Fixture ordering', expected_epoch=current['epoch'],
+                   expected_revision=current['revision'], depends_on=['work'], dependency_policy='finished')
         self.write('decompose_task', task_id='other', tasks=[{'id': 'child', 'title': 'Child', 'assignment': MAIN}])
         self.write('update_task_context', goal=LONG[:12000], constraints=['Fixture'], acceptance_criteria=['Proof'],
                    resume_note=LONG[:12000], reason='Context fixture')

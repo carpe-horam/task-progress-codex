@@ -860,11 +860,15 @@ def _validate_task_instance(data: dict[str, Any], task_instance_id: str | None) 
         )
 
 
-def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str | None) -> None:
+def _assert_can_replace_task(data: dict[str, Any] | None, new_task_reason: str | None, task_relationship: str | None) -> None:
     if new_task_reason is not None and (not isinstance(new_task_reason, str) or not new_task_reason.strip()):
         raise ProgressError("new_task_reason 必须说明用户的新目标及旧任务剩余工作的处理方式。")
     if data is None:
         return
+    if task_relationship != "independent":
+        raise ProgressError("已有任务：同一目标的新计划请使用 rebuild_task_network；只有独立新目标才能初始化，并须显式填写 task_relationship=independent 和 new_task_reason。归档或新规划本身不代表独立目标。")
+    if not new_task_reason:
+        raise ProgressError("独立新目标必须填写 new_task_reason，说明新目标及旧工作的处理方式。")
     if data.get("session_work_state", {}).get("managed"):
         if not _task_closed(data):
             raise ProgressError("受控会话仍有未完成主任务；请继续、重规划或如实收尾，不能通过初始化绕过。")
@@ -1592,6 +1596,10 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "ready_tasks": [node["id"] for node in ready_nodes],
         "next_actions": _planning_next_actions(data),
         "history": data.get("history", []),
+        "plan_snapshots": data.get("plan_snapshots", []),
+        "plan_revisions": data.get("plan_revisions", []),
+        "plan_snapshot_count": len(data.get("plan_snapshots", [])),
+        "plan_revision_count": len(data.get("plan_revisions", [])),
         "handoffs": deepcopy(data.get("handoffs", [])),
         "handoff_closures": deepcopy(data.get("handoff_closures", [])),
         "closure_reviews": deepcopy(data.get("closure_reviews", [])),
@@ -1665,6 +1673,7 @@ def init_task_network(
     atomic_reason: str | None = None,
     request_id: str | None = None,
     new_task_reason: str | None = None,
+    task_relationship: str | None = None,
 ) -> dict[str, Any]:
     requested_sid = _normalize_session_id(session_id) if session_id is not None else None
     if not isinstance(task_title, str) or not task_title.strip():
@@ -1683,7 +1692,7 @@ def init_task_network(
     )
     request_fingerprint = json.dumps(
         {"task_title": normalized_title, "tasks": tasks, "atomic_reason": atomic_reason,
-         "main_session": fingerprint_main, **({"new_task_reason": new_task_reason} if new_task_reason is not None else {})}, sort_keys=True, ensure_ascii=False, default=str,
+         "main_session": fingerprint_main, **({"new_task_reason": new_task_reason} if new_task_reason is not None else {}), **({"task_relationship": task_relationship} if task_relationship is not None else {})}, sort_keys=True, ensure_ascii=False, default=str,
     )
     # One process/file lock protects allocation as well as the ledger. Session
     # locks alone cannot deduplicate a request that has not yet received a sid.
@@ -1719,7 +1728,7 @@ def init_task_network(
                     raise ProgressError("request_id 已用于不同的初始化内容；请为新请求生成新的 request_id。")
                 data = previous
             else:
-                _assert_can_replace_task(previous, new_task_reason)
+                _assert_can_replace_task(previous, new_task_reason, task_relationship)
                 data = _new_network(sid, normalized_title, main_session=normalized_main)
                 if binding:
                     data["task_instance_id"] = binding["task_instance_id"]
@@ -2278,6 +2287,118 @@ def get_ready_tasks(session_id: str, task_instance_id: str | None = None) -> dic
     return result
 
 
+def snapshot_task_network(session_id: str, task_instance_id: str, snapshot_id: str, reason: str) -> dict[str, Any]:
+    """Capture current facts without ending work or closing timestamps."""
+    sid = _normalize_session_id(session_id)
+    if not isinstance(snapshot_id, str) or not snapshot_id.strip() or len(snapshot_id) > 128:
+        raise ProgressError("snapshot_id 必须是 1..128 字符的稳定幂等标识。")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ProgressError("快照必须记录 reason。")
+    with _session_lock(sid):
+        data = _select_task(sid, task_instance_id)
+        if data is None or data.get("schema_version") != 2:
+            raise ProgressError("快照需要当前 HTN 任务。")
+        _validate_task_instance(data, task_instance_id)
+        existing = next((x for x in data.get("plan_snapshots", []) if x.get("snapshot_id") == snapshot_id), None)
+        if existing:
+            if existing.get("reason") != reason.strip():
+                raise ProgressError("snapshot_id 已用于不同快照请求。")
+        else:
+            data.setdefault("plan_snapshots", []).append({
+                "snapshot_id": snapshot_id, "reason": reason.strip(), "captured_at": _now(),
+                "source_state_revision": data.get("state_revision", 0), "source_revision": data.get("revision", 0),
+                "epoch": data.get("epoch", 0), "root_id": data["root_id"], "task_title": data["task_title"],
+                "nodes": deepcopy(data["nodes"]), "task_context": deepcopy(data.get("task_context", {})),
+                "handoffs": deepcopy(data.get("handoffs", [])), "handoff_closures": deepcopy(data.get("handoff_closures", [])),
+                "closure_reviews": deepcopy(data.get("closure_reviews", [])),
+            })
+            _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
+    return _tool_result("已保存快照。", _progress_payload(data), sid, response_snapshot=response_snapshot)
+
+
+def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reason: str,
+                     expected_epoch: int, expected_revision: int, depends_on: list[str] | None = None,
+                     dependency_policy: str | None = None, before_id: str | None = None,
+                     parent_id: str | None = None) -> dict[str, Any]:
+    """Edit only an unstarted branch, retaining both sides of each change."""
+    sid = _normalize_session_id(session_id)
+    if not isinstance(reason, str) or not reason.strip():
+        raise ProgressError("原位修订必须记录 reason。")
+    if depends_on is None and dependency_policy is None and before_id is None and parent_id is None:
+        raise ProgressError("请至少提供依赖、依赖策略、分组或同级顺序变更。")
+    _query_integer(expected_epoch, "expected_epoch", 0)
+    _query_integer(expected_revision, "expected_revision", 0)
+    with _session_lock(sid):
+        data = _select_task(sid, task_instance_id)
+        if data is None or data.get("schema_version") != 2:
+            raise ProgressError("原位修订需要当前 HTN 任务。")
+        _validate_task_instance(data, task_instance_id)
+        if expected_epoch != data.get("epoch", 0) or expected_revision != data.get("revision", 0):
+            raise ProgressError("epoch 或 revision 已变化；请重新读取计划后修订。")
+        data = deepcopy(data)
+        nodes = data["nodes"]
+        node = nodes.get(task_id)
+        if node is None or task_id == data.get("root_id"):
+            raise ProgressError("只能修订当前计划中的非根节点。")
+        def assert_unstarted_branch(branch_id: str) -> None:
+            stack = [branch_id]
+            while stack:
+                current = nodes[stack.pop()]
+                if current.get("execution_status") != "pending" or current.get("attempt") or current.get("review_status") == "pending":
+                    raise ProgressError("受影响分支已有执行尝试或待验收结果，不能原位修订。")
+                stack.extend(current.get("children", []))
+        def assert_open_ancestors(start: str | None) -> None:
+            while start:
+                parent = nodes[start]
+                if parent.get("execution_status") in TERMINAL_EXECUTION_STATUSES or parent.get("review_status") == "pending":
+                    raise ProgressError("祖先已结束或待验收，不能原位修订。")
+                start = parent.get("parent_id")
+        assert_unstarted_branch(task_id)
+        assert_open_ancestors(node.get("parent_id"))
+        old_order = list(nodes)
+        before = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": old_order}
+        if parent_id is not None and parent_id != node.get("parent_id"):
+            if parent_id not in nodes or parent_id == task_id:
+                raise ProgressError("目标分组不存在或无效。")
+            old_parent = node["parent_id"]
+            if parent_id != data["root_id"] and not nodes[parent_id].get("children"):
+                raise ProgressError("目标必须是已有分组；不能将叶节点隐式改成分组。")
+            if old_parent != data["root_id"] and len(nodes[old_parent].get("children", [])) <= 1:
+                raise ProgressError("不能把原分组移成空叶节点。")
+            assert_open_ancestors(parent_id)
+            groups = set()
+            for start in (old_parent, parent_id):
+                while start and start != data["root_id"]:
+                    groups.add(start)
+                    start = nodes[start].get("parent_id")
+            for group_id in groups:
+                assert_unstarted_branch(group_id)
+                for consumer in nodes.values():
+                    if group_id in consumer.get("depends_on", []):
+                        assert_unstarted_branch(consumer["id"])
+            node["parent_id"] = parent_id
+        if depends_on is not None:
+            node["depends_on"] = deepcopy(depends_on)
+        if dependency_policy is not None:
+            node["dependency_policy"] = dependency_policy
+        if before_id is not None:
+            if before_id == task_id or before_id not in nodes or nodes[before_id].get("parent_id") != node.get("parent_id"):
+                raise ProgressError("before_id 必须是不同的同级节点。")
+            order = list(nodes); order.remove(task_id); order.insert(order.index(before_id), task_id)
+            data["nodes"] = nodes = {key: nodes[key] for key in order}
+        _validate_network(data)
+        after = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": list(nodes)}
+        if before == after:
+            raise ProgressError("修订没有改变计划。")
+        data.setdefault("plan_revisions", []).append({"revision_id": str(uuid.uuid4()), "epoch": data.get("epoch", 0),
+            "task_id": task_id, "reason": reason.strip(), "revised_at": _now(), "before": before, "after": after})
+        data["revision"] = int(data.get("revision", 0)) + 1
+        _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
+    return _tool_result("已原位修订计划。", _progress_payload(data), sid, response_snapshot=response_snapshot)
+
+
 def rebuild_task_network(
     session_id: str,
     reason: str,
@@ -2418,7 +2539,7 @@ def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -
     state = document.get("session_work_state", {})
     foreground_id = _task_instance_id(document)
     projections = []
-    omitted = {"task_history", "history", "session_work_state", "session_work", "parallel_tasks",
+    omitted = {"task_history", "history", "plan_snapshots", "plan_revisions", "session_work_state", "session_work", "parallel_tasks",
                "legacy_history", "legacy_history_warning", "history_summary"}
     for request in state.get("requests", []):
         iid = request.get("task_instance_id")
@@ -2430,6 +2551,9 @@ def _parallel_progress_payloads(document: dict[str, Any], state_revision: int) -
         progress = _network_progress_payload(current)
         for key in omitted:
             progress.pop(key, None)
+        # Expose counts without leaking peer records in the compact projection.
+        progress["plan_snapshot_count"] = len(instance.get("plan_snapshots", []))
+        progress["plan_revision_count"] = len(instance.get("plan_revisions", []))
         progress.update(request_id=request["request_id"], request_status=_request_status(instance),
                         state_revision=state_revision, history_included=False)
         if instance.get("task_context"):
@@ -2488,7 +2612,7 @@ def _tool_result(
         }
         progress["history_included"] = include_history
         if not include_history:
-            for key in ("task_history", "history", "legacy_history"):
+            for key in ("task_history", "history", "plan_snapshots", "plan_revisions", "legacy_history"):
                 progress.pop(key, None)
     if progress is not None and session_work is not None:
         if include_history:
@@ -2529,6 +2653,7 @@ def _tool_result(
 def init_progress(
     steps: list[str], task_title: str = "", session_id: str | None = None,
     legacy_linear: bool = False, new_task_reason: str | None = None,
+    task_relationship: str | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id, generate=True)
     if not isinstance(steps, list) or not steps or not all(
@@ -2542,7 +2667,7 @@ def init_progress(
         )
     with _session_lock(sid):
         previous = _read(sid)
-        _assert_can_replace_task(previous, new_task_reason)
+        _assert_can_replace_task(previous, new_task_reason, task_relationship)
         now = _now()
         data = {
             "schema_version": 1,
@@ -2795,15 +2920,15 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 # complete current snapshot so UI/export traffic never enters model tool results.
 _QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
 _RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories")
-_HISTORY_KINDS = ("history", "task_history", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews")
+_HISTORY_KINDS = ("history", "task_history", "plan_snapshots", "plan_revisions", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
                     "percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
-                    "closure_review_binding", "closure_review_due", "handoff_summary")
+                    "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count")
 _TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
-                           "bind_task_agent", "review_task", "reassign_task", "rebuild_task_network", "route_request",
+                           "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
                            "handoff_request", "review_task_closure", "review_stage_inventory"))
 
@@ -2859,7 +2984,7 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
     if view == "records" and (not task_id or record_kind not in _RECORD_KINDS):
         raise ProgressError("records 视图须提供 task_id 和有效 record_kind。")
     if view == "history" and history_kind not in _HISTORY_KINDS:
-        raise ProgressError("history_kind 必须是 history/task_history/context_revisions/legacy_history。")
+        raise ProgressError("history_kind 必须是有效的历史类型，包括 history、task_history、plan_snapshots 和 plan_revisions。")
     # Include append-only arrays only in views that explicitly request them.
     result = get_progress_view(session_id, view in ("full", "records", "history"), task_instance_id)
     source = result["structuredContent"]
@@ -2970,7 +3095,7 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
             ack["attempt_id"] = target["attempt_id"]
     if name == "update_step":
         ack["step_index"] = args.get("step_index")
-    for key in ("handoff_id", "review_id"):
+    for key in ("handoff_id", "review_id", "snapshot_id"):
         if args.get(key):
             ack[key] = args[key]
     if args.get("request_id"):
@@ -3554,6 +3679,7 @@ TOOLS = [
                 },
                 "task_title": {"type": "string", "description": "任务标题"},
                 "new_task_reason": {"type": "string", "description": "用户明确开启新目标时，说明旧未完成任务如何处理；运行或待验收结果必须先收尾。"},
+                "task_relationship": {"type": "string", "enum": ["independent"], "description": "仅当新目标与当前任务独立时填写 independent；同一目标的新计划使用 rebuild_task_network。"},
                 "legacy_linear": {
                     "type": "boolean",
                     "default": False,
@@ -3593,6 +3719,7 @@ TOOLS = [
                 "tasks": {"type": "array", "items": _task_schema(), "description": "初始粗粒度计划；多阶段任务至少两个有独立结果边界的阶段，每项必须包含 assignment.execution_mode。"},
                 "atomic_reason": {"type": "string", "description": "明确说明为何这是单步任务；与 tasks 互斥。"},
                 "new_task_reason": {"type": "string", "description": "用户明确开启新目标时，说明旧未完成任务如何处理；继续原目标应追加计划或重规划。"},
+                "task_relationship": {"type": "string", "enum": ["independent"], "description": "已有任务时必填 independent，表示独立新目标；归档、新计划或继续原目标不属于独立目标，应调用 rebuild_task_network。"},
                 "request_id": {"type": "string", "description": "可选稳定幂等键；重试同一初始化内容时复用。已知session按session隔离；省略session时键须全局唯一（建议UUID），并可随后带返回的session重试。哈希与身份墓碑保留至缓存整体删除，清除任务后旧键仍拒绝重建。"},
             },
         "required": ["task_title"],
@@ -3652,6 +3779,32 @@ TOOLS = [
             "properties": {"session_id": _session_property()},
             "required": ["session_id"],
         },
+        "_meta": _data_tool_meta(),
+    },
+    {
+        "name": "snapshot_task_network",
+        "title": "保存任务快照",
+        "description": "保存当前计划、节点执行记录、上下文与验收/移交记录的时点快照。允许任务运行中或待验收；不结束尝试、不改变计划、epoch 或任务身份。历史计划和其他实例不重复复制；通过 get_progress 的 plan_snapshots 查询。snapshot_id 对同一实例幂等。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+            "snapshot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "reason": {"type": "string", "minLength": 1}},
+            "required": ["session_id", "task_instance_id", "snapshot_id", "reason"]},
+        "_meta": _data_tool_meta(),
+    },
+    {
+        "name": "revise_task_plan",
+        "title": "原位修订未开始的计划",
+        "description": "在同一 epoch 内修订未开始分支的依赖、策略、分组或同级顺序，保留前后差异与原因；重分组还要求受影响分组及其消费者均未开始。拒绝终态祖先、依赖环和过期版本；不得借 finished 策略跳过真实必要的验收。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+            "task_id": {"type": "string"}, "reason": {"type": "string", "minLength": 1},
+            "expected_epoch": {"type": "integer", "minimum": 0}, "expected_revision": {"type": "integer", "minimum": 0},
+            "depends_on": {"type": "array", "items": {"type": "string"}},
+            "dependency_policy": {"type": "string", "enum": list(DEPENDENCY_POLICIES)},
+            "parent_id": {"type": "string", "description": "可选已有分组的 ID；保守检查受影响分组及消费者未开始。"},
+            "before_id": {"type": "string", "description": "移动目标节点至此同级节点之前。"}},
+            "required": ["session_id", "task_instance_id", "task_id", "reason", "expected_epoch", "expected_revision"]},
         "_meta": _data_tool_meta(),
     },
     {
@@ -3836,6 +3989,8 @@ for _tool in TOOLS:
 
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "snapshot_task_network": lambda args: snapshot_task_network(**args),
+    "revise_task_plan": lambda args: revise_task_plan(**args),
     "handoff_request": lambda args: handoff_request(**args),
     "review_task_closure": lambda args: review_task_closure(**args),
     "route_request": lambda args: route_request(**args),
@@ -3871,11 +4026,11 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "unregister_ui_view": lambda args: unregister_ui_view(args.get("session_id"), args.get("view_id")),
     "init_progress": lambda args: init_progress(
         args.get("steps", []), args.get("task_title", ""), args.get("session_id"),
-        args.get("legacy_linear", False), args.get("new_task_reason"),
+        args.get("legacy_linear", False), args.get("new_task_reason"), args.get("task_relationship"),
     ),
     "init_task_network": lambda args: init_task_network(
         args.get("task_title", ""), args.get("session_id"), args.get("main_session"),
-        args.get("tasks"), args.get("atomic_reason"), args.get("request_id"), args.get("new_task_reason")
+        args.get("tasks"), args.get("atomic_reason"), args.get("request_id"), args.get("new_task_reason"), args.get("task_relationship")
     ),
     "decompose_task": lambda args: decompose_task(
         args.get("session_id"), args.get("task_id"), args.get("tasks", []),

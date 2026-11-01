@@ -104,7 +104,7 @@ async function main(){
     // A task result and its synthesis attempt may independently reference the same evidence.
     await report.locator('#rp-sheet-panel-3').getByText('ROOT_ACCEPTANCE_UNIQUE_EVIDENCE',{exact:true}).first().waitFor();
   });
-  const archived=await host.rpc('init_task_network',{...binding(r),task_title:'Next after acceptance',atomic_reason:'one fixture'});
+  const archived=await host.rpc('init_task_network',{...binding(r),task_relationship:'independent',new_task_reason:'Independent accepted fixture',task_title:'Next after acceptance',atomic_reason:'one fixture'});
   await checkReport(archived,async report=>{
     const root=report.locator('#rp-archives [data-node-id="root"]');
     assert.equal(await root.count(),1);
@@ -209,7 +209,7 @@ async function main(){
   await crossRpc('register_ui_view',{view_id:'cross-tab',...viewSource(oldTask),display_mode:'fullscreen',mode_generation:0});
   const completedOld=await host.rpc('update_task',{...binding(oldTask),task_id:'root',execution_status:'running',assignment});
   await host.rpc('update_task',{...binding(oldTask),task_id:'root',execution_status:'finished',outcome:'resolved',attempt_id:completedOld.structuredContent.progress.nodes[0].attempt_id,summary:'Old fixture task completed',evidence:['private-fixture-completion']});
-  const currentTask=await host.rpc('init_task_network',{session_id:crossSid,task_title:'Cross-task mode B',atomic_reason:'one fixture'});
+  const currentTask=await host.rpc('init_task_network',{session_id:crossSid,task_relationship:'independent',new_task_reason:'Independent cross-task fixture',task_title:'Cross-task mode B',atomic_reason:'one fixture'});
   await crossRpc('register_ui_view',{view_id:'cross-main',...viewSource(currentTask),display_mode:'inline',mode_generation:0});
   const delayedFullscreen={view_id:'cross-tab',...viewSource(currentTask),display_mode:'fullscreen',mode_generation:1};
   const demoted=await crossRpc('register_ui_view',{view_id:'cross-tab',...viewSource(oldTask),display_mode:'inline',mode_generation:2});

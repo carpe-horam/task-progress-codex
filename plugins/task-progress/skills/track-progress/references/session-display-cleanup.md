@@ -9,7 +9,7 @@
 - 自动展示使用公开的 [OpenAI 资源展示模式](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md#display-modes) 与 [MCP Apps 模式请求](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#display-modes)。宿主未挂载或不支持时保留手动入口；请求成功不等于可见标签页。历史会话没有公开标记，宿主在 JavaScript 前创建的重复页只能在挂载后请求退回 inline，无法保证不短暂出现。旧版无意图结果不自动请求切换。
 - fullscreen 标签页每 10 秒续租；关闭时释放登记，宿主未发 teardown 时租约 35 秒后过期。会话内卡片在标签页打开期间隐藏，关闭后恢复；普通更新只改数据，不应为了刷新卡片重复调用 `render_progress`。不要用清理进度来关闭或重开面板。
 - 任务数据按插件 `session_id` 隔离。当前公开 MCP Apps 上下文未定义“当前会话是历史/归档会话”的状态标志，因此不要声称插件能主动隐藏已经保存的历史会话卡片；若宿主后续提供该标志，应再增加历史会话抑制。
-- `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。初始化创建新 `task_instance_id` 并归档旧任务；`rebuild_task_network` 保持任务实例不变，只递增 `epoch`。两种历史不能混写，也不能用重规划代替开始新任务。
+- `task_history` 保存本会话内已归档的旧任务；HTN 的 `history` 保存同一任务重规划产生的旧计划轮次。同一目标即使要求归档和新启计划，也用 `rebuild_task_network`，保持任务实例不变，只递增 `epoch`。仅独立新目标可以初始化新实例并归档旧任务；须显式填写 `task_relationship="independent"` 和 `new_task_reason`。两种历史不能混写，也不能用重规划代替开始新任务。
 - `get_progress` 默认只返回 overview；`history_included=false` 表示未加载历史正文，不表示没有历史。查询历史优先分页 history，需要完整目标实例时才用 full；面板轮询和导出由 App 独立读取，模型无需代其加载。
 - 旧 SQLite v3 记录通过独立只读来源展示，不能当作当前 JSON 任务的验收结果。两种存储中的标题或状态冲突须保留来源并核对证据；仅存在旧库记录时也不可误报“从未建立任务”。兼容读取不迁移数据、不补造 review，也不授权清理旧库。
 - 一旦本会话存在历史任务，当前任务的写操作必须传回当前 `task_instance_id`，避免旧任务的迟到更新写入新任务。建议每次当前任务写操作都传入，包括 `decompose_task`、`update_task`、`bind_task_agent`、`review_task`、`reassign_task`、`rebuild_task_network` 和 `update_step`。`clear_progress` 仅接收 `session_id`，不支持 `task_instance_id`，其语义是删除本会话所有进度；清空后首次及后续新任务的写操作都必须传当前 `task_instance_id`，以拒绝清空前不带实例 ID 的迟到请求。初始化工具负责创建新实例，保存其新返回的 ID；后续写操作不得继续使用已归档实例 ID。`attempt_id` 和 `epoch` 仍分别标识当前任务中的尝试与计划轮次，不能代替 `task_instance_id`。

@@ -12,7 +12,7 @@
 | 指定当前节点、派发、submission、review 和证据 | `view="tasks", task_ids=["<节点 ID>"]`；每次 1–20 个，不附历史记录数组。 |
 | 指定节点的追加记录 | `view="records", task_id="<节点 ID>", record_kind="attempts"`；另可选 `invalidated_results`、`reassignment_history`、`stage_inventories`。 |
 | 恢复上下文与会话请求 | `view="context"`；完整 `task_context` 与 `session_work`，其中 requests 分页。 |
-| 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`context_revisions`、`legacy_history`、`handoffs`、`handoff_closures`、`closure_reviews`。 |
+| 某类历史 | `view="history", history_kind="history"`；另可选 `task_history`、`plan_snapshots`、`plan_revisions`、`context_revisions`、`legacy_history`、`handoffs`、`handoff_closures`、`closure_reviews`。快照是未关闭的时点记录，修订记录包含修改前后；两者不是新的计划轮次。 |
 | 确需完整目标实例 | `view="full"`；兼容 `include_history=true`，不能与其他 view 混用。 |
 
 分页的 `pagination` 包含 `offset`、`limit`、`total`、`has_more`、`next_offset`；默认 limit=50，可选 1–200。保留第一页的 `state_revision`，后续页传 `expected_state_revision`，版本变化报错时从第一页重读，不混合不同版本。线性步骤在 tasks/records 中使用字符串索引，如 `"0"`。

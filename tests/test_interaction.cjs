@@ -150,7 +150,7 @@ async function main(){
   const bRetry=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'running',retry:true,assignment});
   await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'finished',outcome:'resolved',attempt_id:bRetry.structuredContent.progress.nodes.find(n=>n.id==='b').attempt_id});
   await rpc('update_task',{session_id:sid,task_id:'root',execution_status:'finished',outcome:'resolved',summary:'Private interaction goal verified',evidence:['isolated-browser-interaction'],assignment});
-  const nextTask=await rpc('init_task_network',{session_id:sid,task_title:'切换后的任务'});
+  const nextTask=await rpc('init_task_network',{session_id:sid,task_title:'切换后的任务',task_relationship:'independent',new_task_reason:'Independent interaction fixture'});
   await page.evaluate(r=>document.getElementById('current').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*'),nextTask);
   await card.locator('#task-title').filter({hasText:'切换后的任务'}).waitFor();
   await card.locator('body').evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
