@@ -71,6 +71,7 @@ h1{font-size:18px;line-height:1.35}
 .history-section{padding:8px 16px}
 .task-history-summary{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px}.task-history-name{flex:1 1 180px}.task-history-progress{font-size:10px;color:#91a5c7}.task-history-plans{margin-top:8px;padding-left:10px;border-left:1px solid #394355}.task-history-plans>summary{font-size:11px;color:#b9c3d1;cursor:pointer}
 .history-section>summary{font-size:11px}
+.revision-changes{display:grid;gap:8px;margin:8px 0}.revision-change{padding:9px;border:1px solid #394355;border-radius:7px;background:#1a212c}.revision-field{font:600 11px ui-monospace,SFMono-Regular,monospace;color:#b9c9e4;overflow-wrap:anywhere}.revision-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:7px}.revision-value{min-width:0;padding:7px 9px;border-radius:5px;background:#252b35}.revision-value small{display:block;margin-bottom:4px;color:#9baac0}.revision-value pre,.revision-raw pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,monospace;color:#d0d9e8}.revision-value.before{border-left:2px solid #d78486}.revision-value.after{border-left:2px solid #78c69e}.revision-raw{margin-top:8px;color:#9eafd0;font-size:11px}.revision-raw>summary{cursor:pointer}.revision-raw pre{max-height:300px;overflow:auto;margin-top:7px;padding:9px;background:#1a212c;border-radius:5px}:root[data-theme="light"] .revision-change,:root[data-theme="light"] .revision-raw pre{background:#f5f7fb;border-color:#d4ddeb}:root[data-theme="light"] .revision-field,:root[data-theme="light"] .revision-value pre,:root[data-theme="light"] .revision-raw pre{color:#263b57}:root[data-theme="light"] .revision-value{background:#eaf0f8}:root[data-theme="light"] .revision-value small,:root[data-theme="light"] .revision-raw{color:#526883}@media(max-width:480px){.revision-values{grid-template-columns:1fr}}
 .history-list{margin-top:7px}
 .history-item{padding:7px 0}
 .history-meta{margin:6px 0;font-size:10px}
@@ -2160,8 +2161,29 @@ h1{font-size:18px;line-height:1.35}
       const li = document.createElement('li'); li.className = 'history-item';
       const details = document.createElement('details'); details.dataset.key = prefix + ':revision:' + revision.revision_id; details.open = openDetails.get(details.dataset.key) || false;
       const heading = document.createElement('summary'); heading.textContent = '原位修订 · ' + revision.task_id + ' · ' + date(revision.revised_at);
-      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '原因：' + revision.reason + '\n修订前：' + JSON.stringify(revision.before) + '\n修订后：' + JSON.stringify(revision.after);
-      details.append(heading, meta); li.append(details); fragment.append(li);
+      const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '原因：' + (revision.reason || '未记录');
+      const before = revision.before && typeof revision.before === 'object' && !Array.isArray(revision.before) ? revision.before : {};
+      const after = revision.after && typeof revision.after === 'object' && !Array.isArray(revision.after) ? revision.after : {};
+      const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(field =>
+        Object.hasOwn(before, field) !== Object.hasOwn(after, field) || JSON.stringify(before[field]) !== JSON.stringify(after[field]));
+      const changes = document.createElement('div'); changes.className = 'revision-changes';
+      for (const field of fields) {
+        const change = document.createElement('div'); change.className = 'revision-change';
+        const name = document.createElement('div'); name.className = 'revision-field'; name.textContent = field;
+        const values = document.createElement('div'); values.className = 'revision-values';
+        for (const [label, source, side] of [['修订前', before, 'before'], ['修订后', after, 'after']]) {
+          const value = document.createElement('div'); value.className = 'revision-value ' + side;
+          const caption = document.createElement('small'); caption.textContent = label;
+          const content = document.createElement('pre'); content.textContent = Object.hasOwn(source, field) ? JSON.stringify(source[field], null, 2) : '（未设置）';
+          value.append(caption, content); values.append(value);
+        }
+        change.append(name, values); changes.append(change);
+      }
+      if (!fields.length) { const empty = document.createElement('div'); empty.className = 'history-meta'; empty.textContent = '未检测到字段变化，请查看完整记录。'; changes.append(empty); }
+      const raw = document.createElement('details'); raw.className = 'revision-raw'; raw.dataset.key = details.dataset.key + ':raw'; raw.open = openDetails.get(raw.dataset.key) || false;
+      const rawHeading = document.createElement('summary'); rawHeading.textContent = '查看完整修订前后记录';
+      const rawContent = document.createElement('pre'); rawContent.textContent = JSON.stringify({before:revision.before, after:revision.after}, null, 2);
+      raw.append(rawHeading, rawContent); details.append(heading, meta, changes, raw); li.append(details); fragment.append(li);
     });
     return fragment;
   }

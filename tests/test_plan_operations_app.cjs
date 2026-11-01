@@ -21,6 +21,14 @@ async function main() {
   await frame.locator('#history-list').filter({hasText:'计划快照'}).waitFor();
   const history=await frame.locator('#history-list').textContent();
   assert(history.includes('Capture without stopping') && history.includes('Independent B'));
+  const revision=frame.locator('#history-list .history-item').filter({hasText:'原位修订'});
+  await revision.locator('summary').first().click();
+  assert.deepEqual(await revision.locator('.revision-field').allTextContents(), ['depends_on']);
+  assert((await revision.locator('.revision-value.before pre').textContent()).includes('"a"'));
+  assert.equal(await revision.locator('.revision-value.after pre').textContent(), '[]');
+  assert.equal(await revision.locator('.revision-raw').evaluate(el=>el.open), false);
+  await revision.locator('.revision-raw summary').click();
+  assert((await revision.locator('.revision-raw pre').textContent()).includes('node_order'));
   await page.close();
   const longReason='x'.repeat(29999)+'😀</script>TAIL';
   await host.rpc('snapshot_task_network',{session_id:sid,task_instance_id:iid,snapshot_id:'long',reason:longReason});
