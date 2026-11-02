@@ -2046,7 +2046,7 @@ h1{font-size:18px;line-height:1.35}
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
       const right = document.createElement('span'); right.className = 'step-right';
-      const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
+      const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : list(node.main_session_waiting_on).length ? '等待主会话' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
       right.append(label);
       const external=document.createElement("span");external.className="external-prerequisite-label";external.textContent=externalPrerequisiteLabel(node);right.append(external);
       if(node.coverage_count){const marker=document.createElement('span');marker.className='coverage-marker';marker.textContent='证据覆盖标记 · '+node.coverage_count+' 项（原结果保留）';right.append(marker);}
@@ -2097,6 +2097,7 @@ h1{font-size:18px;line-height:1.35}
       if (Object.keys(assignment).length) moreContent.append(field('配置来源', metadataEvidence(assignment), 'metadata-provenance'));
       if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
+      if (list(node.main_session_waiting_on).length) moreContent.append(field('等待主会话', '先收束正在执行的任务：' + node.main_session_waiting_on.map(reference).join('；')));
       if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束且无待验收提交（包括未解决、失败或取消）' : '前置任务已解决'));
       const inherited = dependencyConstraints(node, byId).filter(rule => String(rule.owner.id) !== id);
       if (inherited.length) moreContent.append(field('继承的依赖', inherited.map(rule => reference(rule.id) + ' · 来自 ' + reference(rule.owner.id) + ' · ' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决')).join('\n')));

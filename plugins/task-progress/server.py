@@ -1609,7 +1609,14 @@ def _dependencies_satisfied(data: dict[str, Any], node: dict[str, Any]) -> bool:
                for owner, dep_id in _dependency_constraints(data, node))
 
 
-def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
+def _main_session_running_leaves(data: dict[str, Any], *, except_id: str | None = None) -> list[dict[str, Any]]:
+    return [candidate for candidate in data.get("nodes", {}).values()
+            if candidate.get("id") != except_id and not candidate.get("children")
+            and candidate.get("execution_status") == "running"
+            and (candidate.get("assignment") or {}).get("execution_mode") == "main_session"]
+
+
+def _node_is_graph_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
     root_id = data.get("root_id")
     planning_status = data.get("planning_status")
     # Older persisted graphs predate planning_status. Preserve in-flight and
@@ -1628,6 +1635,13 @@ def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
         and node.get("execution_status") == "pending"
         and _dependencies_satisfied(data, node)
     )
+
+
+def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
+    if not _node_is_graph_ready(data, node):
+        return False
+    role = (node.get("planned_assignment") or {}).get("execution_mode")
+    return role != "main_session" or not _main_session_running_leaves(data, except_id=node.get("id"))
 
 
 def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
@@ -1791,7 +1805,9 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
                   and node.get("assignment", {}).get("execution_mode") == "subagent" else None),
             "status": _display_node_status(data, node),
             "ready": _node_is_ready(data, node),
-            "graph_ready": _node_is_ready(data, node),
+            "graph_ready": _node_is_graph_ready(data, node),
+            "main_session_waiting_on": [item["id"] for item in _main_session_running_leaves(data, except_id=node.get("id"))]
+                if _node_is_graph_ready(data, node) and (node.get("planned_assignment") or {}).get("execution_mode") == "main_session" else [],
             **_external_prerequisite_projection(node),
             "blocked_by": unmet,
             "dependencies": dependencies,
@@ -2270,6 +2286,11 @@ def update_task(
                     node_id == data.get("root_id") and data.get("planning_status") == "atomic"
                 ) else ""
                 _require_self_execution_reason(effective, atomic_reason=atomic_reason)
+                if normalized_assignment.get("execution_mode") == "main_session":
+                    running = _main_session_running_leaves(data, except_id=node_id)
+                    if running:
+                        ids = ", ".join(item["id"] for item in running)
+                        raise ProgressError("主会话已有运行中的叶任务：" + ids + "。请先如实收束当前 attempt；后续工作保持等待，或明确交给子智能体执行。")
                 if previous_status in TERMINAL_EXECUTION_STATUSES:
                     _reopen_ancestors_for_retry(data, node)
                 _begin_attempt(node, normalized_assignment)
@@ -2277,7 +2298,7 @@ def update_task(
             previous_status == "pending"
             and execution_status in ("finished", "failed")
             and not node.get("children")
-            and not _node_is_ready(data, node)
+            and not _node_is_graph_ready(data, node)
         ):
             raise ProgressError("依赖尚未满足的任务不能直接结束；先完成前驱或改用 dependency_policy=finished。")
         if (previous_status == "pending" and execution_status == "finished"
@@ -3346,7 +3367,7 @@ _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_i
                     "accepted_resolved_percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
-_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "external_prerequisite_status", "external_prerequisite_stale", "external_prerequisite_review", "external_prerequisite_review_count", "actionable", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
+_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "external_prerequisite_status", "external_prerequisite_stale", "external_prerequisite_review", "external_prerequisite_review_count", "actionable", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
                            "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "set_external_prerequisite", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
@@ -4186,7 +4207,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟先复核拆分；等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
+        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟先复核拆分；等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
