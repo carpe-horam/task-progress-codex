@@ -10,6 +10,7 @@ RESPONSIBILITY = (
     "or invent filler steps. Existing groups may still receive one genuinely new task at a time. "
     "Complex work defaults to subagents even when sequential; serialize shared file owners. "
     "The main session plans and accepts; record self_execution_reason for its leaf work. "
+    "Run at most one main-session leaf per task instance; finish or honestly pause it before starting another. "
     "Start the attempt, spawn, then bind the returned ID. A subagent submits only its assigned node; "
     "the main session reviews it separately using queried submission/evidence and review_task."
 )

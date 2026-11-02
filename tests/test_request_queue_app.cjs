@@ -14,6 +14,19 @@ async function capture(page,name){if(!artifacts)return;await page.emulateMedia({
 async function main(){
  const sources=sourceIdentity();
  host=await createHost();
+ let serial=await host.rpc('init_task_network',{task_title:'串行执行示例',tasks:[
+   {id:'active',title:'正在执行',assignment:mainAssignment},
+   {id:'waiting',title:'后续任务',assignment:mainAssignment},
+ ]});
+ serial=await host.rpc('update_task',{session_id:serial.structuredContent.session_id,task_id:'active',execution_status:'running',assignment:mainAssignment});
+ const serialPage=await host.page(),serialFrame=await host.mount(serialPage,'main',serial);
+ const waiting=serialFrame.locator('#steps .children > .step > details').nth(1);
+ assert.match(await waiting.locator(':scope > summary').innerText(),/等待主会话/);
+ await waiting.locator(':scope > summary').click();
+ await waiting.locator(':scope > .task-details > summary').click();
+ await waiting.locator('.more-details > summary').click();
+ assert.match(await waiting.innerText(),/先收束正在执行的任务：正在执行 \(active\)/);
+ await serialPage.close();
  let base=await host.rpc('init_task_network',{task_title:'验收进度示例',tasks:[
    {id:'one',title:'计划任务 one',assignment:subAssignment},
    {id:'two',title:'计划任务 two',assignment:subAssignment},
