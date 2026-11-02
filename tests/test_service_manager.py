@@ -410,8 +410,8 @@ class ServiceManagerTests(unittest.TestCase):
             self.service.install()
         self.assertEqual(elsewhere.read_text(), "do not touch")
 
-    def test_non_mac_auto_management_is_explicitly_unsupported(self):
-        service = manager.ServiceManager(home=self.home, platform="linux")
+    def test_unsupported_platform_auto_management_is_explicitly_rejected(self):
+        service = manager.ServiceManager(home=self.home, platform="freebsd")
         self.assertTrue(service.prepare()["ok"])
         for method in (service.install, service.stop, service.status, service.uninstall):
             with self.assertRaisesRegex(manager.ServiceError, "unsupported"):
