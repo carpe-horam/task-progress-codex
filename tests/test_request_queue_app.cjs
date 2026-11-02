@@ -41,12 +41,15 @@ async function main(){
    p.nodes.forEach(node=>{if(node.parent_id)Object.assign(node,states[node.id]||{});});
    const leaves=p.nodes.filter(node=>node.parent_id);
    p.completed=leaves.filter(node=>['finished','failed','cancelled'].includes(node.execution_status)).length;
-   p.percent=Math.round(p.completed/p.total*100);p.pending_review_count=leaves.filter(node=>node.review_status==='pending').length;
+   p.ended_leaf_count=p.completed;p.ended_percent=Math.floor(p.completed/p.total*100);
+   p.accepted_resolved_leaf_count=leaves.filter(node=>node.accepted_resolved===true).length;
+   p.accepted_resolved_percent=Math.floor(p.accepted_resolved_leaf_count/p.total*100);
+   p.percent=p.accepted_resolved_percent;p.pending_review_count=leaves.filter(node=>node.review_status==='pending').length;
    p.executing_count=leaves.filter(node=>node.execution_status==='running').length;p.ready_count=0;p.ready_tasks=[];p.blocked_count=0;
    p.root_status='waiting_synthesis';p.status='awaiting_review';p.nodes.find(node=>!node.parent_id).status='waiting_synthesis';
    return result;
  }
- const accepted={execution_status:'finished',outcome:'resolved',status:'resolved',review_status:'accepted',summary:'验收通过的产出'};
+ const accepted={execution_status:'finished',outcome:'resolved',status:'resolved',review_status:'accepted',responsibility_version:1,accepted_resolved:true,summary:'验收通过的产出'};
  let r=clone(base);
  r.structuredContent.progress.nodes.find(node=>node.id==='one').summary='STALE_NODE_SUMMARY_NOT_PRIMARY';
  const page=await host.page();
@@ -112,8 +115,8 @@ async function main(){
  r=snapshot({one:accepted,two:accepted,three:accepted});r.structuredContent.state_revision+=2;r.structuredContent.progress.state_revision+=2;
  await page.evaluate(r=>window.fixture=r,r);await push(page,r);await frame.locator('#percent').filter({hasText:'100'}).waitFor();assert.match(await frame.locator('#acceptance-status').textContent(),/叶任务 100% 仍需整体验收/);await capture(page,'leaves-complete-root-pending');
  // A legacy resolved node cannot manufacture acceptance, even with a recorded executor.
- r=snapshot({one:{...accepted,review_status:'legacy_unrecorded',responsibility_legacy:true},two:accepted,three:accepted});r.structuredContent.state_revision+=3;r.structuredContent.progress.state_revision+=3;
- await push(page,r);await frame.locator('#percent').filter({hasText:'67'}).waitFor();assert.match(await frame.locator('#progress-context').textContent(),/1 验收未记录/);
+ r=snapshot({one:{...accepted,review_status:'legacy_unrecorded',responsibility_legacy:true,accepted_resolved:false},two:accepted,three:accepted});r.structuredContent.state_revision+=3;r.structuredContent.progress.state_revision+=3;
+ await push(page,r);await frame.locator('#percent').filter({hasText:'66'}).waitFor();assert.match(await frame.locator('#progress-context').textContent(),/1 验收未记录/);
  const legacy=clone(r);const legacyNode=legacy.structuredContent.progress.nodes.find(node=>node.id==='one');
  delete legacyNode.dispatch;legacyNode.assignment={execution_mode:'subagent',agent_name:'legacy-recorded-agent'};
  legacy.structuredContent.state_revision+=1;legacy.structuredContent.progress.state_revision+=1;

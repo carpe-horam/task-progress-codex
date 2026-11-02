@@ -166,10 +166,55 @@ async function checkPendingBoundaries() {
   await all.report.close();await all.hostPage.close();
   results.push('Mixed running/pending review counters remain visible; all-ended pending results export as awaiting main review, never root synthesis.');
 }
+async function checkMetricContract() {
+  let r=await host.rpc('init_task_network',{task_title:'Metric contract',tasks:[
+    {id:'one',title:'Accepted main result',assignment:mainAssignment},
+    {id:'two',title:'Accepted second result',assignment:mainAssignment},
+    {id:'legacy',title:'Legacy result',assignment:mainAssignment}]});
+  for(const id of ['one','two','legacy']){
+    r=await host.rpc('update_task',{...binding(r),task_id:id,execution_status:'running',assignment:mainAssignment});
+    r=await host.rpc('update_task',{...binding(r),task_id:id,attempt_id:node(r,id).attempt_id,execution_status:'finished',outcome:'resolved'});
+  }
+  const source=path.join(host.temp,'sessions',r.structuredContent.session_id+'.json');
+  const document=JSON.parse(fs.readFileSync(source,'utf8'));
+  document.nodes.legacy.responsibility_version=0;
+  document.task_history=[{...r.structuredContent.progress,task_instance_id:'fixture-old-history',nodes:document.nodes,task_history:[]}];
+  fs.writeFileSync(source,JSON.stringify(document));
+  const before=fs.readFileSync(source,'utf8');
+  r=await host.rpc('get_progress_view',{...binding(r),include_history:true});
+  assert.equal(r.structuredContent.progress.resolved_leaf_count,3,'raw resolved compatibility count stays unchanged');
+  assert.equal(r.structuredContent.progress.accepted_resolved_leaf_count,2);
+  assert.equal(r.structuredContent.progress.accepted_resolved_percent,66);
+  const page=await host.page(),frame=await host.mount(page,'main',r);
+  assert.equal(await frame.locator('#percent').textContent(),'66','panel uses server flooring');
+  assert((await frame.locator('#acceptance-status').textContent()).includes('待主会话综合验收'));
+  assert((await frame.locator('#progress-context').textContent()).includes('已结束 3/3（100%）'));
+  const history=await frame.locator('#task-history-list').textContent();
+  assert(history.includes('已解决 2/3（66% 已验收解决）'));
+  await page.close();
+  const exported=await host.exportReport(r);
+  const metrics=await exported.report.locator('.rp-metrics').textContent();
+  assert(metrics.includes('当前轮已解决 2/3 项叶任务（66% 已验收解决）'));
+  assert(metrics.includes('已结束 3/3（100%）'));
+  assert.equal(await exported.report.locator('.rp-delivery').textContent(),'待汇总验收');
+  const call=await exported.hostPage.evaluate(()=>window.host.calls.find(c=>c.name==='save_export_files'));
+  const workbook=readWorkbook(call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path);
+  const overview=Object.fromEntries(workbook['概览'].slice(1));
+  assert.equal(overview['已验收解决叶任务'],'2');
+  assert.equal(overview['已验收解决比例（%）'],'66');
+  assert.equal(overview['已结束叶任务'],'3');
+  assert.equal(overview['已结束比例（%）'],'100');
+  const plans=workbook['计划变更'],accepted=plans[0].indexOf('已验收解决叶任务'),percent=plans[0].indexOf('已验收解决比例（%）');
+  for(const row of plans.slice(1)){assert.equal(row[accepted],'2');assert.equal(row[percent],'66');}
+  await exported.report.close();await exported.hostPage.close();
+  assert.equal(fs.readFileSync(source,'utf8'),before,'history metric projection remains read-only');
+  results.push('Panel, historical task, HTML and XLSX consume the same server accepted/ended metrics and floor percentages; raw legacy resolved never implies acceptance or root synthesis.');
+}
 async function main() {
   const sourceAtStart=sourceIdentity(),startedAt=new Date().toISOString();
   host=await createHost();
   await checkPendingBoundaries();
+  await checkMetricContract();
   let r=await host.rpc('init_task_network',{task_title:'Responsibility acceptance and retry',tasks:[{id:'worker',title:'Complex worker',assignment:subAssignment},{id:'consumer',title:'Main integration',depends_on:['worker'],assignment:mainAssignment}]});
   r=await start(r); r=await submit(r);
   assert.equal(node(r).outcome,null); assert.equal(node(r).review_status,'pending');

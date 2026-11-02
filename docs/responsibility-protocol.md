@@ -66,3 +66,17 @@ Acceptance covers planned-role mismatch rejection; explicit reassignment; genuin
 主要阶段（根任务的直接子阶段）结束后，主会话应在推进下一阶段前读取 `get_progress` 的 `stage_inventory_due`，分页查看任务树并核对未解决任务的证据。对每个未解决叶任务判断继续、过期或已被后续结果覆盖，使用 `review_stage_inventory` 将 `continue`、`obsolete` 或 `covered` 及具体原因、证据或下一步绑定到该阶段的 attempt。提交使用读取时的 `state_revision`；状态变化时重新读取。盘点记录不会自动取消任务、修改依赖或把 open 改为 resolved；需要继续或关闭时按已有重试、重规划、移交和收尾规则操作。盘点提醒可恢复，但不阻止并行任务或强制停止后续执行，最终仍依赖主会话执行盘点。
 
 使用 `decompose_task` 追加问题时，在新增节点填写 `addition_reason`，并通过 `precedes` 指定依赖这个新增节点的已有后继；新增节点自己的前置仍用 `depends_on`。服务端原子校验并更新后继依赖，界面按依赖顺序显示“追加”及原因。后继或其子任务已经开始时拒绝静默修改，须先协调并显式重规划。旧调用不提供原因时保留兼容，标记为“未记录（旧调用）”，不推测历史原因。
+
+### Progress statistics contract
+
+The server computes the following integer metrics for the current plan, read-only historical plans, snapshots and archived task instances. Percentages use floor division (`count * 100 // total`), with zero for an empty plan. The app, task history, HTML and XLSX exports consume these same fields. Root synthesis remains a separate status; a 100% leaf acceptance rate does not accept the root.
+
+| Field | Meaning |
+| --- | --- |
+| `ended_leaf_count`, `ended_percent` | Leaves whose execution ended (finished, failed, cancelled, including finished submissions awaiting review), and their percentage of all leaves. |
+| `accepted_resolved_leaf_count`, `accepted_resolved_percent` | Leaves with `execution_status=finished`, `outcome=resolved`, no invalidation, no pending/rejected review, and either an explicit accepted review or current responsibility-version-1 main-session execution. |
+| `nodes[].accepted_resolved` | The same server acceptance decision for each node, also used for subtree summaries and the separately displayed root acceptance. |
+| `completed`, `percent` | Compatibility fields retaining the original execution-ended count and floored percentage. |
+| `resolved_leaf_count` | Compatibility field retaining the original raw `outcome=resolved` count; it does not establish acceptance. |
+
+Historical `resolved` outcomes without acceptance metadata never become accepted results. Missing derived fields are projected on read without changing stored history. Legacy linear steps retain completion semantics in `completed`/`percent` and `ended_*`; they have no current-protocol acceptance proof, so `accepted_resolved_*` is zero.

@@ -686,9 +686,8 @@ class ProgressTests(unittest.TestCase):
         replies = [json.loads(line)["result"] for line in proc.stdout.splitlines()]
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]["protocolVersion"], "2025-11-25")
-        self.assertEqual(len(replies[1]["tools"]), 29)
         listed = {tool["name"]: tool for tool in replies[1]["tools"]}
-        self.assertTrue({"get_progress", "update_task", "review_task", "route_request", "get_progress_view", "consume_display_intent", "snapshot_task_network", "revise_task_plan"} <= listed.keys())
+        self.assertTrue({"get_progress", "update_task", "review_task", "route_request", "get_progress_view", "consume_display_intent", "snapshot_task_network", "revise_task_plan", "review_stage_inventory", "record_coverage", "revise_task_title", "set_external_prerequisite"} <= listed.keys())
         self.assertEqual(listed["consume_display_intent"]["_meta"]["ui"]["visibility"], ["app"])
         self.assertEqual(listed["get_progress_view"]["_meta"]["ui"]["visibility"], ["app"])
         manifest_version = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())["version"]
