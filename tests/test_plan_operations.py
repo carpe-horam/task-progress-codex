@@ -53,7 +53,10 @@ class PlanOperationsTests(unittest.TestCase):
         server.init_task_network("Independent", self.sid, atomic_reason="Fixture", task_relationship="independent",
                                  new_task_reason="Independent fixture after prior plan")
         archived = self.data()["task_history"][0]
-        self.assertEqual(archived["plan_snapshots"][0], snap)
+        # Public reads add derived metric/title/coverage fields. Compare the
+        # persisted snapshot, while the queried projection above verifies the
+        # immutable execution attempt remains visible after replanning.
+        self.assertEqual(archived["plan_snapshots"][0], saved["plan_snapshots"][0])
 
     def test_revise_dependencies_and_order_without_changing_attempts(self):
         server.update_task(self.sid, "a", "running", assignment=MAIN, task_instance_id=self.iid)

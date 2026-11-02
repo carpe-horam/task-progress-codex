@@ -71,7 +71,7 @@ async function main(){
       assert.equal(await report.locator('.rp-delivery').textContent(),status==='failed'?'执行失败':'已取消');
       assert.equal(await report.locator('.rp-delivery').getAttribute('data-tone'),status==='failed'?'danger':'neutral','termination cannot show as green completion');
       assert(!(await report.locator('body').textContent()).includes('仍在进行'));
-      assert((await report.locator('.rp-metrics').textContent()).includes('2 项已结束未解决'));
+      assert((await report.locator('.rp-metrics').textContent()).includes('2 项已结束未验收解决'));
       const root=report.locator('#rp-current [data-node-id="root"]');
       assert.equal(await root.count(),1);
       const text=await root.textContent();

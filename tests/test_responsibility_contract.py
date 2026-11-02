@@ -81,6 +81,64 @@ class ResponsibilityContractTests(unittest.TestCase):
         aid = self.begin(task_id, MAIN)
         self.update(task_id, "finished", outcome="resolved", attempt_id=aid, summary="Coordinator result")
 
+    def test_progress_metrics_separate_ended_and_accepted_with_consistent_flooring(self):
+        self.new(tasks=[{"id": "main", "title": "Main", "assignment": MAIN},
+                        {"id": "work", "title": "Delegated", "assignment": SUB},
+                        {"id": "legacy", "title": "Legacy", "assignment": MAIN}])
+        self.finish_main("main")
+        self.finish_main("legacy")
+        self.begin(); self.submit()
+        self.rewrite(lambda data: data["nodes"]["legacy"].update(responsibility_version=0))
+        progress = self.progress()
+        self.assertEqual((progress["completed"], progress["percent"], progress["resolved_leaf_count"]), (3, 100, 2))
+        self.assertEqual((progress["ended_leaf_count"], progress["ended_percent"]), (3, 100))
+        self.assertEqual((progress["accepted_resolved_leaf_count"], progress["accepted_resolved_percent"]), (1, 33))
+        self.assertFalse(self.node("root")["accepted_resolved"], "leaf progress does not accept root synthesis")
+        self.assertFalse(self.node("legacy")["accepted_resolved"])
+        overview = server.get_progress(self.sid)["structuredContent"]["progress"]
+        for key in ("ended_leaf_count", "ended_percent", "accepted_resolved_leaf_count", "accepted_resolved_percent"):
+            self.assertEqual(overview[key], progress[key])
+        self.review()
+        self.assertEqual(self.progress()["accepted_resolved_percent"], 66)
+        self.begin("main", MAIN, retry=True)
+        self.assertEqual((self.progress()["ended_leaf_count"], self.progress()["ended_percent"]), (2, 66))
+        self.assertEqual(self.progress()["accepted_resolved_leaf_count"], 1)
+
+    def test_historical_metrics_project_without_mutating_legacy_history(self):
+        self.finish_main()
+        self.begin(); self.submit(); self.review("work", "reject")
+        def install_history(data):
+            snapshot = {"schema_version": 2, "root_id": data["root_id"],
+                        "nodes": json.loads(json.dumps(data["nodes"])), "epoch": 0}
+            snapshot["nodes"]["other"]["responsibility_version"] = 0
+            data["history"] = [snapshot]
+            data["task_history"] = [{**snapshot, "total": 2, "completed": 2, "percent": 100,
+                                     "resolved_leaf_count": 1, "task_instance_id": "old-fixture"}]
+            data["plan_snapshots"] = [snapshot]
+        self.rewrite(install_history)
+        before = server._session_file(self.sid).read_bytes()
+        p = server.get_progress_view(self.sid, include_history=True)["structuredContent"]["progress"]
+        for field in ("history", "task_history", "plan_snapshots"):
+            self.assertEqual(p[field][0]["ended_leaf_count"], 2)
+            self.assertEqual(p[field][0]["accepted_resolved_leaf_count"], 0)
+            self.assertFalse(p[field][0]["nodes"]["other"]["accepted_resolved"])
+        self.assertEqual(p["task_history"][0]["resolved_leaf_count"], 1)
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+    def test_acceptance_predicate_preserves_current_contract_and_excludes_unaccepted_outcomes(self):
+        current = {"execution_status": "finished", "outcome": "resolved", "responsibility_version": 1,
+                   "assignment": {"execution_mode": "main_session"}}
+        self.assertTrue(server._accepted_resolved(current))
+        self.assertTrue(server._accepted_resolved({**current, "assignment": {"execution_mode": "subagent"}, "review_status": "accepted"}))
+        for changes in ({"outcome": "open"}, {"execution_status": "failed"}, {"execution_status": "cancelled"},
+                        {"review_status": "pending"}, {"review_status": "rejected"}, {"responsibility_version": 0},
+                        {"responsibility_legacy": True}, {"invalidated_by": "retry"}):
+            self.assertFalse(server._accepted_resolved({**current, **changes}), changes)
+        leaves = [{**current, "id": str(i)} if i < 29 else {"id": str(i), "execution_status": "pending"} for i in range(50)]
+        self.assertEqual(server._leaf_metrics(leaves)["ended_percent"], 58, "integer flooring avoids 29/50 float undercount")
+        self.assertEqual(server._leaf_metrics([]), {"ended_leaf_count": 0, "ended_percent": 0,
+                                                  "accepted_resolved_leaf_count": 0, "accepted_resolved_percent": 0})
+
     def test_planned_executor_cannot_be_silently_replaced_in_either_direction(self):
         self.reject_unchanged(lambda: self.begin("work", MAIN))
         self.reject_unchanged(lambda: self.begin("other", SUB))

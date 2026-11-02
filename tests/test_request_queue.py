@@ -487,7 +487,8 @@ class RequestQueueTests(unittest.TestCase):
         self.assertEqual(before, server._session_file(self.sid).read_bytes())
         self.assertEqual(self.p()["state_revision"], revision)
         self.route("next")
-        self.assertEqual(self.raw()["task_history"], history)
+        self.assertEqual(self.p(history=True)["task_history"], history,
+                         "A real write may materialize the legacy archive; its public projection stays stable")
         self.finish_a()
         server.activate_request(self.sid, self.a, "next")
         archives = self.p(history=True)["task_history"]
@@ -502,7 +503,8 @@ class RequestQueueTests(unittest.TestCase):
         server._atomic_json(server._session_file(self.sid), data)
         old = self.p(history=True)["task_history"][0]
         self.start(iid, "same", SUB, retry=True)
-        self.assertEqual(self.raw()["task_history"], [old])
+        self.assertEqual(self.p(history=True)["task_history"], [old],
+                         "Retry must freeze the already projected legacy archive")
         self.assertEqual(self.p()["parallel_tasks"][0]["request_status"], "active")
 
     def test_inconsistent_legacy_resolved_root_with_unresolved_child_stays_current(self):

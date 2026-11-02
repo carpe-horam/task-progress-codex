@@ -91,7 +91,7 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
       document.getElementById('frames').append(frame);
     },{id,snapshot,mode,html});
     const frame=page.frameLocator('#'+id);
-    if (snapshot.structuredContent.progress) await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.task_title}).waitFor();
+    if (snapshot.structuredContent.progress) await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.display_title || snapshot.structuredContent.progress.task_title}).waitFor();
     else await frame.locator('#refresh').waitFor({state:'attached'});
     return frame;
   }

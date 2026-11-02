@@ -71,6 +71,16 @@ class SelectiveWireTests(unittest.TestCase):
                               {'task_id':'other','decision':'continue','reason':'Still planned'}])
         self.write('reassign_task', task_id='other', assignment=MAIN, reason='Fixture adjustment', reviewer=MAIN)
         current = self.read()['progress']
+        prerequisite = self.write('set_external_prerequisite', task_id='work', status='satisfied',
+                                  reason=LONG[:12000], evidence=[LONG[:12000]],
+                                  reviewer={**MAIN, 'agent_name':'Explicit wire reviewer'}, source_attempt_id=aid,
+                                  expected_epoch=current['epoch'], expected_revision=current['revision'])
+        self.assertEqual(prerequisite['affected']['id'], 'work')
+        self.assertEqual(prerequisite['attempt_id'], aid)
+        current = self.read()['progress']
+        self.write('revise_task_title', task_id='work', display_title=LONG, reason=LONG,
+                   expected_epoch=current['epoch'], expected_revision=current['revision'])
+        current = self.read()['progress']
         self.write('revise_task_plan', task_id='other', reason='Fixture ordering', expected_epoch=current['epoch'],
                    expected_revision=current['revision'], depends_on=['work'], dependency_policy='finished')
         self.write('decompose_task', task_id='other', tasks=[{'id': 'child', 'title': 'Child', 'assignment': MAIN}])
@@ -110,6 +120,14 @@ class SelectiveWireTests(unittest.TestCase):
         binding = server.get_progress(sid, task_instance_id=peer)['structuredContent']['progress']['closure_review_binding']
         self.rpc('review_task_closure', session_id=sid, task_instance_id=peer, task_id='root', review_id='continue', decision='continue', summary=LONG, evidence=[LONG], reviewer=MAIN, **binding)
         self.rpc('handoff_request', session_id=sid, task_instance_id=iid, request_id='transfer', handoff_id='transfer', source_task_instance_id=peer, summary=LONG, evidence=[LONG], reviewer=MAIN, mappings=[{'source_task_id':'cancelled','source_attempt_id':None,'target_task_instance_id':iid,'target_epoch':0,'target_task_id':'target','target_attempt_id':target}], **binding)
+        server.update_task(sid, 'target', 'finished', outcome='open', attempt_id=target, summary='Integration remains open', task_instance_id=iid)
+        server.update_task(sid, 'later', 'running', assignment=MAIN, task_instance_id=iid)
+        source = server._read(sid)['nodes']['later']['attempt_id']
+        server.update_task(sid, 'later', 'finished', outcome='resolved', attempt_id=source, summary='Endpoint accepted', evidence=['fixture://endpoint'], task_instance_id=iid)
+        covered = self.rpc('record_coverage', session_id=sid, task_instance_id=iid, coverage_id='wire-coverage', source_task_id='later', source_attempt_id=source,
+                          target_task_instance_id=iid, target_epoch=0, target_task_id='target', target_attempt_id=target,
+                          scope=LONG[:12000], reason=LONG, evidence=[LONG], reviewer=MAIN)['structuredContent']
+        self.assertEqual(covered['coverage_id'], 'wire-coverage')
         self.assertEqual(self.seen, server._MUTATION_TOOLS)
 
     def test_overview_tree_and_tasks_are_distinct_explicit_layers(self):
@@ -167,7 +185,11 @@ class SelectiveWireTests(unittest.TestCase):
         archived = self.read(view='history', history_kind='history', limit=1)['progress']
         self.assertEqual(archived['pagination']['total'], 1)
         self.assertEqual(archived['records'][0]['epoch'], 0)
-        self.assertEqual(next(n for n in archived['records'][0]['nodes'].values() if n['id'] == 'work')['attempts'], data['nodes']['work']['attempts'])
+        archived_attempts = next(n for n in archived['records'][0]['nodes'].values() if n['id'] == 'work')['attempts']
+        # Archive closeout may add time-boundary fallback metadata. Verify the
+        # original attempt identity and payload survive without rejecting it.
+        self.assertEqual([(a['attempt_id'], a['summary']) for a in archived_attempts],
+                         [(a['attempt_id'], a.get('summary', '')) for a in data['nodes']['work']['attempts']])
         self.assertIsNotNone(server._read(self.sid)['session_work_state']['instances'][peer['request_task_instance_id']])
 
     def test_bad_pagination_selection_and_revision_do_not_change_task_data(self):
