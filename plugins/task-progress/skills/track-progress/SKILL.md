@@ -58,7 +58,8 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 - **子智能体报告 `finished`** → 这只是待复核提交。先读 [HTN 验收](references/htn-review.md)；主会话读取 submission 和 evidence，再调用 `review_task` 接受或退回。待复核结果不能放行依赖。
 - **准备验收有子任务的父节点或 root** → 由主会话综合验收。只有所有直接子结果已解决且无待复核项时才可 `resolved`；未解决、失败或取消须如实保留。原子 root 按自执行叶任务收束。详见 [HTN 验收](references/htn-review.md)。
 - **主要阶段结束，准备开始下一阶段** → 检查 `stage_inventory_due` 和 `stage_inventory_due_has_more`。无有效提醒时不调用盘点工具；有提醒时按 [生命周期](references/planning-and-lifecycle.md) 找全提醒和未解决叶节点，并用 `review_stage_inventory` 逐项记录理由。没有未解决叶节点时提交空 `decisions`；盘点不改变任务状态。
-- **叶节点或线性步骤超过 10 分钟，或收到拆分复核提醒** → 在继续常规工作或再次等待前评估拆分。有独立边界则拆分，否则记录具体理由；不要为拆分中断无法安全停止的工作。详见 [生命周期](references/planning-and-lifecycle.md)。
+- **HTN 叶节点超过 10 分钟，或收到拆分复核门禁** → 多个独立结果使用 `decompose_task`；唯一剩余结果用 `review_task_split` 提交理由和证据，最多有效 10 分钟且绑定当前执行。摘要文字不能豁免。不要为拆分中断实际运行。旧线性步骤仍按 [生命周期](references/planning-and-lifecycle.md) 复核。
+- **启动命令或外部运行** → 已授权的本地命令优先通过 `start_task_execution` 获得自动退出回执；项目要求走 Dagu 时仍走 Dagu，并用 `record_task_execution` 将实际 run ID 和终态绑定当前 attempt。每 attempt 仅一轮执行；失败或阻塞后必须收尾并用 `retry=true` 取得新 attempt，不能在 running 上覆盖 run ID。成功命令仍须验收任务，外部回执缺失保持未知。
 - **范围或依赖变化** → 先调整计划，再启动新增工作。追加、重试、结果失效和重规划的规则见 [生命周期](references/planning-and-lifecycle.md) 和 [HTN 重试与重规划](references/htn-retry.md)。
 
 ## 5. 恢复、分流和收尾

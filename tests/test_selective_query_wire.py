@@ -128,6 +128,15 @@ class SelectiveWireTests(unittest.TestCase):
                           target_task_instance_id=iid, target_epoch=0, target_task_id='target', target_attempt_id=target,
                           scope=LONG[:12000], reason=LONG, evidence=[LONG], reviewer=MAIN)['structuredContent']
         self.assertEqual(covered['coverage_id'], 'wire-coverage')
+        execution = self.rpc('init_task_network', task_title='Execution wire fixture', atomic_reason='One isolated command')['structuredContent']
+        route = {'session_id': execution['session_id'], 'task_instance_id': execution['task_instance_id'], 'task_id': 'root'}
+        attempt = self.rpc('update_task', **route, execution_status='running', assignment=MAIN)['structuredContent']['attempt_id']
+        self.rpc('review_task_split', **route, attempt_id=attempt, reason='One remaining command result', remaining_outcomes=['Command result'], evidence=['fixture://scope'])
+        self.rpc('record_task_execution', **route, attempt_id=attempt, provider='external', execution_id='wire-run', status='running', summary='Wire run')
+        self.rpc('record_task_execution', **route, attempt_id=attempt, provider='external', execution_id='wire-run', status='failed', summary='Wire failure', evidence=['fixture://exit'], exit_code=1)
+        attempt = self.rpc('update_task', **route, execution_status='running', retry=True, assignment=MAIN)['structuredContent']['attempt_id']
+        with patch.object(server.subprocess, 'Popen', side_effect=OSError('isolated launch fixture')):
+            self.rpc('start_task_execution', **route, attempt_id=attempt, command=['fixture'], cwd=str(server.SESSION_DIR), summary='Wire managed execution')
         self.assertEqual(self.seen, server._MUTATION_TOOLS)
 
     def test_overview_tree_and_tasks_are_distinct_explicit_layers(self):

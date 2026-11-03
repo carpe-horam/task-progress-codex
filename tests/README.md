@@ -2,6 +2,8 @@
 
 Run from the repository root. The backend suite needs only Python 3:
 
+`test_execution_lifecycle.py` replays single-attempt/multiple-run rejection, automatic failed/blocked closeout, exact run identity across retries, late and conflicting receipts, durable rejected-closeout recovery, bounded structured split decisions and real supervised subprocess exits. Workers and receipts use isolated temporary session directories; no existing task or service is changed. `test_execution_lifecycle_app.cjs` checks the live task rows and offline exports against the same isolated backend. See [execution lifecycle protocol](../docs/protocol/execution-lifecycle.md) for managed versus caller-declared receipts and host limits.
+
 ```sh
 python3 -m unittest discover -s tests -v
 ```
