@@ -36,7 +36,10 @@ SELECTIVE_QUERY = (
 STAGE_REVIEW = (
     " After each major stage, inventory all unresolved leaves using review_stage_inventory: continue, obsolete "
     "or covered, with reasons and evidence. Preserve outcomes. For additions supply addition_reason and "
-    "precedes for pending successors; coordinate started work and replan rather than rewrite history."
+    "precedes for pending successors; coordinate started work and replan rather than rewrite history. "
+    "A continue disposition is a follow-up decision, not completion: revisit the current task/evidence/dependencies, "
+    "then explicitly retry or replan. At stage closure, session resume and before reporting, inspect unresolved counts, "
+    "stage_inventory_due and next_actions; refresh summaries/evidence after new work and record the new outcome promptly."
 )
 
 
