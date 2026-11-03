@@ -1,5 +1,6 @@
 ### 4. 重试与新一轮规划
 
+- **未解决结果要形成下一轮动作。** `review_stage_inventory` 的 `continue` 只是“继续处理”的审计决定，不会把任务重新排入 ready，也不会改变 `open`/`failed`/`cancelled` 状态。记录后按该项的下一步重新读取任务、依赖和证据；条件仍成立时立即用 `retry=true` 开始新 attempt，条件已变化时修订或重建计划并保留原结果。不能把盘点完成当成问题已解决。阶段结束、恢复会话或准备报告时，查看 `open_leaf_count`、`failed_leaf_count`、`stage_inventory_due` 与 `next_actions`；对仍有效的未解决结果刷新当前摘要/证据和下一步，完成新一轮后立即写回最新 outcome、summary 与 evidence。`covered`/`obsolete` 是明确的审计处置，不应继续自动重试；来源变化后要重新判断。
 - 叶任务以 `failed` 或 `finished/open` 收尾时，若原因明确，在 `update_task` 的 `failure_reason` 填写具体原因；不清楚时不要猜测。连续两次未解决后再次重试，回执的 `retry_review_due` 提供最近两次的原因和摘要，提示 agent 结合上下文判断是否为相同或相关问题，不依赖文字精确匹配。原因或摘要为空或被截断时，按需读取 attempts 记录；信息仍不足就明确不确定。若问题重复或相关，汇总已尝试方法及新增信息，判断是否拆分、调整依赖或验收、变更执行条件、寻求必要信息，或保留现状并说明理由。记录判断和下一步；提醒不会自动改任务或阻止重试。成功或取消的尝试中断连续计数。
 - 重试已结束叶任务：先处理待复核提交，再用 `update_task` 传 `execution_status="running", retry=true` 及新的完整 assignment，执行角色须与保留的计划一致，保存新 `attempt_id` 并完成新的派发绑定；旧 submission/review 留在历史，当前 review 清空。旧尝试的迟到上报不能覆盖当前尝试。
 - 每次重试都重新检查自身及祖先的依赖。如果有运行中的直接或传递下游仍依赖本次重试将使其失效的结果，先协调结束这些尝试，不能让旧下游与新上游并行。成功重试会使已结束的消费者（含依赖分组的后代）及其祖先验收失效，保留历史结果和 attempts，并恢复为 pending、标记 invalidated_by。再次读取 ready 列表，按依赖顺序重新执行或验收；旧 attempt_id 不再能更新这些节点。这里的状态失效不表示已实际派发重跑。

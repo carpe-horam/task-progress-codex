@@ -90,7 +90,7 @@ class TaskStartupContractTests(unittest.TestCase):
         hook = PLUGIN / "hooks" / "task_progress_hook.py"
         for event, phrase in [
             ({"hook_event_name": "SessionStart", "source": "startup"}, "coarse HTN plan"),
-            ({"hook_event_name": "UserPromptSubmit", "prompt": "Please fix a bug"}, "coarse plan"),
+            ({"hook_event_name": "UserPromptSubmit", "prompt": "Please fix a bug"}, "inspect unresolved counts"),
             ({"hook_event_name": "SessionStart", "source": "resume"}, "resumed Codex session"),
         ]:
             run = subprocess.run(

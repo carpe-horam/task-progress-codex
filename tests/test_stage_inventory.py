@@ -87,6 +87,48 @@ class StageInventoryTests(unittest.TestCase):
         self.assertEqual(set(self.record("a")["scope_task_ids"]), set(scope))
         self.assertEqual(self.raw()["nodes"]["later"]["execution_status"], "pending")
 
+    def test_next_actions_keep_unresolved_tasks_visible_and_refresh_after_retry(self):
+        self.finish("a", "open")
+        self.review("a", [
+            decision("a", "obsolete"), decision("b", "covered"),
+            decision("backlog", "continue"), decision("later", "continue"),
+        ])
+        actions = server._progress_payload(self.raw())["next_actions"]
+        for nid in ("a", "b", "backlog", "later"):
+            self.assertTrue(any(nid in action for action in actions), (nid, actions))
+        self.assertTrue(any("最近盘点为 obsolete" in action for action in actions))
+        self.assertTrue(any("retry=true" in action for action in actions))
+
+        server.update_task(self.sid, "a", "running", assignment=MAIN, retry=True,
+                           task_instance_id=self.iid)
+        actions = server._progress_payload(self.raw())["next_actions"]
+        self.assertTrue(any("等待任务 a" in action for action in actions))
+        self.assertFalse(any("最近盘点为 obsolete" in action for action in actions))
+
+        new_attempt = self.raw()["nodes"]["a"]["attempt_id"]
+        server.update_task(self.sid, "a", "finished", outcome="open", attempt_id=new_attempt,
+                           summary="New unresolved result", evidence=["fixture://new-result"],
+                           task_instance_id=self.iid)
+        actions = server._progress_payload(self.raw())["next_actions"]
+        self.assertTrue(any("盘点未解决任务 a" in action for action in actions))
+        self.assertFalse(any("最近盘点为 obsolete" in action for action in actions))
+
+    def test_latest_current_decision_wins_across_overlapping_inventories(self):
+        self.finish("a", "open")
+        self.finish("b")
+        self.review("b", [decision("a"), decision("backlog", "obsolete"), decision("later")])
+
+        server.update_task(self.sid, "a", "running", assignment=MAIN, retry=True,
+                           task_instance_id=self.iid)
+        new_attempt = self.raw()["nodes"]["a"]["attempt_id"]
+        server.update_task(self.sid, "a", "finished", outcome="open", attempt_id=new_attempt,
+                           summary="New result", evidence=["fixture://new-result"],
+                           task_instance_id=self.iid)
+        self.review("a", [decision("a"), decision("backlog", "continue"), decision("later")])
+
+        decisions = server._current_stage_inventory_decisions(self.raw())
+        self.assertEqual(decisions["backlog"]["decision"], "continue")
+
     def test_accepted_continue_reuse_retains_original_and_source_stage_attempt(self):
         self.finish("a"); self.finish("b")
         self.review("a", [decision("backlog")], ["a", "backlog"])

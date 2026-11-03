@@ -1871,6 +1871,38 @@ def _legacy_planning_status(data: dict[str, Any]) -> str:
     return "required"
 
 
+def _current_stage_inventory_decisions(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return the latest still-current disposition recorded for each inventory target."""
+    decisions: dict[str, dict[str, Any]] = {}
+    for stage in data.get("nodes", {}).values():
+        for record in stage.get("stage_inventories", []):
+            if record.get("status") != "accepted" or record.get("source_epoch") != data.get("epoch", 0):
+                continue
+            if (record.get("attempt_id") != stage.get("attempt_id")
+                    or record.get("stage_source_fingerprint") != _inventory_target_fingerprint(stage)):
+                continue
+            bindings = record.get("target_bindings", {})
+            for item in record.get("decisions", []):
+                task_id = item.get("task_id")
+                target = data["nodes"].get(task_id)
+                binding = bindings.get(task_id)
+                if (target is None or binding is None
+                        or binding.get("attempt_id") != target.get("attempt_id")
+                        or binding.get("source_fingerprint") != _inventory_target_fingerprint(target)):
+                    continue
+                reviewed_at = record.get("reviewed_at", "")
+                reviewed_revision = record.get("reviewed_revision", 0)
+                previous = decisions.get(task_id)
+                current_order = (reviewed_revision, reviewed_at)
+                previous_order = ((previous or {}).get("reviewed_revision", 0),
+                                  (previous or {}).get("reviewed_at", ""))
+                if previous and previous_order > current_order:
+                    continue
+                decisions[task_id] = {**item, "inventory_id": record.get("inventory_id"),
+                                      "reviewed_at": reviewed_at, "reviewed_revision": reviewed_revision}
+    return decisions
+
+
 def _planning_next_actions(data: dict[str, Any]) -> list[str]:
     status = data.get("planning_status") or _legacy_planning_status(data)
     if status == "required":
@@ -1912,6 +1944,40 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
                 actions.append(f"主会话派发 {node_id}：update_task(running) 后实际 spawn，再 bind_task_agent。")
             else:
                 actions.append(f"主会话执行 {node_id}：update_task(running)，记录具体 self_execution_reason。")
+    # A stage inventory is an audit decision, not an execution transition. Make
+    # its current disposition actionable so an open/failed result is not left
+    # parked after the inventory reminder disappears.
+    inventory_decisions = _current_stage_inventory_decisions(data)
+    for node in nodes.values():
+        if (node.get("children") or not _node_is_terminal(node) or _accepted_resolved(node)
+                or node.get("review_status") == "pending"):
+            continue
+        node_id = node["id"]
+        decision = inventory_decisions.get(node_id)
+        status = ("finished/open" if node.get("execution_status") == "finished"
+                  else node.get("execution_status"))
+        if decision and decision.get("decision") == "continue":
+            actions.append(
+                f"继续未解决任务 {node_id}（{status}）：盘点下一步为“{decision.get('reason', '')}”。"
+                "先刷新当前任务与依赖/证据；仍适用时按 planned_assignment 显式 retry=true 开始新尝试，"
+                "并在结果变化时立即更新状态、摘要和证据；条件变化则重规划。"
+            )
+        elif decision:
+            actions.append(
+                f"复核未解决任务 {node_id}（{status}）：最近盘点为 {decision.get('decision')}，理由："
+                f"“{decision.get('reason', '')}”。刷新当前证据，确认该处置仍适用；若已过期或任务仍需执行，"
+                "按最新依赖和计划显式 retry=true 或重规划，并更新当前摘要、证据与状态。"
+            )
+        elif node.get("stage_inventory_due_attempt") == node.get("attempt_id"):
+            actions.append(
+                f"盘点未解决任务 {node_id}（{status}）：读取当前任务树和证据后用 review_stage_inventory "
+                "记录 continue（给出下一步）、covered 或 obsolete；continue 需随后显式重试或重规划。"
+            )
+        else:
+            actions.append(
+                f"重新检查未解决任务 {node_id}（{status}）：刷新摘要、证据与依赖；确认仍需处理时按计划显式 retry=true，"
+                "否则调整计划并记录原因。"
+            )
     return actions or ["检查阻塞依赖和未解决结果；显式重试或重规划，不能启动空的 ready 列表。"]
 
 
@@ -2598,7 +2664,8 @@ def review_stage_inventory(session_id: str, task_id: str, attempt_id: str,
             "decisions": normalized, "reused_decisions": reused,
             "target_bindings": {nid: {"attempt_id": data["nodes"][nid].get("attempt_id"),
                                       "source_fingerprint": _inventory_target_fingerprint(data["nodes"][nid])}
-                                for nid in unresolved}, "reviewed_at": _now()})
+                                for nid in unresolved}, "reviewed_at": _now(),
+            "reviewed_revision": int(data.get("revision", 0)) + 1})
         stage.pop("stage_inventory_due_attempt", None)
         data["revision"] = int(data.get("revision", 0)) + 1
         _write(sid, data)
