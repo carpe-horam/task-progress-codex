@@ -29,10 +29,13 @@ class HookRuntimeTests(unittest.TestCase):
                     "CODEX_MCP_PYTHON_PATH": "", "CODEX_PYTHON_PATH": ""})
         env[runtime_variable] = sys.executable
         command = self.hooks[event][0]["hooks"][0]["command"]
+        # Freshly copied scripts have a measurable cold-start penalty on macOS
+        # (observed 1.46s vs 0.03s warm). This is a functional PATH fixture,
+        # not a native-host hook latency benchmark; keep its timeout separate.
         return subprocess.run(
             ["/bin/sh", "-c", command],
             input=json.dumps({"hook_event_name": event, "source": source}),
-            env=env, text=True, capture_output=True, timeout=2,
+            env=env, text=True, capture_output=True, timeout=5,
         )
 
     def test_both_hook_events_use_configured_mcp_python_without_python_on_path(self):
@@ -104,7 +107,7 @@ class HookRuntimeTests(unittest.TestCase):
                "CODEX_MCP_PYTHON_PATH": sys.executable}
         command = self.hooks["SessionStart"][0]["hooks"][0]["command"]
         result = subprocess.run(["/bin/sh", "-c", command], input="not json",
-                                env=env, text=True, capture_output=True, timeout=2)
+                                env=env, text=True, capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
 

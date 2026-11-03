@@ -441,7 +441,7 @@ class ServiceManager:
             raise ServiceError("Unable to inspect the local service port") from error
 
     def _release(self):
-        required = ["server.py", "app.html", "shared_service.py", "service_manager.py", "legacy_history.py",
+        required = ["server.py", "execution_lifecycle.py", "execution_worker.py", "app.html", "shared_service.py", "service_manager.py", "legacy_history.py",
                     ".codex-plugin/plugin.json"]
         files = [self.plugin_root / name for name in required]
         assets = self.plugin_root / "assets"

@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -17,9 +18,13 @@ import uuid
 import weakref
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
+
+_lifecycle_spec = importlib.util.spec_from_file_location("task_execution_lifecycle", Path(__file__).with_name("execution_lifecycle.py"))
+lifecycle = importlib.util.module_from_spec(_lifecycle_spec)
+_lifecycle_spec.loader.exec_module(lifecycle)
 
 try:
     import fcntl
@@ -72,6 +77,10 @@ _SESSION_LOCKS_GUARD = threading.Lock()
 
 class ProgressError(ValueError):
     """An expected progress operation error that should be shown to the caller."""
+
+    def __init__(self, message: str, recovery: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.recovery = recovery
 
 
 def _now() -> str:
@@ -1733,7 +1742,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     running_leaves = [node for node in leaves if node.get("execution_status") == "running"]
     split_review_due = []
     for node in running_leaves:
-        if not _needs_split_review(node.get("summary")):
+        if not lifecycle.split_due(node):
             continue
         elapsed = _elapsed_seconds(node.get("started_at"))
         if elapsed is not None and elapsed > LONG_RUNNING_REVIEW_SECONDS:
@@ -1790,6 +1799,10 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             })
         enriched_nodes.append({
             **node,
+            "execution_summary": lifecycle.execution_summary(node.get("execution")),
+            "split_review_required": lifecycle.split_due(node),
+            "write_rejection_count": len(node.get("write_rejections", [])),
+            "latest_write_rejection": deepcopy((node.get("write_rejections") or [None])[-1]),
             "display_title": _display_title(node),
             "title_revision_count": len(node.get("title_revisions", [])),
             "accepted_resolved": _accepted_resolved(node),
@@ -1924,7 +1937,11 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
         if node.get("review_status") == "pending":
             actions.append(f"主会话 review_task({node_id})：使用当前 task_instance_id 与 attempt_id={node.get('attempt_id')}，检查 submission 后填写 decision=accept|reject、summary、evidence 与 reviewer.execution_mode=main_session；不要重复 update_task(finished)。")
         elif node.get("execution_status") == "running":
-            if node.get("assignment", {}).get("execution_mode") == "subagent" and not (node.get("dispatch") or {}).get("agent_name"):
+            if lifecycle.split_due(node):
+                actions.append(f"review_task_split({node_id}) 或 decompose_task：先处理结构化拆分门禁，摘要不能豁免。")
+            elif (node.get("execution") or {}).get("status") in lifecycle.TERMINAL:
+                actions.append(f"执行 {node_id} 已结束，须验证结果并收尾当前 attempt；再次运行先 retry=true。")
+            elif node.get("assignment", {}).get("execution_mode") == "subagent" and not (node.get("dispatch") or {}).get("agent_name"):
                 actions.append(f"bind_task_agent({node_id})：绑定实际派发返回的 agent_name；旧执行可补录后提交复核。")
             else:
                 actions.append(f"等待任务 {node_id} 的当前执行结果；继续用当前 attempt_id 更新。")
@@ -2100,6 +2117,8 @@ def decompose_task(
         _validate_task_instance(data, task_instance_id)
         parent = data["nodes"].get(task_id)
         if parent is not None:
+            if (parent.get("execution") or {}).get("status") == "running":
+                raise ProgressError("绑定的外部/托管执行仍在运行；不得为拆分中断或伪装取消，请在其终态后分解。")
             if parent["execution_status"] == "running" and attempt_id != parent.get("attempt_id"):
                 raise ProgressError("分解运行中的任务必须提供当前 attempt_id；请先协调停止旧执行者。")
             if attempt_id is not None and attempt_id != parent.get("attempt_id"):
@@ -2148,6 +2167,8 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
     node["outcome"] = None
     node["summary"] = ""
     node["evidence"] = []
+    node.pop("execution", None)
+    node.pop("decomposition_review", None)
     node["responsibility_version"] = 1
     node["submission"] = None
     node["review"] = None
@@ -2180,7 +2201,7 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
 def _record_attempt_result(node: dict[str, Any]) -> None:
     if node.get("attempts") and node.get("attempt_id"):
         node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
-            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status", "failure_reason"
+            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status", "failure_reason", "execution", "decomposition_review", "write_rejections"
         )})
         if not _valid_boundary(node["attempts"][-1].get("started_at")):
             node["attempts"][-1]["started_at"] = node.get("started_at")
@@ -2211,6 +2232,224 @@ def _reset_execution(node: dict[str, Any]) -> None:
                 assignment={}, attempt_id=None, started_at=None, finished_at=None,
                 dispatch=None, submission=None, review=None, review_status=None)
     node.pop("time_boundary_sources", None)
+    for key in ("execution", "decomposition_review"):
+        node.pop(key, None)
+
+
+def _execution_identity(sid, data, node, attempt_id):
+    if not attempt_id or attempt_id != node.get("attempt_id"):
+        raise ProgressError("attempt_id 不匹配；先读取当前身份，禁止自动把旧结果套用到新尝试。", {
+            "code": "attempt_mismatch", "session_id": sid, "task_instance_id": _task_instance_id(data),
+            "task_id": node["id"], "current_attempt_id": node.get("attempt_id"),
+            "execution_status": node.get("execution_status"), "action": "read_current_attempt_then_close_or_retry",
+        })
+
+
+def _require_split_decision(node):
+    if lifecycle.split_due(node):
+        raise ProgressError("split_review_required: 长任务须先结构化复核或分解；摘要文字不能豁免。", {
+            "code": "split_review_required", "task_id": node["id"], "current_attempt_id": node.get("attempt_id"),
+            "action": "review_task_split_or_decompose_task", "scope_fingerprint": lifecycle.fingerprint(node),
+        })
+
+
+def _require_closeout_recovery(node):
+    if any(item.get("requires_recovery") and not item.get("recovered_at")
+           and item.get("current_attempt_id") == node.get("attempt_id") for item in node.get("write_rejections", [])):
+        raise ProgressError("closeout_recovery_required: 当前尝试有被拒绝的终态写入；核实并正确收尾后才能继续或重试。", {
+            "code": "closeout_recovery_required", "task_id": node["id"],
+            "current_attempt_id": node.get("attempt_id"), "action": "verify_result_and_close_current_attempt",
+        })
+
+
+def _require_fresh_execution(data, node, execution_id, provider):
+    for plan in [data, *data.get("history", [])]:
+        nodes = plan.get("nodes", {})
+        for source in (nodes.values() if isinstance(nodes, dict) else nodes):
+            for record in [source, *source.get("attempts", [])]:
+                execution = record.get("execution") or {}
+                if (execution.get("execution_id") == execution_id and execution.get("provider") == provider
+                        and (record.get("attempt_id") != node.get("attempt_id") or source.get("id") != node["id"])):
+                    raise ProgressError("execution_id 已属于另一 attempt；重试必须使用真实的新 run ID。")
+
+
+def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcomes, evidence,
+                      task_instance_id=None, valid_for_seconds=600):
+    sid = _normalize_session_id(session_id)
+    _nonempty(reason, "reason")
+    _query_integer(valid_for_seconds, "valid_for_seconds", 1, 600)
+    if (not isinstance(remaining_outcomes, list) or len(remaining_outcomes) != 1
+            or not all(isinstance(x, str) and x.strip() for x in remaining_outcomes)):
+        raise ProgressError("多个独立结果必须 decompose_task；仅一个不可再分结果可保留叶任务。")
+    _require_result_evidence(reason, evidence)
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        _execution_identity(sid, data, node, attempt_id)
+        if node.get("execution_status") != "running" or node.get("children"):
+            raise ProgressError("仅当前 running 叶 attempt 可复核拆分。")
+        reviewed = datetime.fromisoformat(_now())
+        node["decomposition_review"] = {
+            "attempt_id": attempt_id, "scope_fingerprint": lifecycle.fingerprint(node),
+            "reason": reason, "remaining_outcomes": list(remaining_outcomes), "evidence": list(evidence),
+            "reviewed_at": reviewed.isoformat(), "expires_at": (reviewed + timedelta(seconds=valid_for_seconds)).isoformat(),
+        }
+        node.setdefault("split_reviews", []).append(deepcopy(node["decomposition_review"]))
+        _record_attempt_result(node)
+        data["revision"] += 1
+        _write(sid, data)
+        snapshot = _capture_response_snapshot(sid)
+    return _tool_result("已记录有时效的结构化拆分复核。", _progress_payload(data), sid, response_snapshot=snapshot)
+
+
+def _apply_execution_receipt(data, node, execution_id, provider, status, summary, evidence, exit_code, finished_at):
+    try:
+        changed = lifecycle.finish(node, execution_id, provider, status, summary, evidence, exit_code, finished_at)
+    except ValueError as exc:
+        raise ProgressError(str(exc)) from exc
+    if changed:
+        if node.get("execution_status") in TERMINAL_EXECUTION_STATUSES:
+            for rejection in node.get("write_rejections", []):
+                if rejection.get("current_attempt_id") == node.get("attempt_id"):
+                    rejection.setdefault("recovered_at", _now())
+        _record_attempt_result(node)
+        if node.get("execution_status") in TERMINAL_EXECUTION_STATUSES and node.get("parent_id") == data.get("root_id"):
+            node["stage_inventory_due_attempt"] = node.get("attempt_id")
+        data["revision"] += 1
+    return changed
+
+
+def record_task_execution(session_id, task_id, attempt_id, execution_id, provider, status,
+                          summary, evidence=None, exit_code=None, task_instance_id=None,
+                          started_at=None, finished_at=None):
+    sid = _normalize_session_id(session_id)
+    for value, label in ((execution_id, "execution_id"), (summary, "summary")):
+        _nonempty(value, label)
+    if provider not in lifecycle.PROVIDERS - {"managed_command"}:
+        raise ProgressError("外部回执 provider 必须为 dagu/subagent/external；托管命令使用 start_task_execution。")
+    if status not in {"running", *lifecycle.TERMINAL}:
+        raise ProgressError("执行回执状态无效。")
+    for stamp, label in ((started_at, "started_at"), (finished_at, "finished_at")):
+        if stamp is not None and not _valid_boundary(stamp):
+            raise ProgressError(label + " 必须是带时区的有效时间。")
+    if (status == "running" and finished_at is not None) or (status != "running" and started_at is not None):
+        raise ProgressError("running 只接受 started_at；终态只接受 finished_at。")
+    evidence = evidence or []
+    if not isinstance(evidence, list) or not all(isinstance(x, str) and x.strip() for x in evidence):
+        raise ProgressError("evidence 必须为非空字符串的列表。")
+    if status != "running":
+        _require_result_evidence(summary, evidence)
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        _execution_identity(sid, data, node, attempt_id)
+        if status == "running":
+            _require_closeout_recovery(node)
+            _require_fresh_execution(data, node, execution_id, provider)
+            if provider == "subagent" and (node.get("dispatch") or {}).get("agent_name") != execution_id:
+                raise ProgressError("subagent 回执必须匹配 bind_task_agent 的实际执行者标识。")
+            if started_at is not None and node.get("execution") and node["execution"]["started_at"] != started_at:
+                raise ProgressError("已绑定执行的 started_at 不可修改。")
+            if not node.get("execution"):
+                _require_split_decision(node)
+            try:
+                changed = lifecycle.bind(node, execution_id, provider, summary, started_at or _now())
+            except ValueError as exc:
+                raise ProgressError(str(exc)) from exc
+            if changed:
+                data["revision"] += 1
+                _record_attempt_result(node)
+        else:
+            existing = node.get("execution") or {}
+            if (existing.get("status") in lifecycle.TERMINAL and finished_at is not None
+                    and finished_at != existing.get("finished_at")):
+                raise ProgressError("已记录终态的 finished_at 不可覆盖。")
+            changed = _apply_execution_receipt(data, node, execution_id, provider, status, summary, evidence, exit_code, finished_at or _now())
+        if changed:
+            _write(sid, data)
+        snapshot = _capture_response_snapshot(sid)
+    return _tool_result("执行回执已绑定到精确 attempt；失败/阻塞自动收尾。", _progress_payload(data), sid, response_snapshot=snapshot)
+
+
+def start_task_execution(session_id, task_id, attempt_id, command, cwd, summary,
+                         execution_id=None, task_instance_id=None):
+    """Run an authorized argv without a shell; a detached supervisor owns exit capture."""
+    sid = _normalize_session_id(session_id)
+    execution_id = _normalize_session_id(execution_id, generate=True)
+    _nonempty(summary, "summary")
+    if (not isinstance(command, list) or not command or len(command) > 256
+            or not all(isinstance(x, str) and "\0" not in x for x in command)):
+        raise ProgressError("command 必须是无 NUL 的非空 argv 字符串数组。")
+    if not isinstance(cwd, str) or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+        raise ProgressError("cwd 必须是存在的绝对目录。")
+    with _session_lock(sid):
+        data, node = _current_task(sid, task_id, task_instance_id)
+        _execution_identity(sid, data, node, attempt_id)
+        _require_closeout_recovery(node)
+        _require_fresh_execution(data, node, execution_id, "managed_command")
+        if not node.get("execution"):
+            _require_split_decision(node)
+        try:
+            changed = lifecycle.bind(node, execution_id, "managed_command", summary, _now(), {"command": command, "cwd": cwd})
+        except ValueError as exc:
+            raise ProgressError(str(exc)) from exc
+        directory = SESSION_DIR / ".executions"
+        directory.mkdir(mode=0o700, exist_ok=True)
+        spec_path = directory / (execution_id + ".json")
+        if changed:
+            if spec_path.exists():
+                raise ProgressError("execution_id 已存在；不能跨 attempt 或会话复用。")
+            _atomic_json(spec_path, {"session_id": sid, "task_instance_id": _task_instance_id(data),
+                         "task_id": task_id, "attempt_id": attempt_id, "execution_id": execution_id,
+                         "command": command, "cwd": cwd})
+            os.chmod(spec_path, 0o600)
+            _record_attempt_result(node)
+            data["revision"] += 1
+            _write(sid, data)
+        # Replaying a launch after a lost acknowledgement is safe: the worker's
+        # exclusive claim permits at most one command even across service crashes.
+        if not Path(str(spec_path) + ".claim").exists() and not spec_path.with_suffix(".result.json").exists():
+            try:
+                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name("execution_worker.py")), str(spec_path)],
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                           start_new_session=True)
+                threading.Thread(target=process.wait, daemon=True).start()
+            except OSError as exc:
+                _apply_execution_receipt(data, node, execution_id, "managed_command", "failed", f"启动执行监督进程失败：{exc}", [str(spec_path)], None, _now())
+                _write(sid, data)
+        snapshot = _capture_response_snapshot(sid)
+    return _tool_result("托管执行已登记；退出回执自动收尾，进度查询可在服务重启后对账。", _progress_payload(data), sid, response_snapshot=snapshot)
+
+
+def _reconcile_executions(session_id):
+    """Apply durable worker receipts only to their exact still-current bindings."""
+    sid = _normalize_session_id(session_id)
+    with _session_lock(sid):
+        document = _read(sid)
+        if not document:
+            return
+        instances = [document, *document.get("session_work_state", {}).get("instances", {}).values()]
+        for data in instances:
+            for node in data.get("nodes", {}).values():
+                execution = node.get("execution") or {}
+                if execution.get("provider") != "managed_command" or execution.get("status") != "running":
+                    continue
+                execution_id = execution["execution_id"]
+                try:
+                    path = SESSION_DIR / ".executions" / (_normalize_session_id(execution_id) + ".json")
+                    spec = json.loads(path.read_text(encoding="utf-8"))
+                    receipt = json.loads(path.with_suffix(".result.json").read_text(encoding="utf-8"))
+                    if any(spec.get(key) != value for key, value in {
+                        "session_id": sid, "task_instance_id": _task_instance_id(data), "task_id": node["id"],
+                        "attempt_id": node.get("attempt_id"), "execution_id": execution_id}.items()):
+                        continue
+                    if receipt.get("execution_id") != execution_id or not _valid_boundary(receipt.get("finished_at")):
+                        continue
+                    if _apply_execution_receipt(data, node, execution_id, "managed_command", receipt["status"],
+                                                receipt["summary"], [str(path.with_suffix(".log"))],
+                                                receipt.get("exit_code"), receipt["finished_at"]):
+                        _write(sid, data)
+                except (OSError, ValueError, KeyError):
+                    # Missing/corrupt receipts mean unknown, never a guessed exit.
+                    continue
 
 
 def _reopen_ancestors_for_retry(data: dict[str, Any], node: dict[str, Any]) -> None:
@@ -2319,10 +2558,20 @@ def update_task(
         if node.get("review_status") == "pending":
             raise ProgressError("此 attempt 的结果正在等待主会话验收；请使用 review_task，不可覆盖、重试或绕过 submission。")
         if attempt_id is not None and attempt_id != node.get("attempt_id"):
-            raise ProgressError("attempt_id 不匹配；迟到或旧尝试结果已拒绝。")
+            _execution_identity(sid, data, node, attempt_id)
         if previous_status == "running":
             if attempt_id != node.get("attempt_id"):
-                raise ProgressError("更新运行中任务必须提供当前 attempt_id。")
+                _execution_identity(sid, data, node, attempt_id)
+            if retry:
+                raise ProgressError("running attempt 不能原地 retry；先记录当前执行终态，再 retry=true 创建新 attempt。")
+            execution = node.get("execution") or {}
+            if execution_status == "running":
+                _require_closeout_recovery(node)
+                _require_split_decision(node)
+                if execution.get("status") in lifecycle.TERMINAL:
+                    raise ProgressError("execution_finished: 本轮执行已结束；先收尾，后续运行必须新 attempt。")
+            elif execution.get("provider") == "managed_command" and execution.get("status") == "running":
+                raise ProgressError("托管命令仍在执行，不能提前收尾；等待退出回执，不得伪装停止。")
             if normalized_assignment is not None:
                 changed = [key for key, value in normalized_assignment.items()
                            if node.get("assignment", {}).get(key) != value]
@@ -2432,6 +2681,11 @@ def update_task(
             node["review_status"] = "pending"
             node["review"] = None
         _record_attempt_result(node)
+        if execution_status in TERMINAL_EXECUTION_STATUSES:
+            for rejection in node.get("write_rejections", []):
+                if rejection.get("current_attempt_id") == node.get("attempt_id") and not rejection.get("recovered_at"):
+                    rejection["recovered_at"] = _now()
+            _record_attempt_result(node)
         if (node.get("parent_id") == data.get("root_id") and execution_status in TERMINAL_EXECUTION_STATUSES
                 and node.get("review_status") != "pending"):
             node["stage_inventory_due_attempt"] = node.get("attempt_id")
@@ -3038,7 +3292,7 @@ def _project_execution_records(progress: dict[str, Any], include_records: bool) 
                       reassignment_count=len(source.get("reassignment_history", [])),
                       stage_inventory_count=len(source.get("stage_inventories", [])))
         if not include_records:
-            for key in ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews"):
+            for key in ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews", "write_rejections", "split_reviews"):
                 record.pop(key, None)
         records.append(record)
     projected[field] = records
@@ -3369,6 +3623,7 @@ def update_step(
 
 def get_progress_view(session_id: str, include_history: bool = False, task_instance_id: str | None = None) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
+    _reconcile_executions(sid)
     if not isinstance(include_history, bool):
         raise ProgressError("include_history 必须是布尔值。")
     with _session_lock(sid):
@@ -3444,7 +3699,7 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 # Public query responses are selective. The app-only reader above retains its
 # complete current snapshot so UI/export traffic never enters model tool results.
 _QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
-_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews")
+_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews", "write_rejections", "split_reviews")
 _HISTORY_KINDS = ("history", "task_history", "plan_snapshots", "plan_revisions", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews", "coverage_records")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
@@ -3454,6 +3709,7 @@ _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_i
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
 _TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "external_prerequisite_status", "external_prerequisite_stale", "external_prerequisite_review", "external_prerequisite_review_count", "actionable", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
+                           "record_task_execution", "start_task_execution", "review_task_split",
                            "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "set_external_prerequisite", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
                            "handoff_request", "review_task_closure", "review_stage_inventory", "record_coverage"))
@@ -3633,6 +3889,8 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
         ack["affected"] = {key: target[key] for key in ("id", "attempt_id", "execution_status", "status", "outcome", "review_status") if key in target}
         if target.get("attempt_id"):
             ack["attempt_id"] = target["attempt_id"]
+        if target.get("execution_summary"):
+            ack["execution"] = target["execution_summary"]
     if name == "update_step":
         ack["step_index"] = args.get("step_index")
     for key in ("handoff_id", "review_id", "snapshot_id", "coverage_id"):
@@ -3689,6 +3947,33 @@ def _wire_result(name: str, args: dict[str, Any], result: dict[str, Any]) -> dic
                     "ready_tasks": selected, "dependency_evidence": dependency_evidence,
                     "pagination": _page(tasks, offset, limit)}}
     return result
+
+
+def _record_rejected_write(args, recovery):
+    """Audit a rejected closeout without applying its stale result to any attempt."""
+    if not recovery or recovery.get("code") != "attempt_mismatch":
+        return
+    try:
+        sid = _normalize_session_id(args.get("session_id"))
+        with _session_lock(sid):
+            data, node = _current_task(sid, args.get("task_id"), args.get("task_instance_id"))
+            if recovery.get("current_attempt_id") != node.get("attempt_id"):
+                return
+            identity = {"submitted_attempt_id": args.get("attempt_id"),
+                        "current_attempt_id": node.get("attempt_id"),
+                        "requested_status": args.get("execution_status", args.get("status"))}
+            records = node.setdefault("write_rejections", [])
+            if not any(all(item.get(k) == v for k, v in identity.items()) for item in records):
+                known_old_attempt = any(attempt.get("attempt_id") == identity["submitted_attempt_id"]
+                                        for attempt in node.get("attempts", []))
+                records.append({**identity, "recorded_at": _now(), "code": "attempt_mismatch",
+                                "requires_recovery": (not known_old_attempt and identity["requested_status"] in
+                                                      TERMINAL_EXECUTION_STATUSES | lifecycle.TERMINAL),
+                                "action": "read_current_attempt_then_close_or_retry"})
+                data["revision"] += 1
+                _write(sid, data)
+    except (ProgressError, OSError):
+        pass
 
 
 def _ui_view_result(session_id: str, view_id: str, status: str) -> dict[str, Any]:
@@ -4292,7 +4577,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟先复核拆分；等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
+        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟由review_task_split/decompose_task解除服务端门禁；摘要不能豁免。命令用start_task_execution自动捕获退出，外部run用record_task_execution绑定；每attempt仅一轮执行，失败重跑必须新attempt。等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -4570,7 +4855,37 @@ for _tool in TOOLS:
             _tool["inputSchema"]["properties"].update(offset={"type": "integer", "minimum": 0, "default": 0}, limit={"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
 
 
+_EXECUTION_PROPERTIES = {
+    "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+    "task_id": {"type": "string"}, "attempt_id": {"type": "string"},
+    "execution_id": {"type": "string", "description": "本轮唯一ID；Dagu使用dagRunId，托管命令使用UUID。"},
+    "summary": {"type": "string", "minLength": 1},
+}
+for _name, _title, _description, _extra, _required in [
+    ("record_task_execution", "登记执行回执并自动收尾", "一轮Dagu/子代理/外部运行绑定精确attempt；同attempt拒绝第二run。failed/blocked/cancelled回执自动收尾，重跑必须retry生成新attempt。外部回执为调用方填报；重复终态幂等，冲突和迟到回执拒绝。", {
+        "provider": {"type": "string", "enum": ["dagu", "subagent", "external"]},
+        "status": {"type": "string", "enum": ["running", "succeeded", "failed", "blocked", "cancelled"]},
+        "exit_code": {"type": "integer"}, "evidence": {"type": "array", "items": {"type": "string"}},
+        "started_at": {"type": "string", "description": "外部运行真实开始时间，带时区；省略为登记时间。"},
+        "finished_at": {"type": "string", "description": "外部运行真实结束时间，带时区；省略为回执收到时间。"},
+    }, ["session_id", "task_instance_id", "task_id", "attempt_id", "execution_id", "provider", "status", "summary"]),
+    ("start_task_execution", "启动有退出回执的托管命令", "仅执行用户已授权的命令，使用argv和绝对cwd。独立监督进程持久化退出码、自动收尾失败，MCP重启可对账。不增加提交/推送权限。成功进程仍须验收任务；同attempt拒绝不同执行，重放同UUID不重复运行。", {
+        "command": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "cwd": {"type": "string"},
+    }, ["session_id", "task_instance_id", "task_id", "attempt_id", "command", "cwd", "summary"]),
+    ("review_task_split", "结构化复核长任务拆分", "仅一个剩余结果可暂时保留原子叶；多个结果须decompose_task。复核绑定attempt/执行ID，最多有效10分钟；换执行立即失效。服务端拒绝摘要豁免；终态收尾始终允许。", {
+        "reason": {"type": "string", "minLength": 1}, "remaining_outcomes": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}},
+        "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "valid_for_seconds": {"type": "integer", "minimum": 1, "maximum": 600},
+    }, ["session_id", "task_instance_id", "task_id", "attempt_id", "reason", "remaining_outcomes", "evidence"]),
+]:
+    TOOLS.append({"name": _name, "title": _title, "description": _description,
+                  "inputSchema": {"type": "object", "properties": {**_EXECUTION_PROPERTIES, **_extra}, "required": _required},
+                  "_meta": _data_tool_meta()})
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "record_task_execution": lambda args: record_task_execution(**args),
+    "start_task_execution": lambda args: start_task_execution(**args),
+    "review_task_split": lambda args: review_task_split(**args),
     "snapshot_task_network": lambda args: snapshot_task_network(**args),
     "revise_task_plan": lambda args: revise_task_plan(**args),
     "revise_task_title": lambda args: revise_task_title(**args),
@@ -4787,11 +5102,15 @@ def handle(message: Any) -> str | None:
         if handler is None:
             return _err(message_id, -32601, f"未知工具：{name}")
         try:
+            if name in _MUTATION_TOOLS and args.get("session_id"):
+                _reconcile_executions(args["session_id"])
             return _ok(message_id, _wire_result(name, args, handler(args)))
         except ProgressError as exc:
+            _record_rejected_write(args, exc.recovery)
             return _ok(
                 message_id,
-                {"content": [{"type": "text", "text": str(exc)}], "isError": True},
+                {"content": [{"type": "text", "text": str(exc)}], "isError": True,
+                 **({"structuredContent": {"recovery": exc.recovery}} if exc.recovery else {})},
             )
         except Exception as exc:  # noqa: BLE001
             return _err(message_id, -32603, f"工具执行出错：{exc}")

@@ -135,7 +135,7 @@ class ServiceManagerTests(unittest.TestCase):
         self.source = Path(self.temporary.name) / "plugin source"
         (self.source / ".codex-plugin").mkdir(parents=True)
         (self.source / ".codex-plugin/plugin.json").write_text('{"version":"0.2.0"}')
-        for name in ("shared_service.py", "server.py", "service_manager.py", "legacy_history.py", "app.html"):
+        for name in ("shared_service.py", "server.py", "execution_lifecycle.py", "execution_worker.py", "service_manager.py", "legacy_history.py", "app.html"):
             (self.source / name).write_text(name + " fixture")
         self.runner = FakeLaunchctl()
         with socket.socket() as sock:

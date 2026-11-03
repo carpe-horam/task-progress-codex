@@ -17,7 +17,7 @@ class PluginVersionTests(unittest.TestCase):
             root = Path(temporary)
             package = root / "plugin"
             (package / ".codex-plugin").mkdir(parents=True)
-            for name in ("server.py", "app.html"):
+            for name in ("server.py", "execution_lifecycle.py", "execution_worker.py", "app.html"):
                 shutil.copy2(PLUGIN / name, package / name)
             manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
             manifest["version"] = "9.8.7"
