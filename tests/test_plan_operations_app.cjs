@@ -23,13 +23,42 @@ async function main() {
   assert(history.includes('Capture without stopping') && history.includes('Independent B'));
   const revision=frame.locator('#history-list .history-item').filter({hasText:'原位修订'});
   await revision.locator('summary').first().click();
+  assert.equal(await revision.locator('.revision-plan').count(), 2);
+  const planKeys=[];
+  for(const side of ['before','after']) {
+    const plan=revision.locator('.revision-plan.'+side);
+    assert.equal(await plan.evaluate(el=>el.open), false);
+    planKeys.push(await plan.getAttribute('data-key'));
+    await plan.locator('summary').first().click();
+    assert.equal(await plan.evaluate(el=>el.open), true);
+    assert.equal(await plan.locator('.task-tree .step-id').count(), 3);
+    assert((await plan.locator('.task-tree').textContent()).includes('Snapshot fixture'));
+  }
+  assert.notEqual(planKeys[0],planKeys[1]);
+  assert((await revision.locator('.revision-plan.before .task-tree').textContent()).includes('依赖任务'));
+  assert(!(await revision.locator('.revision-plan.after .task-tree').textContent()).includes('依赖任务'));
   assert.deepEqual(await revision.locator('.revision-field').allTextContents(), ['depends_on']);
   assert((await revision.locator('.revision-value.before pre').textContent()).includes('"a"'));
   assert.equal(await revision.locator('.revision-value.after pre').textContent(), '[]');
   assert.equal(await revision.locator('.revision-raw').evaluate(el=>el.open), false);
   await revision.locator('.revision-raw summary').click();
   assert((await revision.locator('.revision-raw pre').textContent()).includes('node_order'));
+  const raw=JSON.parse(await revision.locator('.revision-raw pre').textContent());
+  assert.deepEqual(raw.before_plan.nodes.b.depends_on,['a']);
+  assert.deepEqual(raw.after_plan.nodes.b.depends_on,[]);
   await page.close();
+  const legacy=structuredClone(await host.rpc('get_progress_view',{session_id:sid,include_history:true}));
+  for(const record of legacy.structuredContent.progress.plan_revisions) {delete record.before_plan; delete record.after_plan;}
+  const legacyPage=await host.page(), legacyFrame=await host.mount(legacyPage,'legacy',legacy);
+  await legacyFrame.locator('#history-title').click();
+  const legacyRevision=legacyFrame.locator('#history-list .history-item').filter({hasText:'原位修订'});
+  await legacyRevision.locator('summary').first().click();
+  assert.equal(await legacyRevision.locator('.revision-plan').count(),0);
+  assert((await legacyRevision.textContent()).includes('旧修订记录未保存完整任务树'));
+  assert.deepEqual(await legacyRevision.locator('.revision-field').allTextContents(),['depends_on']);
+  await legacyRevision.locator('.revision-raw summary').click();
+  assert.deepEqual(JSON.parse(await legacyRevision.locator('.revision-raw pre').textContent()).before.depends_on,['a']);
+  await legacyPage.close();
   const longReason='x'.repeat(29999)+'😀</script>TAIL';
   await host.rpc('snapshot_task_network',{session_id:sid,task_instance_id:iid,snapshot_id:'long',reason:longReason});
   const next=await host.rpc('init_task_network',{session_id:sid,task_title:'Independent fixture',atomic_reason:'One fixture',
@@ -60,7 +89,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  expected.update({x['snapshot_id']:x for x in stored['plan_snapshots']})
  for peer in stored.get('session_work_state',{}).get('instances',{}).values(): expected.update({x['snapshot_id']:x for x in peer.get('plan_snapshots',[])})
  assert set(groups)==set(expected),(groups.keys(),expected.keys())
- for key,parts in groups.items(): assert json.loads(''.join(v for _,v in sorted(parts)))==expected[key],key
+ def unproject(value):
+  if isinstance(value,dict): return {k:unproject(v) for k,v in value.items() if k not in {'ended_leaf_count','ended_percent','accepted_resolved_leaf_count','accepted_resolved_percent','accepted_resolved','coverage_records','coverage_summary','current_coverage','coverage_count','coverage_record_count','stale_coverage_count','external_prerequisite_review_count','external_prerequisite_stale','external_prerequisite_review','actionable'}}
+  if isinstance(value,list): return [unproject(v) for v in value]
+  return value
+ for key,parts in groups.items():
+  actual=unproject(json.loads(''.join(v for _,v in sorted(parts))))
+  assert actual==expected[key],key
  assert len(groups['long'])>1
 `,workbook,path.join(host.temp,'sessions',sid+'.json')]);
   await exp.report.close(); await exp.hostPage.close();

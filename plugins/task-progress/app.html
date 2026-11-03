@@ -2234,6 +2234,21 @@ h1{font-size:18px;line-height:1.35}
       const details = document.createElement('details'); details.dataset.key = prefix + ':revision:' + revision.revision_id; details.open = openDetails.get(details.dataset.key) || false;
       const heading = document.createElement('summary'); heading.textContent = '原位修订 · ' + revision.task_id + ' · ' + date(revision.revised_at);
       const meta = document.createElement('div'); meta.className = 'history-meta'; meta.textContent = '原因：' + (revision.reason || '未记录');
+      const plans = document.createElement('div'); plans.className = 'revision-plans';
+      for (const [label, side] of [['修订前任务树', 'before'], ['修订后任务树', 'after']]) {
+        const snapshot = revision[side + '_plan'];
+        const nodes = nodesFrom(snapshot?.nodes);
+        if (!snapshot || !nodes.some(node => node.id === snapshot.root_id)) {
+          const missing = document.createElement('div'); missing.className = 'history-meta';
+          missing.textContent = label + '：旧修订记录未保存完整任务树；可查看字段差异和原始记录。'; plans.append(missing); continue;
+        }
+        const plan = document.createElement('details'); plan.className = 'revision-plan ' + side;
+        plan.dataset.key = details.dataset.key + ':' + side + '-plan'; plan.open = openDetails.get(plan.dataset.key) || false;
+        const title = document.createElement('summary'); title.textContent = label + ' · 第 ' + (Number(snapshot.epoch || 0) + 1) + ' 轮 · ' + taskDisplayTitle(snapshot);
+        const tree = document.createElement('ol'); tree.className = 'steps task-tree';
+        tree.append(networkTree(nodes, snapshot.root_id, plan.dataset.key, openDetails, false, {cutoff:snapshot.captured_at,label:'截至修订已用',runningLabel:'修订时进行中'}));
+        plan.append(title, tree); plans.append(plan);
+      }
       const before = revision.before && typeof revision.before === 'object' && !Array.isArray(revision.before) ? revision.before : {};
       const after = revision.after && typeof revision.after === 'object' && !Array.isArray(revision.after) ? revision.after : {};
       const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(field =>
@@ -2254,8 +2269,8 @@ h1{font-size:18px;line-height:1.35}
       if (!fields.length) { const empty = document.createElement('div'); empty.className = 'history-meta'; empty.textContent = '未检测到字段变化，请查看完整记录。'; changes.append(empty); }
       const raw = document.createElement('details'); raw.className = 'revision-raw'; raw.dataset.key = details.dataset.key + ':raw'; raw.open = openDetails.get(raw.dataset.key) || false;
       const rawHeading = document.createElement('summary'); rawHeading.textContent = '查看完整修订前后记录';
-      const rawContent = document.createElement('pre'); rawContent.textContent = JSON.stringify({before:revision.before, after:revision.after}, null, 2);
-      raw.append(rawHeading, rawContent); details.append(heading, meta, changes, raw); li.append(details); fragment.append(li);
+      const rawContent = document.createElement('pre'); rawContent.textContent = JSON.stringify(revision, null, 2);
+      raw.append(rawHeading, rawContent); details.append(heading, meta, plans, changes, raw); li.append(details); fragment.append(li);
     });
     return fragment;
   }
