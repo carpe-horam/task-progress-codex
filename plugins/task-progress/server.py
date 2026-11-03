@@ -2750,6 +2750,21 @@ def revise_task_title(session_id: str, task_instance_id: str, task_id: str, disp
                         response_snapshot=response_snapshot)
 
 
+def _plan_revision_snapshot(data: dict[str, Any], captured_at: str) -> dict[str, Any]:
+    """Freeze one plan without recursively embedding its histories or session state."""
+    return {
+        "schema_version": 2, "session_id": data["session_id"],
+        "task_instance_id": _task_instance_id(data), "captured_at": captured_at,
+        "source_state_revision": data.get("state_revision", 0),
+        "source_revision": data.get("revision", 0), "epoch": data.get("epoch", 0),
+        "root_id": data["root_id"], "task_title": data["task_title"],
+        "nodes": deepcopy(data["nodes"]), "task_context": deepcopy(data.get("task_context", {})),
+        "handoffs": deepcopy(data.get("handoffs", [])),
+        "handoff_closures": deepcopy(data.get("handoff_closures", [])),
+        "closure_reviews": deepcopy(data.get("closure_reviews", [])),
+    }
+
+
 def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reason: str,
                      expected_epoch: int, expected_revision: int, depends_on: list[str] | None = None,
                      dependency_policy: str | None = None, before_id: str | None = None,
@@ -2789,6 +2804,8 @@ def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reaso
                 start = parent.get("parent_id")
         assert_unstarted_branch(task_id)
         assert_open_ancestors(node.get("parent_id"))
+        revised_at = _now()
+        before_plan = _plan_revision_snapshot(data, revised_at)
         old_order = list(nodes)
         before = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": old_order}
         if parent_id is not None and parent_id != node.get("parent_id"):
@@ -2824,9 +2841,10 @@ def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reaso
         after = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": list(nodes)}
         if before == after:
             raise ProgressError("修订没有改变计划。")
-        data.setdefault("plan_revisions", []).append({"revision_id": str(uuid.uuid4()), "epoch": data.get("epoch", 0),
-            "task_id": task_id, "reason": reason.strip(), "revised_at": _now(), "before": before, "after": after})
         data["revision"] = int(data.get("revision", 0)) + 1
+        data.setdefault("plan_revisions", []).append({"revision_id": str(uuid.uuid4()), "epoch": data.get("epoch", 0),
+            "task_id": task_id, "reason": reason.strip(), "revised_at": revised_at, "before": before, "after": after,
+            "before_plan": before_plan, "after_plan": _plan_revision_snapshot(data, revised_at)})
         _write(sid, data)
         response_snapshot = _capture_response_snapshot(sid)
     return _tool_result("已原位修订计划。", _progress_payload(data), sid, response_snapshot=response_snapshot)

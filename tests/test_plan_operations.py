@@ -76,10 +76,56 @@ class PlanOperationsTests(unittest.TestCase):
             lambda: server.revise_task_plan(self.sid, self.iid, "b", "Stale", 0, before["revision"], depends_on=["c"]),
             lambda: server.revise_task_plan(self.sid, self.iid, "a", "Started", 0, after["revision"], depends_on=[]),
             lambda: server.revise_task_plan(self.sid, self.iid, "b", "Cycle", 0, after["revision"], depends_on=["b"]),
+            lambda: server.revise_task_plan(self.sid, self.iid, "b", "No change", 0, after["revision"], depends_on=[]),
         ):
             with self.assertRaises(server.ProgressError):
                 fn()
             self.assertEqual(server._session_file(self.sid).read_bytes(), frozen)
+
+    def test_revision_automatically_freezes_complete_nonrecursive_plans(self):
+        server.update_task(self.sid, "a", "running", assignment=MAIN, task_instance_id=self.iid)
+        before = self.data()
+        server.revise_task_plan(self.sid, self.iid, "b", "Independent first", 0, before["revision"],
+                                depends_on=[], before_id="a")
+        after = self.data()
+        record = after["plan_revisions"][0]
+        self.assertNotIn("plan_snapshots", after)  # No manual snapshot call is required.
+        for side, source in (("before_plan", before), ("after_plan", after)):
+            snapshot = record[side]
+            self.assertEqual(snapshot["nodes"], source["nodes"])
+            self.assertEqual(list(snapshot["nodes"]), list(source["nodes"]))
+            self.assertEqual(snapshot["root_id"], source["root_id"])
+            self.assertEqual(snapshot["epoch"], source["epoch"])
+            self.assertEqual(snapshot["task_title"], source["task_title"])
+            self.assertEqual(snapshot["task_instance_id"], self.iid)
+            self.assertEqual(snapshot["source_revision"], source["revision"])
+            self.assertEqual(snapshot["captured_at"], record["revised_at"])
+            self.assertEqual(snapshot["nodes"]["a"]["attempt_id"], before["nodes"]["a"]["attempt_id"])
+            for key in ("plan_revisions", "plan_snapshots", "history", "task_history", "session_work_state"):
+                self.assertNotIn(key, snapshot)
+        server.revise_task_plan(self.sid, self.iid, "b", "Wait for C", 0, after["revision"], depends_on=["c"])
+        revised = self.data()
+        self.assertEqual(revised["plan_revisions"][0], record)
+        self.assertEqual(revised["plan_revisions"][1]["before_plan"]["nodes"], after["nodes"])
+        for side in ("before_plan", "after_plan"):
+            self.assertNotIn("plan_revisions", revised["plan_revisions"][1][side])
+        server.revise_task_title(self.sid, self.iid, "c", "New C title", "Later metadata", 0, revised["revision"])
+        self.assertEqual(self.data()["plan_revisions"], revised["plan_revisions"])
+        queried = server.get_progress(self.sid, task_instance_id=self.iid, view="history", history_kind="plan_revisions")
+        first = queried["structuredContent"]["progress"]["records"][0]
+        self.assertEqual(first["before_plan"]["nodes"]["b"]["depends_on"], ["a"])
+        self.assertEqual(first["after_plan"]["nodes"]["b"]["depends_on"], [])
+
+    def test_legacy_revision_without_plans_is_readable_without_migration(self):
+        data = self.data()
+        legacy = {"revision_id": "legacy", "epoch": 0, "task_id": "b", "reason": "Old revision",
+                  "revised_at": server._now(), "before": {"depends_on": ["a"]}, "after": {"depends_on": []}}
+        data["plan_revisions"] = [legacy]
+        server._write(self.sid, data)
+        original = server._session_file(self.sid).read_bytes()
+        result = server.get_progress(self.sid, task_instance_id=self.iid, view="history", history_kind="plan_revisions")
+        self.assertEqual(result["structuredContent"]["progress"]["records"], [legacy])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), original)
 
     def test_old_document_without_new_fields_remains_unchanged_by_read(self):
         data = self.data()
@@ -101,6 +147,11 @@ class PlanOperationsTests(unittest.TestCase):
         self.assertIn("b1", d["nodes"]["c"]["children"])
         self.assertNotIn("b1", d["nodes"]["b"]["children"])
         self.assertEqual(d["plan_revisions"][-1]["before"]["parent_id"], "b")
+        record = d["plan_revisions"][-1]
+        self.assertIn("b1", record["before_plan"]["nodes"]["b"]["children"])
+        self.assertNotIn("b1", record["before_plan"]["nodes"]["c"]["children"])
+        self.assertNotIn("b1", record["after_plan"]["nodes"]["b"]["children"])
+        self.assertIn("b1", record["after_plan"]["nodes"]["c"]["children"])
         server.update_task(self.sid, "c1", "running", assignment=MAIN, task_instance_id=self.iid)
         d = self.data(); frozen = server._session_file(self.sid).read_bytes()
         with self.assertRaises(server.ProgressError):
