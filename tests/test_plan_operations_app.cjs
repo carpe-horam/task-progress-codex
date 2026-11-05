@@ -90,7 +90,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  for peer in stored.get('session_work_state',{}).get('instances',{}).values(): expected.update({x['snapshot_id']:x for x in peer.get('plan_snapshots',[])})
  assert set(groups)==set(expected),(groups.keys(),expected.keys())
  def unproject(value):
-  if isinstance(value,dict): return {k:unproject(v) for k,v in value.items() if k not in {'ended_leaf_count','ended_percent','accepted_resolved_leaf_count','accepted_resolved_percent','accepted_resolved','coverage_records','coverage_summary','current_coverage','coverage_count','coverage_record_count','stale_coverage_count','external_prerequisite_review_count','external_prerequisite_stale','external_prerequisite_review','actionable'}}
+  if isinstance(value,dict): return {k:unproject(v) for k,v in value.items() if k not in {'ended_leaf_count','ended_percent','accepted_resolved_leaf_count','accepted_resolved_percent','accepted_resolved','coverage_records','coverage_summary','current_coverage','coverage_count','coverage_record_count','stale_coverage_count'}}
   if isinstance(value,list): return [unproject(v) for v in value]
   return value
  for key,parts in groups.items():

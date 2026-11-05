@@ -71,13 +71,6 @@ class SelectiveWireTests(unittest.TestCase):
                               {'task_id':'other','decision':'continue','reason':'Still planned'}])
         self.write('reassign_task', task_id='other', assignment=MAIN, reason='Fixture adjustment', reviewer=MAIN)
         current = self.read()['progress']
-        prerequisite = self.write('set_external_prerequisite', task_id='work', status='satisfied',
-                                  reason=LONG[:12000], evidence=[LONG[:12000]],
-                                  reviewer={**MAIN, 'agent_name':'Explicit wire reviewer'}, source_attempt_id=aid,
-                                  expected_epoch=current['epoch'], expected_revision=current['revision'])
-        self.assertEqual(prerequisite['affected']['id'], 'work')
-        self.assertEqual(prerequisite['attempt_id'], aid)
-        current = self.read()['progress']
         self.write('revise_task_title', task_id='work', display_title=LONG, reason=LONG,
                    expected_epoch=current['epoch'], expected_revision=current['revision'])
         current = self.read()['progress']

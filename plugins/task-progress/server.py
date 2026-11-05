@@ -1057,8 +1057,6 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
         "attempt": 0,
         "attempt_id": None,
         "attempts": [],
-        "external_prerequisite_status": "unknown",
-        "external_prerequisite_reviews": [],
         "started_at": None,
         "finished_at": None,
     }
@@ -1695,7 +1693,6 @@ def _project_titles(snapshot: dict[str, Any]) -> dict[str, Any]:
     nodes = snapshot.get("nodes")
     if isinstance(nodes, (dict, list)):
         def project(node):
-            node = {**node, **_external_prerequisite_projection(node)}
             if not node.get("title_revisions") and "display_title" not in node:
                 return dict(node)
             return {**node, "display_title": _display_title(node),
@@ -1710,21 +1707,6 @@ def _project_titles(snapshot: dict[str, Any]) -> dict[str, Any]:
         if field in snapshot:
             projected[field] = [_project_titles(item) for item in snapshot[field]]
     return projected
-
-
-def _external_prerequisite_projection(node: dict[str, Any]) -> dict[str, Any]:
-    """Manual evidence is independent of graph readiness and host capability."""
-    reviews = node.get("external_prerequisite_reviews", [])
-    latest = reviews[-1] if reviews else None
-    stale = bool(latest and latest.get("source_attempt_id") is not None
-                 and latest["source_attempt_id"] != node.get("attempt_id"))
-    return {
-        "external_prerequisite_status": "unknown" if stale else (latest["status"] if latest else "unknown"),
-        "external_prerequisite_stale": stale,
-        "external_prerequisite_review": deepcopy(latest),
-        "external_prerequisite_review_count": len(reviews),
-        "actionable": {"status": "requires_on_site_judgment", "verification": "not_verified_by_codex_host"},
-    }
 
 
 def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -1821,7 +1803,6 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "graph_ready": _node_is_graph_ready(data, node),
             "main_session_waiting_on": [item["id"] for item in _main_session_running_leaves(data, except_id=node.get("id"))]
                 if _node_is_graph_ready(data, node) and (node.get("planned_assignment") or {}).get("execution_mode") == "main_session" else [],
-            **_external_prerequisite_projection(node),
             "blocked_by": unmet,
             "dependencies": dependencies,
         })
@@ -3003,53 +2984,6 @@ def snapshot_task_network(session_id: str, task_instance_id: str, snapshot_id: s
     return _tool_result("已保存快照。", _progress_payload(data), sid, response_snapshot=response_snapshot)
 
 
-def set_external_prerequisite(session_id: str, task_instance_id: str, task_id: str,
-                              status: str, reason: str, evidence: list[str], reviewer: dict[str, Any],
-                              expected_epoch: int, expected_revision: int,
-                              source_attempt_id: str | None = None) -> dict[str, Any]:
-    """Append a caller-reported prerequisite review without granting execution."""
-    sid = _normalize_session_id(session_id)
-    _nonempty(task_instance_id, "task_instance_id")
-    _nonempty(task_id, "task_id")
-    if status not in ("unknown", "blocked", "satisfied"):
-        raise ProgressError("status 必须是 unknown/blocked/satisfied。")
-    why = _nonempty(reason, "reason")
-    proof = _context_list(evidence, "evidence", required=True)
-    if not isinstance(reviewer, dict) or not isinstance(reviewer.get("agent_name"), str) or not reviewer["agent_name"].strip():
-        raise ProgressError("外部前置记录必须提供显式 reviewer.agent_name。")
-    actor = _reviewer(reviewer, scope="external_prerequisite")
-    _query_integer(expected_epoch, "expected_epoch", 0)
-    _query_integer(expected_revision, "expected_revision", 0)
-    with _session_lock(sid):
-        data = _select_task(sid, task_instance_id)
-        if data is None or data.get("schema_version") != 2:
-            raise ProgressError("外部前置记录需要当前 HTN 任务。")
-        _validate_task_instance(data, task_instance_id)
-        if expected_epoch != data.get("epoch", 0) or expected_revision != data.get("revision", 0):
-            raise ProgressError("epoch 或 revision 已变化；请重新读取后记录外部前置。")
-        if task_id not in data["nodes"]:
-            raise ProgressError("task_id 不存在于目标实例当前 epoch。")
-        node = data["nodes"][task_id]
-        if source_attempt_id is not None:
-            _nonempty(source_attempt_id, "source_attempt_id")
-            if source_attempt_id != node.get("attempt_id"):
-                raise ProgressError("source_attempt_id 必须是节点当前 attempt。")
-        node.setdefault("external_prerequisite_reviews", []).append({
-            "review_id": str(uuid.uuid4()), "task_instance_id": task_instance_id,
-            "epoch": expected_epoch, "task_id": task_id, "source_revision": expected_revision,
-            "source_attempt_id": source_attempt_id, "status": status, "reason": why,
-            "evidence": proof, "reviewer": actor, "reviewed_at": _now(),
-            "verification": "caller_reported_not_host_verified",
-        })
-        # The source ledger retains its original status when attempt-bound proof becomes stale.
-        node["external_prerequisite_status"] = status
-        data["revision"] = int(data.get("revision", 0)) + 1
-        _write(sid, data)
-        response_snapshot = _capture_response_snapshot(sid)
-    return _tool_result("已追加人工外部前置记录；现场可执行性仍须判断。", _progress_payload(data), sid,
-                        response_snapshot=response_snapshot)
-
-
 def revise_task_title(session_id: str, task_instance_id: str, task_id: str, display_title: str,
                       reason: str, expected_epoch: int, expected_revision: int) -> dict[str, Any]:
     """Append display metadata for a current node in any execution state."""
@@ -3312,6 +3246,8 @@ def _project_execution_records(progress: dict[str, Any], include_records: bool) 
                       reassignment_count=len(source.get("reassignment_history", [])),
                       stage_inventory_count=len(source.get("stage_inventories", [])))
         if not include_records:
+            # Retired prerequisite reviews remain in old ledgers, but compact
+            # projections must not disclose their append-only records.
             for key in ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews", "write_rejections", "split_reviews"):
                 record.pop(key, None)
         records.append(record)
@@ -3719,7 +3655,7 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 # Public query responses are selective. The app-only reader above retains its
 # complete current snapshot so UI/export traffic never enters model tool results.
 _QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
-_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "external_prerequisite_reviews", "write_rejections", "split_reviews")
+_RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "write_rejections", "split_reviews")
 _HISTORY_KINDS = ("history", "task_history", "plan_snapshots", "plan_revisions", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews", "coverage_records")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
@@ -3727,10 +3663,10 @@ _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_i
                     "accepted_resolved_percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
-_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "external_prerequisite_status", "external_prerequisite_stale", "external_prerequisite_review", "external_prerequisite_review_count", "actionable", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
+_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
                            "record_task_execution", "start_task_execution", "review_task_split",
-                           "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "set_external_prerequisite", "revise_task_plan", "rebuild_task_network", "route_request",
+                           "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
                            "handoff_request", "review_task_closure", "review_stage_inventory", "record_coverage"))
 
@@ -4644,21 +4580,6 @@ TOOLS = [
         "_meta": _data_tool_meta(),
     },
     {
-        "name": "set_external_prerequisite", "title": "记录人工外部前置判断",
-        "description": "为当前实例/epoch 任意状态节点追加有原因、证据和显式主会话 reviewer 的人工声明。unknown/blocked/satisfied 不改变依赖 ready、执行结果或根验收，也不核验权限/主机/设备；actionable 始终须现场判断。可选 source_attempt_id 绑定当前尝试，重试后投影 unknown/stale，历史保留。",
-        "inputSchema": {"type": "object", "properties": {
-            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
-            "task_id": {"type": "string", "minLength": 1},
-            "status": {"type": "string", "enum": ["unknown", "blocked", "satisfied"]},
-            "reason": {"type": "string", "minLength": 1},
-            "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-            "reviewer": {"type": "object", "properties": {"execution_mode": {"const": "main_session"}, "agent_name": {"type": "string", "minLength": 1}}, "required": ["execution_mode", "agent_name"]},
-            "expected_epoch": {"type": "integer", "minimum": 0}, "expected_revision": {"type": "integer", "minimum": 0},
-            "source_attempt_id": {"type": "string", "minLength": 1}},
-            "required": ["session_id", "task_instance_id", "task_id", "status", "reason", "evidence", "reviewer", "expected_epoch", "expected_revision"]},
-        "_meta": _data_tool_meta(),
-    },
-    {
         "name": "revise_task_title",
         "title": "修订当前显示标题",
         "description": "修订当前实例/epoch 任意节点（含运行中、终态及根）的显示标题，绑定 revision 并追加原标题、前后标题和 reason。原标题、attempt 标题及既有快照不改写；仅展示元数据，不改变依赖、scope、状态、证据和根验收。重复相同标题报无变化。",
@@ -4909,7 +4830,6 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "snapshot_task_network": lambda args: snapshot_task_network(**args),
     "revise_task_plan": lambda args: revise_task_plan(**args),
     "revise_task_title": lambda args: revise_task_title(**args),
-    "set_external_prerequisite": lambda args: set_external_prerequisite(**args),
     "handoff_request": lambda args: handoff_request(**args),
     "review_task_closure": lambda args: review_task_closure(**args),
     "route_request": lambda args: route_request(**args),
