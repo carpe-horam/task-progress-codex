@@ -76,6 +76,18 @@ class StageInventoryTests(unittest.TestCase):
         self.assertIsNone(self.record("a")["scope_task_ids"])
         self.assertEqual(self.record("a")["decisions"], decisions)
 
+    def test_coverage_error_reports_missing_extra_and_duplicate_task_ids(self):
+        self.finish("a", "open")
+        before = server._session_file(self.sid).read_bytes()
+        with self.assertRaises(server.ProgressError) as raised:
+            self.review("a", [decision("a"), decision("a"), decision("outside_scope")])
+
+        message = str(raised.exception)
+        self.assertIn('缺少 task_id=["b", "backlog", "later"]', message)
+        self.assertIn('多余 task_id=["outside_scope"]', message)
+        self.assertIn('重复 task_id=["a"]', message)
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
     def test_scope_contains_stage_and_explicit_cross_stage_backlog(self):
         self.finish("a", "open")
         self.rejected(lambda: self.binding("a", ["backlog"]))
