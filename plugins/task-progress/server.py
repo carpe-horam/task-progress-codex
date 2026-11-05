@@ -2874,20 +2874,40 @@ def review_stage_inventory(session_id: str, task_id: str, attempt_id: str,
         scope = _inventory_scope(data, task_id, scope_task_ids)
         unresolved = {key for key in scope if not data["nodes"][key].get("children")
                       and not _accepted_resolved(data["nodes"][key])}
-        normalized, reused = [], []
+        normalized, reused, reuse_references = [], [], []
         for item in decisions:
             if (not isinstance(item, dict) or not isinstance(item.get("task_id"), str)
-                    or item.get("task_id") not in unresolved or item.get("decision") not in ("continue", "obsolete", "covered")):
-                raise ProgressError("每项必须引用范围内未解决叶任务并选择 continue、obsolete 或 covered。")
+                    or item.get("decision") not in ("continue", "obsolete", "covered")):
+                raise ProgressError("每项必须包含 task_id 并选择 continue、obsolete 或 covered。")
             reason = item.get("reason")
             if not isinstance(reason, str) or not reason.strip():
                 raise ProgressError("每项盘点必须记录具体原因和证据或下一步。")
             normalized.append({"task_id": item["task_id"], "decision": item["decision"], "reason": reason.strip()})
         for reference in reuse_decisions or []:
             if (not isinstance(reference, dict) or not isinstance(reference.get("task_id"), str)
-                    or reference.get("task_id") not in unresolved
                     or not isinstance(reference.get("inventory_id"), str) or not reference["inventory_id"]):
                 raise ProgressError("复用必须引用范围内当前未解决任务和已接受 inventory_id。")
+            reuse_references.append(reference)
+        covered_ids = [item["task_id"] for item in normalized]
+        covered_ids.extend(reference["task_id"] for reference in reuse_references)
+        covered_set = set(covered_ids)
+        seen_ids, duplicate_ids = set(), set()
+        for candidate_id in covered_ids:
+            if candidate_id in seen_ids:
+                duplicate_ids.add(candidate_id)
+            seen_ids.add(candidate_id)
+        duplicates = sorted(duplicate_ids)
+        missing = sorted(unresolved - covered_set)
+        extra = sorted(covered_set - unresolved)
+        if missing or extra or duplicates:
+            raise ProgressError(
+                "盘点范围与当前未解决叶任务不匹配："
+                f"缺少 task_id={json.dumps(missing, ensure_ascii=False)}；"
+                f"多余 task_id={json.dumps(extra, ensure_ascii=False)}；"
+                f"重复 task_id={json.dumps(duplicates, ensure_ascii=False)}。"
+                "请刷新任务树后重试。"
+            )
+        for reference in reuse_references:
             source = next(((node, record) for node in data["nodes"].values()
                            for record in node.get("stage_inventories", [])
                            if record.get("inventory_id") == reference.get("inventory_id")
