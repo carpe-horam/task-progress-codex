@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">交互演示</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.21">安装 0.2.21</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.22">安装 0.2.22</a> ·
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
@@ -29,9 +29,9 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-Task Progress 0.2.21 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
+Task Progress 0.2.22 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
 
-0.2.20 增加可选的逐项验收契约、执行自检与主会话复核分离、产物版本绑定，以及更清晰的 owner 连续执行和配置来源规则。0.2.21 明确旧服务缺少 capability 标志时省略新协议字段，同时保留绑定与主会话复核要求。没有声明契约的旧任务保持原行为；hooks 不会自动派发、验收或改写任务状态。
+0.2.20 增加可选的逐项验收契约、执行自检与主会话复核分离、产物版本绑定，以及更清晰的 owner 连续执行和配置来源规则。0.2.21 明确旧服务缺少 capability 标志时省略新协议字段，同时保留绑定与主会话复核要求。0.2.22 修正 XLSX 漏导等待主会话 blocker 字段的问题。没有声明契约的旧任务保持原行为；hooks 不会自动派发、验收或改写任务状态。
 
 ## 开始使用
 

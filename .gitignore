@@ -7,3 +7,14 @@ __pycache__/
 !/docs/reviews/
 /docs/reviews/*
 !/docs/reviews/2026-11-06-agent-collaboration-pilot-baseline.md
+!/docs/reviews/inputs/
+/docs/reviews/inputs/*
+!/docs/reviews/inputs/fix-1-user-request.md
+!/docs/reviews/inputs/fix-1-initial-state.json
+!/docs/reviews/inputs/inv-2-evidence.md
+!/docs/reviews/inputs/inv-2-user-request.md
+!/docs/reviews/inputs/mod-1-user-request.md
+!/docs/reviews/inputs/mod-1-legacy-fixture.json
+!/docs/reviews/inputs/selected-candidates-v1.md
+!/docs/reviews/inputs/selected-candidates-v2.md
+/docs/reviews/evaluator-only/
