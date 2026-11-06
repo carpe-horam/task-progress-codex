@@ -21,7 +21,7 @@
 - `PostToolUse`：工具返回后记录重要状态变化和证据；派发返回后绑定真实 agent ID，子任务提交后由主会话独立验收。运行句柄、排队或局部输出不能当成完成。
 - `SubagentStart`：子智能体只读取和执行获派节点，使用已有身份提交结果，由主会话验收。
 
-执行过程使用短提示，工具事件去重与语义提醒预算分开；等待、轮询、已知查询和控制操作静默。Task Progress 成功写回执会提供版本、操作名和服务端推导的 `context_effect`，hook 可将其与实际收到的宿主 session/agent 字段关联，再按插件的 session、instance、epoch、task 和 attempt 读取有界状态。只有显式 `agent_id` 可用于 actor scope；缺失身份、缓存/状态不可读或旧 epoch/attempt 都降级为 unknown/stale，不推断角色或认证。spawn 关联要求单个明确的待派发 attempt 与成功返回的结构化 host `agent_id`；`agent_name` 仍是调用方声明。
+执行过程使用短提示，工具事件去重与语义提醒预算分开；等待、轮询、已知查询和控制操作静默。日常用户更新突出目标、当前 owner、重要约束和决策；完整派发文本、工具配置和执行回执保存在任务账本，需要时再查询，避免每次进度都重复展示长参数。Task Progress 成功写回执会提供版本、操作名和服务端推导的 `context_effect`，hook 可将其与实际收到的宿主 session/agent 字段关联，再按插件的 session、instance、epoch、task 和 attempt 读取有界状态。只有显式 `agent_id` 可用于 actor scope；缺失身份、缓存/状态不可读或旧 epoch/attempt 都降级为 unknown/stale，不推断角色或认证。spawn 关联要求单个明确的待派发 attempt 与成功返回的结构化 host `agent_id`；`agent_name` 仍是调用方声明。
 
 恢复已有计划时，先显式查询其当前 `overview`/`tree`，再调用 `select_work_context`，传入准确的 `session_id`、`task_instance_id`、`epoch` 和目标 `task_id`；目标 attempt 明确时同时传 `attempt_id`。成功回执由 PostToolUse 绑定到实际收到回执的宿主 actor，供后续工具时机检查状态缺口。该选择仅记录观察到的上下文，不认证角色或权限；选择失败、身份缺失、目标过期或回执不可读时继续安全降级。
 

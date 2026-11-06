@@ -36,6 +36,14 @@
 
 `decision=accept` 采用提交的原始 outcome，不能把 open 升级成 resolved；`reject` 保存退回理由和证据，节点为 `finished/open`，将具体修改反馈给原 agent，再依计划重试或重规划。两种决策都须非空 summary/evidence，绑定当前待复核 attempt；旧 attempt 或冲突的重复复核被拒绝。review 另存，不能覆盖执行配置、submission 或派发回执。
 
+### 可选逐项验收契约
+
+需要逐项证明的重要任务可在任务节点声明 `acceptance={version:1,criteria:[{id,text,method,required}]}`。初始化/分解时随节点传入；也可在尚未开始时用 `revise_task_plan` 记录修订。启动后契约进入 attempt 快照，不能原位换标准。
+
+契约任务完成时，执行者通过 `update_task.acceptance_checks` 提交自检，主会话通过 `review_task.acceptance_checks` 独立记录复核。`resolved` 需要全部 required criterion 各有一条带证据的 `pass`；open/reject 要记录发现的问题。执行者自检不能代替主会话复核。没有契约的旧任务沿用原行为，在详情中明确显示“未使用逐项核验”，不从旧状态推断 pass。
+
+需要跨任务独立核验时，先在提交中给产物写固定版本：`artifacts:[{id,uri,version}]`；验证提交携带 `verified_artifacts`，主会话的独立核验项引用 `checked_artifacts`，均绑定来源 task/attempt、产物 ID 与版本。只写可变路径不足以证明核验对象一致。服务端只检查账本引用，不读取或校验文件字节；版本真实性仍须由实际核验者确认。界面、HTML 与 XLSX 会保留契约、双方 checks 和产物版本引用。
+
 继续执行时按需读取 context、tree/tasks 或 ready 列表核对实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
 
 `pending` 是新节点初始状态，`update_task` 不接受 pending。叶任务必须先启动再完成；只有 `finished` 须传 `outcome=resolved|open`。主会话自执行叶任务可直接结束，但要保留自执行原因。失败/取消也记录 summary/evidence。结果复核后再次 `get_ready_tasks`，将未解决前驱的证据传给能够处理它的后继。

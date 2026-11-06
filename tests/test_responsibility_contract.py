@@ -169,7 +169,7 @@ class ResponsibilityContractTests(unittest.TestCase):
         server.update_task(sid, "root", "running", assignment={"execution_mode": "main_session"})
 
     def test_dispatch_fields_are_required_and_binding_does_not_mutate_execution_snapshot(self):
-        for field in ("model", "reasoning_effort", "tool_identifier", "dispatch_text"):
+        for field in ("tool_identifier", "dispatch_text"):
             incomplete = {key: value for key, value in SUB.items() if key != field}
             self.reject_unchanged(lambda: self.begin(assignment=incomplete))
         self.begin()
@@ -189,6 +189,131 @@ class ResponsibilityContractTests(unittest.TestCase):
         node = self.node("work")
         self.assertEqual(node["dispatch"]["status"], "bound")
         self.assertEqual(node["assignment"]["metadata_provenance"]["verification"], "not_verified_by_codex_host")
+
+    def test_assignment_sources_and_fork_context_are_explicit_additive_metadata(self):
+        self.new()
+        inherited = {**SUB, "model_source": "inherited", "reasoning_effort_source": "unknown", "fork_turns": "all"}
+        inherited.pop("model")
+        inherited.pop("reasoning_effort")
+        self.begin(assignment=inherited)
+        saved = self.node("work")["assignment"]
+        self.assertEqual(saved["model_source"], "inherited")
+        self.assertEqual(saved["reasoning_effort_source"], "unknown")
+        self.assertNotIn("model", saved)
+        self.assertNotIn("reasoning_effort", saved)
+        self.assertEqual(saved["fork_turns"], "all")
+
+        self.begin("other", MAIN)
+        omitted = self.node("other")["assignment"]
+        self.assertNotIn("fork_turns", omitted, "context policy omission must stay omitted")
+        self.assertEqual((omitted["model_source"], omitted["reasoning_effort_source"]), ("unknown", "unknown"))
+        self.assertEqual(server._normalize_assignment({**MAIN, "model": "fixture-model"})["model_source"], "explicit")
+        self.assertEqual(server._normalize_assignment({**MAIN, "reasoning_effort": "high"})["reasoning_effort_source"], "explicit")
+        self.reject_unchanged(lambda: self.begin(assignment={**SUB, "model_source": "explicit" , "model": ""}))
+        self.reject_unchanged(lambda: self.begin(assignment={**SUB, "model_source": "inherited"}))
+        self.reject_unchanged(lambda: self.begin(assignment={**SUB, "reasoning_effort_source": "unknown"}))
+        self.reject_unchanged(lambda: self.begin(assignment={**SUB, "reasoning_effort_source": "bogus"}))
+        self.reject_unchanged(lambda: self.begin(assignment={**SUB, "fork_turns": "parent"}))
+
+    def test_old_inflight_assignment_comparison_is_read_only_and_accepts_legacy_client(self):
+        self.new()
+        aid = self.begin()
+        self.bind()
+        expected_old = {**SUB, "fork_turns": "none"}
+        def downgrade(data):
+            node = data["nodes"]["work"]
+            for record in (node["assignment"], node["attempts"][-1]["assignment"]):
+                record.pop("model_source", None)
+                record.pop("reasoning_effort_source", None)
+                record["fork_turns"] = "none"
+        self.rewrite(downgrade)
+        self.update("work", "running", assignment=expected_old, attempt_id=aid)
+        legacy_saved = self.node("work")["assignment"]
+        self.assertNotIn("model_source", legacy_saved)
+        self.assertNotIn("reasoning_effort_source", legacy_saved)
+        # A newer client may omit fork_turns; the read-only projection derives
+        # missing source labels for comparison without rewriting the snapshot.
+        self.update("work", "running", assignment=SUB, attempt_id=aid)
+        self.assertNotIn("model_source", self.node("work")["assignment"])
+        self.update("work", "finished", outcome="resolved", attempt_id=aid,
+                    summary="Legacy client continued", evidence=["fixture://legacy-inflight"])
+        self.review()
+        self.assertEqual(self.node("work")["outcome"], "resolved")
+
+    def test_partial_assignment_updates_do_not_rewrite_legacy_source_defaults(self):
+        self.new()
+        aid = self.begin()
+        def remove_sources(data):
+            node = data["nodes"]["work"]
+            for record in (node["assignment"], node["attempts"][-1]["assignment"]):
+                record.pop("model_source", None)
+                record.pop("reasoning_effort_source", None)
+        self.rewrite(remove_sources)
+        partial = {"execution_mode": "subagent"}
+        self.update("work", "running", assignment=partial, attempt_id=aid)
+        self.bind(attempt_id=aid)
+        self.update("work", "finished", outcome="resolved", assignment=partial, attempt_id=aid,
+                    summary="Partial legacy update", evidence=["fixture://partial-assignment"])
+        self.review()
+        self.assertEqual(self.node("work")["outcome"], "resolved")
+
+    def test_send_message_does_not_start_or_bind_a_new_execution(self):
+        for tool in ("collaboration.send_message", "mcp__codex_app__send_message_to_thread"):
+            message_assignment = {**SUB, "tool_identifier": tool, "agent_name": "known-owner"}
+            self.reject_unchanged(lambda: self.begin(assignment=message_assignment))
+        self.assertIsNone(self.node("work")["attempt_id"])
+
+    def test_legacy_linear_api_also_rejects_message_tool_as_execution_start(self):
+        for tool in ("collaboration.send_message", "mcp__codex_app__send_message_to_thread"):
+            result = server.init_progress(["Linear delegated work"], legacy_linear=True)["structuredContent"]
+            sid = result["session_id"]
+            instance = result["progress"]["task_instance_id"]
+            before = server._session_file(sid).read_bytes()
+            with self.subTest(tool=tool), self.assertRaises(server.ProgressError):
+                server.update_step(sid, 0, "in_progress", assignment={
+                    "execution_mode": "subagent", "model": "fixture-model", "reasoning_effort": "high",
+                    "tool_identifier": tool, "dispatch_text": "Wake the worker.",
+                }, task_instance_id=instance)
+            self.assertEqual(server._session_file(sid).read_bytes(), before)
+
+    def test_linear_partial_updates_accept_legacy_snapshot_without_source_labels(self):
+        result = server.init_progress(["Linear delegated work"], legacy_linear=True)["structuredContent"]
+        sid = result["session_id"]
+        instance = result["progress"]["task_instance_id"]
+        original = {"execution_mode": "subagent", "model": "fixture-model", "reasoning_effort": "high"}
+        server.update_step(sid, 0, "in_progress", assignment=original, task_instance_id=instance)
+        path = server._session_file(sid)
+        data = json.loads(path.read_text())
+        step = data["steps"][0]
+        attempt_id = step["attempt_id"]
+        for record in (step["assignment"], step["attempts"][-1]["assignment"]):
+            record.pop("model_source", None)
+            record.pop("reasoning_effort_source", None)
+        path.write_text(json.dumps(data))
+        partial = {"execution_mode": "subagent"}
+        server.update_step(sid, 0, "in_progress", assignment=partial,
+                           task_instance_id=instance, attempt_id=attempt_id)
+        server.update_step(sid, 0, "completed", assignment=partial,
+                           task_instance_id=instance, attempt_id=attempt_id)
+
+    def test_overview_advertises_additive_assignment_capabilities(self):
+        result = server.get_progress(self.sid)
+        self.assertEqual(result["structuredContent"]["protocol_capabilities"],
+                         ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1"])
+        detail = server.get_progress(self.sid, view="tasks", task_ids=["work"])
+        self.assertNotIn("protocol_capabilities", detail["structuredContent"])
+
+    def test_retry_can_keep_same_owner_but_stale_attempt_cannot_update(self):
+        first = self.begin(assignment={**SUB, "tool_identifier": "collaboration.followup_task", "agent_name": "original-owner"})
+        self.update("work", "finished", outcome="resolved", attempt_id=first,
+                    summary="Original owner submitted", evidence=["fixture://owner-chain"])
+        self.review(decision="reject")
+        self.begin(retry=True, assignment={**SUB, "tool_identifier": "collaboration.followup_task", "agent_name": "original-owner"})
+        second = self.node("work")["attempt_id"]
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.node("work")["dispatch"]["agent_name"], "original-owner")
+        self.reject_unchanged(lambda: self.update("work", "finished", attempt_id=first,
+                                                  outcome="resolved", summary="stale", evidence=["fixture://stale"]))
 
     def test_finish_requires_binding_but_failed_dispatch_cleanup_does_not(self):
         aid = self.begin()

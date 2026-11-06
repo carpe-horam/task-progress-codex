@@ -12,10 +12,17 @@ This document defines the shared backend/UI/skill contract for the responsibilit
 
 ## Dispatch binding
 
-- Starting a subagent attempt requires model/reasoning plus nonempty `tool_identifier` and `dispatch_text`; its actual `agent_name` can be unknown until the spawn returns.
-- Record `dispatch={status: pending|bound, attempt_id, agent_name, bound_at, ...}` on the node and attempt, independently of immutable execution metadata. New spawns stay pending even if an assignment contains a planned alias. Only an explicit follow-up tool (`collaboration.followup_task`, `collaboration.send_message`, or `mcp__codex_app__send_message_to_thread`) with a known actual agent ID may bind immediately. This checks the declared operation; it does not authenticate the call.
+- Starting a subagent attempt requires nonempty `tool_identifier` and `dispatch_text`; its actual `agent_name` can be unknown until the spawn returns. For servers advertising `assignment_sources_v1`, model and reasoning effort each carry `*_source=explicit|inherited|unknown`: explicit requires a nonempty value, inherited/unknown cannot carry a concrete value, and unknown/inherited does not block an otherwise supported host dispatch. A nonempty legacy model/effort with no source is interpreted as explicit in memory; missing values as unknown. This projection never backfills old snapshots. Without the capability flag, clients keep using the old protocol.
+- For servers advertising `fork_context_v1`, `fork_turns` may be `none`, `all`, or omitted. Only an explicitly supplied value is stored; omission is not normalized to `none`. This describes the requested context policy, not a verified host result.
+- Record `dispatch={status: pending|bound, attempt_id, agent_name, bound_at, ...}` on the node and attempt, independently of immutable execution metadata. New spawns stay pending even if an assignment contains a planned alias. Only an explicit `collaboration.followup_task` with a known actual agent ID may bind immediately. `collaboration.send_message` and thread messaging deliver context only; they cannot start an attempt or bind its owner. This checks the declared operation; it does not authenticate the call.
 - Add `bind_task_agent(session_id, task_id, attempt_id, agent_name, task_instance_id)` to bind the returned agent ID to an active subagent attempt once. Identical repeat binding is idempotent; different IDs and stale attempts are rejected. This binding is caller-reported, not host verified.
-- A new subagent attempt cannot report finished before binding; failed/cancelled dispatch cleanup remains possible. Old in-flight attempts without this new dispatch contract remain recoverable, explicitly marked legacy/unbound, and still require review for finished results.
+- A new subagent attempt cannot report finished before binding; failed/cancelled dispatch cleanup remains possible. `collaboration.send_message` and thread messaging are context delivery only: they do not prove that an idle owner woke or began new execution and cannot be used to start a new attempt. Use a host follow-up operation that actually resumes the owner. Old in-flight attempts without this new dispatch contract remain recoverable, explicitly marked legacy/unbound, and still require review for finished results.
+
+## Owner continuity and updates
+
+- Assign investigation, implementation and local validation of a tightly coupled result to one worker when one owner can verify the same artifact. Intermediate work stages alone do not require a new agent or Task Progress node. If the plan keeps separate result nodes, a follow-up can reuse the same actual owner ID while each node/attempt keeps its own identity.
+- The main session sets the goal, deliverable boundary, dependencies, and resource/file ownership. A worker can organize steps and commands within that scope, then report outcomes and evidence. A new independent result, owner, or scope expansion returns to the main session for plan adjustment. A worker cannot edit sibling states, accept its own submission, or expand authorization.
+- Keep user-facing progress concise: current goal, owner, important constraint, and decision. The ledger retains the full dispatch text and execution record for explicit retrieval.
 
 ## Result submission and review
 
@@ -25,6 +32,13 @@ This document defines the shared backend/UI/skill contract for the responsibilit
 - Store `review={attempt_id,decision,summary,evidence,reviewer,reviewed_at}`, with `review_status=accepted|rejected`. Preserve the original submission and record both in the attempt. Repeated conflicting review or review of a stale attempt is rejected. Retries/dependency invalidation clear the current review and retain its historical evidence.
 - Do not let generic `update_task` overwrite a pending submission, bypass review, or silently retry unreviewed work. Main-session leaves can still complete directly, with their explicit self-execution reason recorded.
 - Existing completed/archived results remain readable without inventing an acceptance record. Linear legacy workflows remain compatible and are identified as legacy; the new delegation workflow uses HTN.
+
+## Optional acceptance contracts and artifact versions (v1 capability)
+
+- Nodes may declare `acceptance={version:1,criteria:[{id,text,method,required}]}` at initialization/decomposition, or revise an unstarted node with a recorded plan revision. Root acceptance-only revisions do not permit structural edits. Attempts snapshot the contract and fingerprint; retries preserve the plan contract and create fresh checks.
+- For a contracted node, resolved `update_task` or `review_task(accept)` requires one evidence-backed `pass` for every required criterion. Open/rejected results need concrete findings. Execution self-checks and main-session review checks remain separate; a worker check cannot substitute for review. Nodes without contracts preserve existing behavior and are shown as “未使用逐项核验”; no pass is inferred for old records.
+- Finished submissions may include versioned `artifacts={id,uri,version}`. Verification and review can bind exact artifact versions to source task/attempt IDs. The server validates references and consistency, but does not read files, execute evidence, authenticate identities, or prove that external bytes match a declared version.
+- `tree` returns only a bounded contract/check summary; `tasks`, attempt records, the app, offline HTML, and XLSX carry the detailed contract, checks, and artifact references. Historical exports use the historical attempt snapshot rather than borrowing the current node contract.
 
 ## Next actions and display
 

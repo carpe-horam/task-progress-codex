@@ -105,6 +105,8 @@ class SelectiveWireTests(unittest.TestCase):
         init = self.rpc('init_task_network', task_title='Audit wire', tasks=[
             {'id':'target','title':'Target','assignment':MAIN}, {'id':'later','title':'Later','assignment':MAIN}])['structuredContent']
         sid, iid = init['session_id'], init['task_instance_id']
+        self.rpc('select_work_context', session_id=sid, task_instance_id=iid, epoch=0,
+                 task_id='root', purpose='work')
         target = self.rpc('update_task', session_id=sid, task_instance_id=iid, task_id='target', execution_status='running', assignment=MAIN)['structuredContent']['attempt_id']
         peer = self.rpc('route_request', session_id=sid, task_instance_id=iid, request_id='transfer', request_text='Transfer', task_title='Transfer', mode='parallel', reason='Isolated', acceptance_criteria=['Delivery'])['structuredContent']['request_task_instance_id']
         server.decompose_task(sid, 'root', [{'id':'cancelled','title':'Cancelled','assignment':SUB}], task_instance_id=peer)
