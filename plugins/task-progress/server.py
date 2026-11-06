@@ -57,6 +57,9 @@ EXECUTION_MODES = ("main_session", "subagent")
 REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 MAX_EXPORT_FILE_BYTES = 20 * 1024 * 1024
 LONG_RUNNING_REVIEW_SECONDS = 10 * 60
+POSSIBLY_STALE_SECONDS = 30 * 60
+MAX_REVIEW_NOTICE_ITEMS = 3
+MAX_MUTATION_RECEIPT_BYTES = 2900  # Leave room for the JSON-RPC envelope.
 TERMINAL_EXECUTION_STATUSES = {"finished", "failed", "cancelled"}
 HANDSHAKE_PROTOCOL_VERSIONS = {
     "2024-11-05",
@@ -984,6 +987,7 @@ def _progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "index": index,
             "description": step["description"],
             "status": step["status"],
+            "created_at": step.get("created_at"),
             "started_at": step.get("started_at"),
             "finished_at": step.get("finished_at"),
             **({"time_boundary_sources": deepcopy(step["time_boundary_sources"])} if step.get("time_boundary_sources") else {}),
@@ -1038,6 +1042,7 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
         "id": node_id,
         "title": title,
         "parent_id": parent_id,
+        "created_at": _now(),
         "children": [],
         "depends_on": [],
         "dependency_policy": "resolved",
@@ -1425,6 +1430,109 @@ def _accepted_resolved(node: dict[str, Any]) -> bool:
             and (node.get("review_status") == "accepted" or (current and mode == "main_session")))
 
 
+def _task_review_notices(data: dict[str, Any], document: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Bounded, read-only reminders from this instance and its archived ledgers.
+
+    Creation time is never inferred from execution/update/archive boundaries.
+    Snapshots and live peer instances are excluded: snapshots are copies, and a
+    status write must not accidentally turn another live instance into backlog.
+    """
+    now = datetime.now().astimezone()
+    groups = {key: {"count": 0, "items": []} for key in
+              ("current_review", "invalidated_results", "historical_unresolved")}
+    seen = set()
+    item_count = 0
+    document = document if document is not None else data
+    covered = {(record["target_task_instance_id"], record["target_epoch"],
+                record["target_task_id"], record["target_attempt_id"])
+               for record in _coverage_records(document)
+               if record.get("extent") == "full" and _coverage_status(document, record)["status"] == "current"}
+
+    def add(group, item):
+        nonlocal item_count
+        bucket = groups[group]
+        bucket["count"] += 1
+        # Reserve one slot per category within a single shared item budget.
+        if not bucket["items"] and item_count < MAX_REVIEW_NOTICE_ITEMS:
+            bucket["items"].append(item)
+            item_count += 1
+
+    def visit(plan, instance_id, scope, path):
+        instance_id = plan.get("task_instance_id", instance_id)
+        epoch = plan.get("epoch", 0)
+        records = plan.get("nodes")
+        htn = isinstance(records, (dict, list))
+        records = (list(records.values()) if isinstance(records, dict) else records) if htn else plan.get("steps", [])
+        # Archives can contain projected node lists. Validate proof fingerprints
+        # against the same result fields as live plans, without rewriting them.
+        proof_plan = {**plan, "nodes": {node["id"]: node for node in records}} if htn else None
+        decisions = _current_stage_inventory_decisions(proof_plan) if htn else {}
+        closed_ids = set()
+        if htn:
+            reviewed_ids = {review.get("task_id") for review in plan.get("closure_reviews", [])}
+            closed_roots = [nid for nid in reviewed_ids if nid in proof_plan["nodes"]
+                            and _accepted_closure(proof_plan, nid)]
+            if _handoff_closure(proof_plan):
+                closed_roots.append(plan.get("root_id"))
+            for nid in closed_roots:
+                pending = [nid]
+                while pending:
+                    current = pending.pop()
+                    if current in closed_ids:
+                        continue
+                    closed_ids.add(current)
+                    pending.extend(proof_plan["nodes"].get(current, {}).get("children", []))
+        parents = {node.get("parent_id") for node in records if node.get("parent_id") is not None} if htn else set()
+        for index, node in enumerate(records):
+            task_id = node.get("id", str(index))
+            # Missing IDs identify nothing outside their archive. Keep public
+            # identity unknown, but never collapse separate legacy archives.
+            identity = (instance_id if instance_id else path, epoch, task_id, scope)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            created = node.get("created_at")
+            age = "unknown"
+            if _valid_boundary(created):
+                try:
+                    elapsed = (now - datetime.fromisoformat(created)).total_seconds()
+                    if elapsed >= 0:
+                        age = "possibly_stale" if elapsed > POSSIBLY_STALE_SECONDS else "recent"
+                except (ValueError, TypeError, OverflowError):
+                    pass
+            item = {"task_instance_id": instance_id, "epoch": epoch, "task_id": str(task_id)[:64],
+                    "scope": scope, "title": str(node.get("title", node.get("description", "")))[:48],
+                    "age_status": age, "created_at": created[:64] if _valid_boundary(created) else None}
+            unresolved = not _accepted_resolved(node) if htn else node.get("status") != "completed"
+            handled = (task_id in closed_ids or
+                       decisions.get(task_id, {}).get("decision") in ("obsolete", "covered") or
+                       bool(instance_id and (instance_id, epoch, task_id, node.get("attempt_id")) in covered))
+            actionable_leaf = not htn or (not node.get("children") and node.get("id") not in parents)
+            if unresolved and actionable_leaf and not handled:
+                if scope != "current":
+                    add("historical_unresolved", item)
+                elif age != "recent" or node.get("invalidated_by"):
+                    add("current_review", {**item, "current_result_invalidated": bool(node.get("invalidated_by"))})
+            invalidated = len(node.get("invalidated_results", []))
+            if invalidated and unresolved and not handled:
+                add("invalidated_results", {**{key: value for key, value in item.items() if key != "age_status"},
+                                           "result_count": invalidated,
+                                           "current_result_invalidated": bool(node.get("invalidated_by"))})
+        for index, historical in enumerate(plan.get("history", [])):
+            visit(historical, instance_id, "plan_history" if scope == "current" else scope,
+                  (*path, "history", index))
+        for index, historical in enumerate(plan.get("task_history", [])):
+            # An old archive without identity stays unknown, never borrowing the
+            # current instance's ID and inviting an unsafe status update.
+            visit(historical, None, "task_history", (*path, "task_history", index))
+
+    visit(data, _task_instance_id(data), "current", ())
+    for bucket in groups.values():
+        bucket["has_more"] = bucket["count"] > len(bucket["items"])
+    return {"threshold_seconds": POSSIBLY_STALE_SECONDS, "review_only": True,
+            "query_task_instance_id": _task_instance_id(data), **groups}
+
+
 def _coverage_instances(document: dict[str, Any]):
     """Live instances precede archived copies, so old accepted attempts cannot revive."""
     yield document
@@ -1644,14 +1752,21 @@ def _node_is_graph_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
     )
 
 
-def _node_is_ready(data: dict[str, Any], node: dict[str, Any]) -> bool:
+def _node_is_ready(data: dict[str, Any], node: dict[str, Any],
+                   inventory_decisions: dict[str, dict[str, Any]] | None = None) -> bool:
     if not _node_is_graph_ready(data, node):
+        return False
+    decisions = (_current_stage_inventory_decisions(data) if inventory_decisions is None else inventory_decisions)
+    if decisions.get(node.get("id"), {}).get("decision") in ("obsolete", "covered"):
         return False
     role = (node.get("planned_assignment") or {}).get("execution_mode")
     return role != "main_session" or not _main_session_running_leaves(data, except_id=node.get("id"))
 
 
-def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
+def _display_node_status(data: dict[str, Any], node: dict[str, Any],
+                         inventory_decisions: dict[str, dict[str, Any]] | None = None) -> str:
+    if inventory_decisions is None:
+        inventory_decisions = _current_stage_inventory_decisions(data)
     if node.get("id") == data.get("root_id") and _handoff_closure(data):
         return "handed_off"
     if _accepted_closure(data, node.get("id")):
@@ -1669,7 +1784,8 @@ def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
     if status in ("failed", "cancelled"):
         return status
     if node.get("children"):
-        child_statuses = [_display_node_status(data, data["nodes"][child_id]) for child_id in node["children"]]
+        child_statuses = [_display_node_status(data, data["nodes"][child_id], inventory_decisions)
+                          for child_id in node["children"]]
         if "awaiting_review" in child_statuses:
             return "awaiting_review"
         if any(value == "executing" for value in child_statuses):
@@ -1679,7 +1795,7 @@ def _display_node_status(data: dict[str, Any], node: dict[str, Any]) -> str:
         if any(value in ("ready", "decomposing") for value in child_statuses):
             return "decomposing"
         return "blocked"
-    return "ready" if _node_is_ready(data, node) else "blocked"
+    return "ready" if _node_is_ready(data, node, inventory_decisions) else "blocked"
 
 
 def _display_title(node: dict[str, Any]) -> str:
@@ -1715,7 +1831,8 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     _validate_network(data, check_execution_cycles=False)
     nodes = data["nodes"]
     leaves = [node for node in nodes.values() if not node.get("children")]
-    ready_nodes = [node for node in leaves if _node_is_ready(data, node)]
+    inventory_decisions = _current_stage_inventory_decisions(data)
+    ready_nodes = [node for node in leaves if _node_is_ready(data, node, inventory_decisions)]
     terminal_leaves = [node for node in leaves if _node_is_terminal(node) or node.get("review_status") == "pending"]
     pending_reviews = [node for node in leaves if node.get("review_status") == "pending"]
     resolved_leaves = [node for node in leaves if node.get("outcome") == "resolved"]
@@ -1736,12 +1853,12 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
                 "elapsed_minutes": elapsed // 60,
                 "execution_mode": node.get("assignment", {}).get("execution_mode"),
             })
-    blocked_leaves = [node for node in leaves if node.get("execution_status") == "pending" and not _node_is_ready(data, node)]
+    blocked_leaves = [node for node in leaves if node.get("execution_status") == "pending" and not _node_is_ready(data, node, inventory_decisions)]
     total = len(leaves)
     completed = len(terminal_leaves)
     percent = completed * 100 // total if total else 0
     root = nodes[data["root_id"]]
-    root_status = _display_node_status(data, root)
+    root_status = _display_node_status(data, root, inventory_decisions)
     if root_status in ("closed", "handed_off", "waiting_synthesis", "open"):
         overall_status = root_status
     elif root.get("outcome") == "resolved":
@@ -1798,9 +1915,11 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
                 "verification": "not_verified_by_codex_host",
             } if node.get("responsibility_version") != 1 and node.get("execution_status") == "running"
                   and node.get("assignment", {}).get("execution_mode") == "subagent" else None),
-            "status": _display_node_status(data, node),
-            "ready": _node_is_ready(data, node),
+            "status": _display_node_status(data, node, inventory_decisions),
+            "ready": _node_is_ready(data, node, inventory_decisions),
             "graph_ready": _node_is_graph_ready(data, node),
+            "inventory_disposition": (inventory_decisions.get(node_id) or {}).get("decision"),
+            "inventory_reason": (inventory_decisions.get(node_id) or {}).get("reason"),
             "main_session_waiting_on": [item["id"] for item in _main_session_running_leaves(data, except_id=node.get("id"))]
                 if _node_is_graph_ready(data, node) and (node.get("planned_assignment") or {}).get("execution_mode") == "main_session" else [],
             "blocked_by": unmet,
@@ -1838,7 +1957,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "updated_at": data["updated_at"],
         "nodes": enriched_nodes,
         "ready_tasks": [node["id"] for node in ready_nodes],
-        "next_actions": _planning_next_actions(data),
+        "next_actions": _planning_next_actions(data, inventory_decisions),
         "history": data.get("history", []),
         "plan_snapshots": data.get("plan_snapshots", []),
         "plan_revisions": data.get("plan_revisions", []),
@@ -1897,7 +2016,8 @@ def _current_stage_inventory_decisions(data: dict[str, Any]) -> dict[str, dict[s
     return decisions
 
 
-def _planning_next_actions(data: dict[str, Any]) -> list[str]:
+def _planning_next_actions(data: dict[str, Any],
+                           inventory_decisions: dict[str, dict[str, Any]] | None = None) -> list[str]:
     status = data.get("planning_status") or _legacy_planning_status(data)
     if status == "required":
         return ["decompose_task(root) 或通过 init_task_network 提交初始 tasks；若确为单步任务，重新初始化时填写 atomic_reason"]
@@ -1913,8 +2033,11 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
     if _node_is_terminal(root):
         return ["任务已完成：报告验收结果。" if root.get("outcome") == "resolved" else "报告未解决或已终止结果；需要继续时显式重试或重规划。"]
     actions = []
+    if inventory_decisions is None:
+        inventory_decisions = _current_stage_inventory_decisions(data)
     for node in nodes.values():
         node_id = node["id"]
+        decision = inventory_decisions.get(node_id)
         if node.get("review_status") == "pending":
             actions.append(f"主会话 review_task({node_id})：使用当前 task_instance_id 与 attempt_id={node.get('attempt_id')}，检查 submission 后填写 decision=accept|reject、summary、evidence 与 reviewer.execution_mode=main_session；不要重复 update_task(finished)。")
         elif node.get("execution_status") == "running":
@@ -1933,7 +2056,14 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
             outcome_hint = ", outcome=resolved" if all(nodes[child].get("execution_status") == "finished"
                 and nodes[child].get("outcome") == "resolved" for child in node["children"]) else "，有未解决子结果只能 open/终止"
             actions.append(f"主会话综合验收 {node_id}：update_task(finished{outcome_hint})，填写 summary/evidence。")
-        elif _node_is_ready(data, node):
+        elif (node.get("execution_status") == "pending" and not node.get("children")
+              and decision and decision.get("decision") in ("obsolete", "covered")):
+            actions.append(
+                f"复核待办任务 {node_id}：有效盘点为 {decision['decision']}，理由：“{decision.get('reason', '')}”。"
+                "先核对证据，显式取消、记录覆盖关联或重规划；仍需执行时先重新盘点为 continue。"
+                "盘点不改变原始 pending 状态或依赖结果。"
+            )
+        elif _node_is_ready(data, node, inventory_decisions):
             planned = node.get("planned_assignment") or {}
             role = planned.get("execution_mode")
             if role is None:
@@ -1945,7 +2075,6 @@ def _planning_next_actions(data: dict[str, Any]) -> list[str]:
     # A stage inventory is an audit decision, not an execution transition. Make
     # its current disposition actionable so an open/failed result is not left
     # parked after the inventory reminder disappears.
-    inventory_decisions = _current_stage_inventory_decisions(data)
     for node in nodes.values():
         if (node.get("children") or not _node_is_terminal(node) or _accepted_resolved(node)
                 or node.get("review_status") == "pending"):
@@ -3151,6 +3280,9 @@ def rebuild_task_network(
             "reason": reason.strip(),
             "closed_at": closed_at,
             "nodes": data["nodes"],
+            # Closure fingerprints include context; retain it so archived
+            # accepted dispositions remain independently verifiable.
+            "task_context": deepcopy(data.get("task_context", {})),
             "handoffs": deepcopy(data.get("handoffs", [])),
             "handoff_closures": deepcopy(data.get("handoff_closures", [])),
             "closure_reviews": deepcopy(data.get("closure_reviews", [])),
@@ -3380,6 +3512,7 @@ def _tool_result(
             "session_id": session_id,
             "state_revision": state_revision,
             "view_sequence": view_sequence,
+            **({"task_review_notices": _task_review_notices(selected, document)} if coherent and selected else {}),
             **({"session_work": session_work} if session_work is not None else {}),
         },
     }
@@ -3414,6 +3547,7 @@ def init_progress(
                 {
                     "description": step.strip(),
                     "status": "pending",
+                    "created_at": now,
                     "started_at": None,
                     "finished_at": None,
                 }
@@ -3663,7 +3797,7 @@ _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_i
                     "accepted_resolved_percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
-_TREE_FIELDS = ("id", "parent_id", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
+_TREE_FIELDS = ("id", "parent_id", "created_at", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "inventory_disposition", "inventory_reason", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
                            "record_task_execution", "start_task_execution", "review_task_split",
                            "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "revise_task_plan", "rebuild_task_network", "route_request",
@@ -3874,7 +4008,48 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
         message += (f" 连续 {retry_review['consecutive_attempts']} 次未解决：请比较回执中的最近两次原因和摘要，"
                     "判断是否为相同或相关问题；如有需要，评估优化或重新规划任务并记录判断与下一步。"
                     "信息不足时读取 attempts 记录，不要假定原因相同。")
-    return {"content": [{"type": "text", "text": message}], "structuredContent": ack}
+    if name in ("update_task", "update_step", "review_task"):
+        notices = source.get("task_review_notices")
+        if notices and any(notices[key]["count"] for key in
+                           ("current_review", "invalidated_results", "historical_unresolved")):
+            ack["task_review_notices"] = deepcopy(notices)
+            message += (" 待复核：possibly_stale=创建超过30分钟的“可能过期”项，unknown=创建时间未知；不自动改状态。"
+                        "用query_task_instance_id查询tree/records；plan_history/task_history查history对应分类。")
+    receipt = {"content": [{"type": "text", "text": message}], "structuredContent": ack}
+    notices = ack.get("task_review_notices")
+    if notices:
+        # Measure the same ASCII-escaped JSON as the wire encoder, including
+        # message/identity/other reminders. Counts survive every item eviction.
+        buckets = [notices[key] for key in ("current_review", "invalidated_results", "historical_unresolved")]
+        while len(json.dumps(receipt).encode("utf-8")) >= MAX_MUTATION_RECEIPT_BYTES:
+            bucket = next((bucket for bucket in reversed(buckets) if bucket["items"]), None)
+            if bucket is not None:
+                bucket["items"].pop()
+                bucket["has_more"] = True
+                continue
+            # A concurrent retry reminder can itself contain long summaries.
+            # Trim only this disposable receipt; full attempt records stay intact.
+            retry = ack.get("retry_review_due") or {}
+            texts = [(item, key) for item in retry.get("recent_attempts", [])
+                     for key in ("summary", "failure_reason") if item.get(key)]
+            if texts:
+                if ack.get("retry_review_due") is source.get("retry_review_due"):
+                    ack["retry_review_due"] = deepcopy(retry)
+                    continue
+                item, key = max(texts, key=lambda pair: len(pair[0][pair[1]]))
+                item[key] = item[key][:len(item[key]) // 2]
+                item["truncated"] = True
+                continue
+            compact_message = "已记录。可能过期、失效及历史项仅供复核；按回执查询详情。"
+            if receipt["content"][0]["text"] != compact_message:
+                receipt["content"][0]["text"] = compact_message
+                continue
+            if ack.get("execution"):
+                ack.pop("execution")
+                ack["execution_details_omitted"] = True
+                continue
+            break
+    return receipt
 
 
 def _wire_result(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
