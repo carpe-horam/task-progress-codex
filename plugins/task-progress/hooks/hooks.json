@@ -1,13 +1,14 @@
 {
-  "description": "Task Progress startup and turn planning reminders.",
+  "description": "Task Progress planning, execution and subagent lifecycle reminders.",
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|compact|fork",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
             "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "commandWindows": "\"%PLUGIN_ROOT%\\scripts\\launch_progress_mcp.cmd\" \"%PLUGIN_ROOT%\\hooks\\task_progress_hook.py\"",
             "timeout": 2,
             "statusMessage": "Preparing Task Progress guidance"
           }
@@ -20,8 +21,48 @@
           {
             "type": "command",
             "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "commandWindows": "\"%PLUGIN_ROOT%\\scripts\\launch_progress_mcp.cmd\" \"%PLUGIN_ROOT%\\hooks\\task_progress_hook.py\"",
             "timeout": 2,
             "statusMessage": "Checking Task Progress guidance"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "commandWindows": "\"%PLUGIN_ROOT%\\scripts\\launch_progress_mcp.cmd\" \"%PLUGIN_ROOT%\\hooks\\task_progress_hook.py\"",
+            "timeout": 2,
+            "statusMessage": "Checking Task Progress work context"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "commandWindows": "\"%PLUGIN_ROOT%\\scripts\\launch_progress_mcp.cmd\" \"%PLUGIN_ROOT%\\hooks\\task_progress_hook.py\"",
+            "timeout": 2,
+            "statusMessage": "Checking Task Progress result follow-up"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/launch_progress_mcp\" \"${PLUGIN_ROOT}/hooks/task_progress_hook.py\"",
+            "commandWindows": "\"%PLUGIN_ROOT%\\scripts\\launch_progress_mcp.cmd\" \"%PLUGIN_ROOT%\\hooks\\task_progress_hook.py\"",
+            "timeout": 2,
+            "statusMessage": "Preparing assigned Task Progress scope"
           }
         ]
       }

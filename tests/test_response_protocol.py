@@ -46,6 +46,119 @@ class ResponseProtocolTests(unittest.TestCase):
             callback()
         self.assertEqual(server._session_file(self.sid).read_bytes(), before)
 
+    def test_select_work_context_returns_versioned_observed_selection_without_mutating_progress(self):
+        before = server._session_file(self.sid).read_bytes()
+        args = {"session_id": self.sid, "task_instance_id": self.instance, "epoch": 0,
+                "purpose": "resume", "task_id": "work"}
+        result = server.select_work_context(**args)
+        receipt = server._wire_result("select_work_context", args, result)["structuredContent"]
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+        self.assertEqual(receipt["receipt_version"], 1)
+        self.assertEqual(receipt["operation"], "select_work_context")
+        self.assertEqual(receipt["context_effect"]["kind"], "work_context_selected")
+        self.assertEqual(receipt["context_effect"]["selection_purpose"], "resume")
+        self.assertEqual(receipt["context_effect"]["task_id"], "work")
+        self.assertEqual(receipt["context_effect"]["task_instance_id"], self.instance)
+        self.assertIsInstance(receipt["context_effect"]["view_sequence"], int)
+        self.assertNotIn("nodes", receipt)
+        self.assertIn("select_work_context", {tool["name"] for tool in server.TOOLS})
+
+    def test_select_work_context_rejects_stale_epoch_and_attempt_without_writes(self):
+        self.unchanged_error(
+            lambda: server.select_work_context(self.sid, self.instance, 3, task_id="work"), "epoch"
+        )
+        self.unchanged_error(
+            lambda: server.select_work_context(self.sid, self.instance, 0, task_id="work", attempt_id="old"),
+            "attempt_id",
+        )
+
+    def test_retry_receipt_identifies_new_attempt_execution_mode(self):
+        first_attempt = self.start()
+        server.update_task(self.sid, "work", "failed", attempt_id=first_attempt,
+                           summary="First attempt ended", failure_reason="Fixture retry")
+        args = {"session_id": self.sid, "task_id": "work", "execution_status": "running",
+                "retry": True, "attempt_id": first_attempt, "task_instance_id": self.instance,
+                "assignment": SUB}
+        result = server.update_task(**args)
+        receipt = server._wire_receipt("update_task", args, result)["structuredContent"]
+        self.assertEqual(receipt["context_effect"]["kind"], "attempt_restarted")
+        self.assertEqual(receipt["context_effect"]["execution_status"], "running")
+        self.assertEqual(receipt["context_effect"]["execution_mode"], "subagent")
+        self.assertNotEqual(receipt["context_effect"]["attempt_id"], first_attempt)
+
+    def test_hook_snapshot_summarizes_pending_subagent_reviews(self):
+        attempt_id = self.start()
+        server.bind_task_agent(self.sid, "work", attempt_id, "/root/worker")
+        server.update_task(self.sid, "work", "finished", outcome="resolved", summary="Result ready",
+                           evidence=["Isolated fixture passed"], attempt_id=attempt_id)
+        snapshot = server.read_hook_snapshot(self.sid, self.instance, 0)
+        queue = snapshot["review_queue"]
+        self.assertEqual(snapshot["status"], "current")
+        self.assertEqual(queue["pending_review_count"], 1)
+        self.assertEqual(queue["pending_reviews"], [{"task_id": "work", "attempt_id": attempt_id}])
+        self.assertNotIn("evidence", queue["pending_reviews"][0])
+
+    def test_hook_snapshot_reports_group_ready_for_synthesis(self):
+        result = progress(server.init_task_network("Parent synthesis", tasks=[
+            {"id": "a", "title": "First result", "assignment": MAIN},
+            {"id": "b", "title": "Second result", "assignment": MAIN},
+        ]))
+        sid, instance = result["session_id"], result["task_instance_id"]
+        for task_id in ("a", "b"):
+            attempt_id = server.update_task(sid, task_id, "running", assignment=MAIN,
+                                           task_instance_id=instance)["structuredContent"]["progress"]["nodes"]
+            node = next(item for item in attempt_id if item["id"] == task_id)
+            server.update_task(sid, task_id, "finished", outcome="resolved", summary=f"{task_id} done",
+                               evidence=["verified"], attempt_id=node["attempt_id"], task_instance_id=instance)
+        snapshot = server.read_hook_snapshot(sid, instance, 0)
+        self.assertEqual(snapshot["review_queue"]["pending_review_count"], 0)
+        self.assertIn({"task_id": result["root_id"], "attempt_id": None}, snapshot["review_queue"]["synthesis_ready"])
+
+    def test_hook_snapshot_stops_reminding_after_parent_synthesis_finishes(self):
+        result = progress(server.init_task_network("Finished parent", tasks=[
+            {"id": "a", "title": "First result", "assignment": MAIN},
+            {"id": "b", "title": "Second result", "assignment": MAIN},
+        ]))
+        sid, instance = result["session_id"], result["task_instance_id"]
+        for task_id in ("a", "b"):
+            server.update_task(sid, task_id, "running", assignment=MAIN, task_instance_id=instance)
+            p = progress(server.get_progress_view(sid, task_instance_id=instance))
+            attempt = next(node["attempt_id"] for node in p["nodes"] if node["id"] == task_id)
+            server.update_task(sid, task_id, "finished", outcome="resolved", summary=f"{task_id} done",
+                               evidence=["fixture://result"], attempt_id=attempt, task_instance_id=instance)
+
+        before = server.read_hook_snapshot(sid, instance, 0)
+        self.assertIn({"task_id": result["root_id"], "attempt_id": None}, before["review_queue"]["synthesis_ready"])
+        server.update_task(sid, result["root_id"], "finished", outcome="resolved", summary="All results checked",
+                           evidence=["fixture://synthesis"], assignment=MAIN, task_instance_id=instance)
+
+        after = server.read_hook_snapshot(sid, instance, 0)
+        target = server.read_hook_snapshot(sid, instance, 0, task_id=result["root_id"])
+        self.assertEqual(after["review_queue"]["synthesis_ready"], [])
+        self.assertFalse(target["target"]["synthesis_ready"])
+
+    def test_hook_snapshot_excludes_accepted_parent_closure_from_synthesis_queue(self):
+        result = progress(server.init_task_network("Accepted closure", tasks=[
+            {"id": "a", "title": "First result", "assignment": MAIN},
+            {"id": "b", "title": "Second result", "assignment": MAIN},
+        ]))
+        sid, instance = result["session_id"], result["task_instance_id"]
+        for task_id in ("a", "b"):
+            server.update_task(sid, task_id, "running", assignment=MAIN, task_instance_id=instance)
+            p = progress(server.get_progress_view(sid, task_instance_id=instance))
+            attempt = next(node["attempt_id"] for node in p["nodes"] if node["id"] == task_id)
+            server.update_task(sid, task_id, "finished", outcome="resolved", summary=f"{task_id} done",
+                               evidence=["fixture://result"], attempt_id=attempt, task_instance_id=instance)
+        binding = progress(server.get_progress_view(sid, task_instance_id=instance))["closure_review_binding"]
+        server.review_task_closure(
+            sid, instance, result["root_id"], "accepted-root-close", **binding,
+            decision="accept", summary="Parent closure accepted", evidence=["fixture://closure"], reviewer=MAIN)
+
+        snapshot = server.read_hook_snapshot(sid, instance, 0)
+        target = server.read_hook_snapshot(sid, instance, 0, task_id=result["root_id"])
+        self.assertEqual(snapshot["review_queue"]["synthesis_ready"], [])
+        self.assertFalse(target["target"]["synthesis_ready"])
+
     def test_compact_default_and_mutation_preserve_full_history_on_demand(self):
         server.rebuild_task_network(self.sid, "Plan revision")
         result = server.init_task_network("Explicit next goal", self.sid,
