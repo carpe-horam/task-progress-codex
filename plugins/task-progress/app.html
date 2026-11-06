@@ -221,7 +221,7 @@ h1{font-size:18px;line-height:1.35}
   const statusInfo = value => {
     if (value === 'completed' || value === 'complete' || value === 'resolved') return { key: 'completed', label: '已完成' };
     if (value === 'in_progress' || value === 'running' || value === 'executing') return { key: 'running', label: '进行中' };
-    const labels = { ready: '依赖就绪', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', awaiting_review: '待主会话验收', waiting_synthesis: '待汇总验收', decomposing: '子任务依赖满足', closed:'已验收收尾 · 保留原结果', handed_off:'移交已验收 · 保留原结果' };
+    const labels = { ready: '依赖就绪', waiting_main_session: '等待主会话', inventory_obsolete: '盘点待处置：已作废', inventory_covered: '盘点待处置：已覆盖', blocked: '依赖阻塞', finished: '执行结束', open: '仍未解决', failed: '执行失败', cancelled: '已取消', awaiting_review: '待主会话验收', waiting_synthesis: '待汇总验收', decomposing: '子任务依赖满足', closed:'已验收收尾 · 保留原结果', handed_off:'移交已验收 · 保留原结果' };
     if (Object.prototype.hasOwnProperty.call(labels, value)) return { key: value, label: labels[value] };
     return { key: 'pending', label: '待开始' };
   };
@@ -626,11 +626,16 @@ h1{font-size:18px;line-height:1.35}
       ? ['finished', 'failed', 'cancelled'].includes(dependency.execution_status)
       : dependency.execution_status === 'finished' && dependency.outcome === 'resolved');
   }
+  const inventoryPendingDisposition = node => node?.execution_status === 'pending' && ['obsolete', 'covered'].includes(node.inventory_disposition) ? node.inventory_disposition : '';
+  const inventoryNextStep = '核对证据后显式取消、记录覆盖关联或重规划；仍需执行时先重新盘点为继续。';
+  const waitingForMainSession = node => node?.execution_status === 'pending' && node.graph_ready === true && list(node.main_session_waiting_on).length > 0;
   function exportNetworkStatus(node, byId, childMap, cache = new Map(), path = new Set()) {
     const id = String(node.id);
     if (cache.has(id)) return cache.get(id);
     if (path.has(id)) return 'blocked';
     if (node.review_status === 'pending') return 'awaiting_review';
+    if (inventoryPendingDisposition(node)) return 'inventory_' + node.inventory_disposition;
+    if (waitingForMainSession(node)) return 'waiting_main_session';
     if (node.status) { cache.set(id, node.status); return node.status; }
     if (node.execution_status === 'finished') return node.outcome || 'finished';
     if (['running', 'failed', 'cancelled'].includes(node.execution_status)) return node.execution_status;
@@ -715,7 +720,7 @@ h1{font-size:18px;line-height:1.35}
           title: nodeTitle(node), originalTitle: String(node.title || ''), titleRevisions: list(node.title_revisions), type: nodeChildren.length ? '分组任务' : '叶任务', leaf: !nodeChildren.length,
           depth: nodePath.depth, pathIds: nodePath.ids.join(' / '), pathTitles: nodePath.titles.join(' › '),
           acceptedResolved: acceptedResolved(node), statusKey: statusValue, status: statusInfo(statusValue).label, executionStatus: String(node.execution_status || ''), outcome: String(node.outcome || ''),
-          graphReady: node.graph_ready ?? node.ready ?? statusValue==='ready',
+          graphReady: node.graph_ready ?? node.ready ?? statusValue==='ready', mainSessionWaitingOn: list(node.main_session_waiting_on).map(String).join('、'), inventoryDisposition: String(node.inventory_disposition || ''), inventoryReason: String(node.inventory_reason || ''),
           dependencies: depends.join('、'), blockedBy: blocked.join('、'), dependencyPolicy: String(node.dependency_policy || ''),
           dependencyConditions: rules.map(rule => rule.id + '：' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决') + (String(rule.owner.id) !== String(node.id) ? '（继承自 ' + rule.owner.id + '）' : '')).join('；'),
           ...responsibilityFields(node, node.planned_assignment),
@@ -944,8 +949,8 @@ h1{font-size:18px;line-height:1.35}
       {name:'证据索引',rows:[headers.evidence,...evidenceRows],widths:[14,30,38,42,55,20,80,22,10,120]},
       {name:'计划变更',rows:[headers.plans,...planRows],widths:[14,30,38,42,55,12,55,16,20,12,12,14,14,22,22,12,14,100,80,28,20,32,22]}
     ];
-    headers.tasks.push('任务依赖满足（graph_ready）');
-    taskRows.forEach((row,i)=>row.push(tasks[i].graphReady?'是':'否'));
+    headers.tasks.push('任务依赖满足（graph_ready）', '等待主会话当前执行项', '盘点处置', '盘点原因', '盘点下一步');
+    taskRows.forEach((row,i)=>row.push(tasks[i].graphReady?'是':'否', tasks[i].mainSessionWaitingOn || '', tasks[i].inventoryDisposition || '', tasks[i].inventoryReason || '', ['inventory_obsolete','inventory_covered'].includes(tasks[i].statusKey) ? inventoryNextStep : ''));
     headers.tasks.push('原始标题'); taskRows.forEach((row,i)=>row.push(tasks[i].originalTitle||tasks[i].title));
     headers.attempts.push('当前显示标题'); attemptRows.forEach((row,i)=>row.push(data.attempts[i].currentDisplayTitle||data.attempts[i].taskTitle));
     const titleRevisions=tasks.flatMap(t=>list(t.titleRevisions).map(r=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.taskId,t.originalTitle,t.title,r.before,r.after,r.reason,r.revised_at,r.source_revision,r.revision_id]));
@@ -1097,7 +1102,7 @@ h1{font-size:18px;line-height:1.35}
       const dependencyIds=String(task.dependencies||'').split('、').filter(Boolean),blockedIds=new Set(String(task.blockedBy||'').split('、').filter(Boolean)),peerTitles=new Map(tasksFor(task.roundKey).map(t=>[t.taskId,t.title]));
       const dependencyMarkup=dependencyIds.map(id=>esc(peerTitles.get(id)||id)+(blockedIds.has(id)?'（未满足）':'（已满足）')).join('；');
       if ((['pending','accepted','rejected'].includes(task.reviewStatus)||task.reviewDecision)&&!reviews.some(a=>a.attemptId===task.attemptId)) reviews.push(task);
-      return `<div class="rp-node-body r-detail-inner">${titleHistoryMarkup(task)}${executionMarkup(task)}${task.splitReviewRequired?'<p>须复核拆分</p>':''}${task.latestWriteRejection&&task.latestWriteRejection.requires_recovery!==false&&!task.latestWriteRejection.recovered_at?'<p>收尾写入被拒 · 待恢复</p>':''}<p>原始状态：${esc(task.status)} · ${esc(task.executionStatus)}${task.outcome?' · '+esc(task.outcome):''}</p><p class="r-detail-summary">${esc(task.summary||'暂无执行摘要。')}</p><div class="r-times"><span class="rp-lifecycle-source">${esc(task.timeSource||'原始记录')}</span><span>${esc(task.cumulativeTime||'')}</span><span>${esc(task.overallTime||'')}</span><span>来源节点 / 尝试：${esc(task.timeEvidence||'未记录')}</span><span>展示开始 ${esc(task.timeStart?stamp(task.timeStart):task.timeStartState||'历史未记录')}</span><span>展示结束 ${esc(task.timeEnd?stamp(task.timeEnd):task.timeEndState||'历史未记录')}</span><span>${task.historyAttemptCount?'另保留 '+esc(task.historyAttemptCount)+' 条历史尝试；不作为当前开始或结束。':''}</span><span title="${esc(task.startedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾开始':'当前尝试开始'} ${esc(task.startedAt?stamp(task.startedAt):task.timeKind==='derived'?'未记录':task.timeStartState||'历史未记录')}</span><span title="${esc(task.finishedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾结束':'当前尝试结束'} ${esc(task.finishedAt?stamp(task.finishedAt):task.timeKind==='derived'?'未记录':task.timeEndState||'历史未记录')}</span><span>执行角色 ${esc(task.executor||'未记录')}</span>${task.durationSeconds!==''?`<span>当前尝试耗时${!task.finishedAt?'（截至快照）':''}：${esc(task.durationSeconds)} 秒</span>`:''}</div>${dependencyMarkup?`<p>前置条件：${dependencyMarkup}</p>${task.dependencyConditions?`<p>放行要求：${esc(task.dependencyConditions)}</p>`:''}`:''}${task.blockedBy?`<p class="r-amber">阻塞前置：${esc(task.blockedBy)}</p>`:''}${responsibility(task)}<p>模型：${esc(task.model||'未记录')} / 思维强度 ${esc(task.thinking||'未记录')} · ${esc(task.metadataEvidence||'来源未记录')}</p>${task.evidence?`<details class="rp-subdetails"><summary>当前证据</summary>${evidence(task.evidence)}</details>`:''}${task.dispatchText?`<details class="rp-subdetails"><summary>派发说明</summary>${evidence(task.dispatchText)}</details>`:''}<details class="rp-subdetails"><summary>执行记录 · ${attempts.length} 次</summary>${attempts.length?[...attempts].reverse().map(attemptMarkup).join(''):'<p>未记录执行尝试。</p>'}</details><details class="rp-subdetails rp-review-history"><summary>验收历史 · ${reviews.length} 次</summary>${reviews.length?reviews.map(review).join(''):`<p>${!task.responsibilityCurrent?'未记录；旧执行记录不代表主会话已接受。':!task.leaf?'待综合验收（须先完成子任务复核）。':task.reviewNotRequired?'主会话直接执行，无需独立提交复核。':'尚无验收记录。'}</p>`}</details><p class="r-source">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)} · 父节点 ID：${esc(task.parentId||'无')}<br>任务实例：${esc(task.taskInstanceId)}<br>轮次：${esc(task.roundKey)}</p></div>`;
+      return `<div class="rp-node-body r-detail-inner">${titleHistoryMarkup(task)}${executionMarkup(task)}${task.splitReviewRequired?'<p>须复核拆分</p>':''}${task.latestWriteRejection&&task.latestWriteRejection.requires_recovery!==false&&!task.latestWriteRejection.recovered_at?'<p>收尾写入被拒 · 待恢复</p>':''}<p>原始状态：${esc(task.status)} · ${esc(task.executionStatus)}${task.outcome?' · '+esc(task.outcome):''}</p><p class="r-detail-summary">${esc(task.summary||'暂无执行摘要。')}</p><div class="r-times"><span class="rp-lifecycle-source">${esc(task.timeSource||'原始记录')}</span><span>${esc(task.cumulativeTime||'')}</span><span>${esc(task.overallTime||'')}</span><span>来源节点 / 尝试：${esc(task.timeEvidence||'未记录')}</span><span>展示开始 ${esc(task.timeStart?stamp(task.timeStart):task.timeStartState||'历史未记录')}</span><span>展示结束 ${esc(task.timeEnd?stamp(task.timeEnd):task.timeEndState||'历史未记录')}</span><span>${task.historyAttemptCount?'另保留 '+esc(task.historyAttemptCount)+' 条历史尝试；不作为当前开始或结束。':''}</span><span title="${esc(task.startedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾开始':'当前尝试开始'} ${esc(task.startedAt?stamp(task.startedAt):task.timeKind==='derived'?'未记录':task.timeStartState||'历史未记录')}</span><span title="${esc(task.finishedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾结束':'当前尝试结束'} ${esc(task.finishedAt?stamp(task.finishedAt):task.timeKind==='derived'?'未记录':task.timeEndState||'历史未记录')}</span><span>执行角色 ${esc(task.executor||'未记录')}</span>${task.durationSeconds!==''?`<span>当前尝试耗时${!task.finishedAt?'（截至快照）':''}：${esc(task.durationSeconds)} 秒</span>`:''}</div>${dependencyMarkup?`<p>前置条件：${dependencyMarkup}</p>${task.dependencyConditions?`<p>放行要求：${esc(task.dependencyConditions)}</p>`:''}`:''}${task.blockedBy?`<p class="r-amber">阻塞前置：${esc(task.blockedBy)}</p>`:''}${task.statusKey==='waiting_main_session'?`<p>等待主会话当前执行项：${esc(task.mainSessionWaitingOn)}</p>`:''}${['inventory_obsolete','inventory_covered'].includes(task.statusKey)?`<p>${esc(task.status)}${task.inventoryReason?' · 原因：'+esc(task.inventoryReason):''}</p><p>下一步：${esc(inventoryNextStep)}</p>`:''}${responsibility(task)}<p>模型：${esc(task.model||'未记录')} / 思维强度 ${esc(task.thinking||'未记录')} · ${esc(task.metadataEvidence||'来源未记录')}</p>${task.evidence?`<details class="rp-subdetails"><summary>当前证据</summary>${evidence(task.evidence)}</details>`:''}${task.dispatchText?`<details class="rp-subdetails"><summary>派发说明</summary>${evidence(task.dispatchText)}</details>`:''}<details class="rp-subdetails"><summary>执行记录 · ${attempts.length} 次</summary>${attempts.length?[...attempts].reverse().map(attemptMarkup).join(''):'<p>未记录执行尝试。</p>'}</details><details class="rp-subdetails rp-review-history"><summary>验收历史 · ${reviews.length} 次</summary>${reviews.length?reviews.map(review).join(''):`<p>${!task.responsibilityCurrent?'未记录；旧执行记录不代表主会话已接受。':!task.leaf?'尚未记录综合验收。':task.reviewNotRequired?'主会话直接执行，无需独立提交复核。':'尚无验收记录。'}</p>`}</details><p class="r-source">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)} · 父节点 ID：${esc(task.parentId||'无')}<br>任务实例：${esc(task.taskInstanceId)}<br>轮次：${esc(task.roundKey)}</p></div>`;
     };
     // Each generated key is scoped to the normalized instance and round, never to a reused task ID.
     const renderTree = plan => {
@@ -1983,6 +1988,8 @@ h1{font-size:18px;line-height:1.35}
       if (rootContext?.progress.request_cancelled && id === String(rootId)) return 'cancelled';
       if (rootContext?.progress.request_cancelled && node.execution_status==='pending') return 'blocked';
       if (node.review_status === 'pending') return 'awaiting_review';
+      if (inventoryPendingDisposition(node)) return 'inventory_' + node.inventory_disposition;
+      if (waitingForMainSession(node)) return 'waiting_main_session';
       if (node.status) return node.status;
       if (node.execution_status === 'finished') return node.outcome || 'finished';
       if (['running', 'failed', 'cancelled'].includes(node.execution_status)) return node.execution_status;
@@ -2034,7 +2041,7 @@ h1{font-size:18px;line-height:1.35}
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
       const right = document.createElement('span'); right.className = 'step-right';
-      const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : list(node.main_session_waiting_on).length ? '等待主会话' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
+      const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : inventoryPendingDisposition(node) ? info.label : waitingForMainSession(node) ? '等待主会话' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
       right.append(label);
       const currentExecution=node.execution_summary||node.execution;
       if(node.execution_status==='running'&&currentExecution?.status==='succeeded')label.textContent='执行已结束 · 待任务收尾';
@@ -2090,7 +2097,8 @@ h1{font-size:18px;line-height:1.35}
       if (Object.keys(assignment).length) moreContent.append(field('配置来源', metadataEvidence(assignment), 'metadata-provenance'));
       if (list(node.depends_on).length) moreContent.append(compactField('依赖任务', node.depends_on.map(reference).join('；'), prefix + ':' + id + ':dependencies', openDetails));
       if (list(node.blocked_by).length) moreContent.append(compactField('当前阻塞', node.blocked_by.map(reference).join('；'), prefix + ':' + id + ':blocked-by', openDetails));
-      if (list(node.main_session_waiting_on).length) moreContent.append(field('等待主会话', '先收束正在执行的任务：' + node.main_session_waiting_on.map(reference).join('；')));
+      if (inventoryPendingDisposition(node)) moreContent.append(field(info.label, (node.inventory_reason ? '原因：' + node.inventory_reason + '\n' : '') + '下一步：' + inventoryNextStep));
+      if (!inventoryPendingDisposition(node) && list(node.main_session_waiting_on).length) moreContent.append(field('等待主会话', '先收束正在执行的任务：' + node.main_session_waiting_on.map(reference).join('；')));
       if (list(node.depends_on).length) moreContent.append(field('依赖放行条件', node.dependency_policy === 'finished' ? '前置任务执行结束且无待验收提交（包括未解决、失败或取消）' : '前置任务已解决'));
       const inherited = dependencyConstraints(node, byId).filter(rule => String(rule.owner.id) !== id);
       if (inherited.length) moreContent.append(field('继承的依赖', inherited.map(rule => reference(rule.id) + ' · 来自 ' + reference(rule.owner.id) + ' · ' + (rule.owner.dependency_policy === 'finished' ? '前置执行结束' : '前置已解决')).join('\n')));
@@ -2518,7 +2526,12 @@ h1{font-size:18px;line-height:1.35}
       const accepted = root && acceptedResolved(root);
       if (accepted) setText('task-status-label', '主任务已验收完成');
       else if (root?.outcome === 'resolved') { setText('task-status-label', '验收未记录'); $('task-status').className='badge open'; }
-      const finalLabel = accepted ? '已通过' : progress.planning_status === 'required' ? '尚未规划' : root?.execution_status === 'failed' ? '未解决 · 验收失败' : root?.outcome === 'open' ? '未解决' : root?.outcome === 'resolved' && !currentResponsibility(root) ? '历史已解决 · 验收未记录' : root?.execution_status === 'running' ? '进行中' : stats.pending ? '等待叶任务复核' : '待主会话综合验收';
+      const byId = new Map(nodes.map(node => [String(node.id), node]));
+      const children = root ? nodes.filter(node => String(node.parent_id) === String(root.id) || list(root.children).map(String).includes(String(node.id))) : [];
+      const terminal = node => !!node && ['finished', 'failed', 'cancelled'].includes(node.execution_status) && (node.execution_status !== 'finished' || ['resolved', 'open'].includes(node.outcome)) && node.review_status !== 'pending';
+      const rules = root ? dependencyConstraints(root, byId) : [];
+      const synthesisReady = children.length > 0 && children.every(terminal) && rules.every(constraintSatisfied);
+      const finalLabel = accepted ? '已通过' : progress.planning_status === 'required' ? '尚未规划' : root?.execution_status === 'failed' ? '未解决 · 验收失败' : root?.outcome === 'open' ? '未解决' : root?.outcome === 'resolved' && !currentResponsibility(root) ? '历史已解决 · 验收未记录' : stats.pending ? '等待叶任务复核' : !synthesisReady ? '执行中，尚未到综合验收' : '待主会话综合验收';
       setText('acceptance-status', '主任务综合验收：' + finalLabel + (!accepted && total && completed===total ? ' · 叶任务 100% 仍需整体验收' : ''));
     }
     for (const [id, value] of [['created', progress.created_at], ['updated', progress.updated_at]]) {
