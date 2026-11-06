@@ -1,0 +1,75 @@
+{
+  "fixture_kind": "synthetic_legacy_compatibility_sample",
+  "provenance": {
+    "source_schema_ref": "050dd3175e0e4dde9b6cb09da9bcd1f51c173b87",
+    "source_file": "plugins/task-progress/server.py:_new_node",
+    "historical_user_request": "mod-1-user-request.md",
+    "historical_session_bytes": "not recovered",
+    "note": "This is a synthetic compatibility fixture based on the pre-change node schema and historical request. It is not a recovered user's stored session."
+  },
+  "session": {
+    "schema_version": 2,
+    "state_revision": 7,
+    "epoch": 1,
+    "revision": 7,
+    "root_id": "root",
+    "nodes": {
+      "root": {
+        "id": "root",
+        "title": "Legacy dependency session",
+        "parent_id": null,
+        "children": ["ready-a", "blocked-b"],
+        "depends_on": [],
+        "execution_status": "pending",
+        "outcome": null
+      },
+      "ready-a": {
+        "id": "ready-a",
+        "title": "Independent prerequisite task",
+        "parent_id": "root",
+        "children": [],
+        "depends_on": [],
+        "dependency_policy": "resolved",
+        "execution_status": "pending",
+        "outcome": null,
+        "summary": "",
+        "evidence": [],
+        "attempt": 0,
+        "attempt_id": null,
+        "external_prerequisite_status": "blocked",
+        "external_prerequisite_reviews": [
+          {
+            "status": "blocked",
+            "source_attempt_id": "legacy-attempt-a",
+            "reason": "Historical manual record",
+            "evidence": ["fixture://historical-review-a"]
+          }
+        ]
+      },
+      "blocked-b": {
+        "id": "blocked-b",
+        "title": "Task depending on A",
+        "parent_id": "root",
+        "children": [],
+        "depends_on": ["ready-a"],
+        "dependency_policy": "resolved",
+        "execution_status": "pending",
+        "outcome": null,
+        "summary": "",
+        "evidence": [],
+        "attempt": 0,
+        "attempt_id": null,
+        "external_prerequisite_status": "satisfied",
+        "external_prerequisite_reviews": [
+          {
+            "status": "satisfied",
+            "source_attempt_id": "legacy-attempt-b",
+            "reason": "Historical manual record",
+            "evidence": ["fixture://historical-review-b"]
+          }
+        ]
+      }
+    }
+  },
+  "required_scenario": "Ignore the legacy manual statuses for current scheduling while preserving those records in readable history. A must remain graph-ready despite its old blocked mark; B must remain graph-blocked despite its old satisfied mark, then become graph-ready only after A resolves."
+}

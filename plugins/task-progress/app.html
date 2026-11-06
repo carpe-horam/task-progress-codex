@@ -962,6 +962,10 @@ h1{font-size:18px;line-height:1.35}
       ['时间说明','日期时间按 Excel 日期值保存并显示 UTC；空值表示源数据没有记录。当前计划轮次与归档任务数分开统计。']
     ];
     if(data.legacyOnly) overview.splice(0,overview.length,['文档类型','SQLite 旧版只读归档'],['会话 ID',data.sessionId],['来源','sqlite_v3'],['旧库任务数',data.legacyHistory?.status === 'unavailable' ? '未知' : data.legacyHistory?.task_count ?? 0],['来源状态',data.legacyHistory?.status || 'unknown'],['数据范围','有界兼容摘录；旧状态不证明已按现行协议验收'],['来源限制',(data.legacyHistory?.truncated?'历史已截断；':'')+(data.legacyHistory?.warning || '')],['导出时间',data.generatedAt]);
+    headers.tasks.push('任务依赖满足（graph_ready）', '等待主会话当前执行项', '盘点处置', '盘点原因', '盘点下一步');
+    taskRows.forEach((row,i)=>row.push(tasks[i].graphReady?'是':'否', tasks[i].mainSessionWaitingOn || '', tasks[i].inventoryDisposition || '', tasks[i].inventoryReason || '', ['inventory_obsolete','inventory_covered'].includes(tasks[i].statusKey) ? inventoryNextStep : ''));
+    headers.tasks.push('原始标题'); taskRows.forEach((row,i)=>row.push(tasks[i].originalTitle||tasks[i].title));
+    headers.attempts.push('当前显示标题'); attemptRows.forEach((row,i)=>row.push(data.attempts[i].currentDisplayTitle||data.attempts[i].taskTitle));
     const sheets=[
       {name:'概览',rows:[headers.overview,...overview],widths:[38,100],filter:false},
       {name:'任务清单',rows:[headers.tasks,...taskRows],widths:[14,30,38,42,55,20,20,10,80,46,14,10,16,18,16,35,35,55,16,28,18,24,18,12,38,22,22,15,80,100,100,22]},
@@ -969,10 +973,6 @@ h1{font-size:18px;line-height:1.35}
       {name:'证据索引',rows:[headers.evidence,...evidenceRows],widths:[14,30,38,42,55,20,80,22,10,120]},
       {name:'计划变更',rows:[headers.plans,...planRows],widths:[14,30,38,42,55,12,55,16,20,12,12,14,14,22,22,12,14,100,80,28,20,32,22]}
     ];
-    headers.tasks.push('任务依赖满足（graph_ready）', '等待主会话当前执行项', '盘点处置', '盘点原因', '盘点下一步');
-    taskRows.forEach((row,i)=>row.push(tasks[i].graphReady?'是':'否', tasks[i].mainSessionWaitingOn || '', tasks[i].inventoryDisposition || '', tasks[i].inventoryReason || '', ['inventory_obsolete','inventory_covered'].includes(tasks[i].statusKey) ? inventoryNextStep : ''));
-    headers.tasks.push('原始标题'); taskRows.forEach((row,i)=>row.push(tasks[i].originalTitle||tasks[i].title));
-    headers.attempts.push('当前显示标题'); attemptRows.forEach((row,i)=>row.push(data.attempts[i].currentDisplayTitle||data.attempts[i].taskTitle));
     const titleRevisions=tasks.flatMap(t=>list(t.titleRevisions).map(r=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.taskId,t.originalTitle,t.title,r.before,r.after,r.reason,r.revised_at,r.source_revision,r.revision_id]));
     if(titleRevisions.length)sheets.push({name:'标题修订',rows:[['任务范围','任务实例','任务实例 ID','计划轮次','任务 ID','原始标题','当前显示标题','修订前标题','修订后标题','修订原因','修订时间','来源修订号','修订 ID'],...titleRevisions],widths:[16,36,40,30,20,50,50,50,50,80,24,14,40]});
     sheets.push({name:'验收历史',rows:[reviewHeaders,...reviewRows],widths:Array(reviewHeaders.length).fill(28)});

@@ -1,0 +1,88 @@
+{
+  "fixture_schema_version": 1,
+  "fixture_kind": "archive_derived_reconstruction",
+  "as_of": "2026-11-02T20:24:16+08:00",
+  "source": {
+    "task_progress_session_id": "8ed9ffa5-8687-4d4e-b630-47e46ebdbe5d",
+    "archive_selector": "history[0]",
+    "archived_task_instance_id": "unknown_not_preserved_in_archive",
+    "codex_thread_id": "01a19c38-7006-71f2-acdb-61eb5063ff25",
+    "state_review_turn_id": "01a19c38-9249-7532-a0a4-a38df36e5c0d"
+  },
+  "reconstruction_method": "Use persisted attempt start and finish times to reconstruct statuses at the instant the third main-session leaf started. Attempts for capabilities and reliability started earlier and finished after this time; issue55 starts at this time; validation starts later.",
+  "limits": [
+    "This is derived from the persisted archive record, not a raw service response captured at as_of.",
+    "The archive does not preserve the task_instance_id for this historical tree.",
+    "The historical archive contains terminal outcomes; they are omitted from these evaluator-facing as-of node states."
+  ],
+  "task_title": "设计并实施 Runtime 能力与可靠性改进",
+  "root_id": "root",
+  "repo_under_test": {
+    "repository": "carpe-horam/task-progress-codex",
+    "base_ref": "8fb28a063d3fa9f5e14e217f8312c88ce9196d70"
+  },
+  "nodes": [
+    {
+      "id": "p0",
+      "title": "核查运行链路与发行能力，确定实施边界",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": [],
+      "execution_status": "finished",
+      "outcome": "resolved",
+      "attempt": 1,
+      "attempt_id": "47f7c5ab-d4e7-4cb2-828a-70f3e49ecbfb",
+      "started_at": "2026-11-02T20:20:22+08:00",
+      "finished_at": "2026-11-02T20:21:05+08:00",
+      "assignment": { "execution_mode": "main_session" }
+    },
+    {
+      "id": "capabilities",
+      "title": "实现能力诊断和协议缺口的清晰反馈",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": ["p0"],
+      "execution_status": "running",
+      "attempt": 1,
+      "attempt_id": "54a0d848-a4d0-4037-9c93-a6418a05efcf",
+      "started_at": "2026-11-02T20:21:05+08:00",
+      "assignment": { "execution_mode": "main_session" }
+    },
+    {
+      "id": "reliability",
+      "title": "实施并验证安全的故障反馈与恢复改进",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": ["p0"],
+      "execution_status": "running",
+      "attempt": 1,
+      "attempt_id": "478b088b-74d0-4349-94e7-8af1ce7d9509",
+      "started_at": "2026-11-02T20:22:57+08:00",
+      "assignment": { "execution_mode": "main_session" }
+    },
+    {
+      "id": "issue55",
+      "title": "修复 issue #55 的 ACP 轨迹内容展示",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": [],
+      "execution_status": "running",
+      "attempt": 1,
+      "attempt_id": "53ba202a-68d5-4939-bc74-a6430b5fc42e",
+      "started_at": "2026-11-02T20:24:16+08:00",
+      "assignment": { "execution_mode": "main_session" }
+    },
+    {
+      "id": "validation",
+      "title": "执行定向回归、构建和必要视觉验收",
+      "parent_id": "root",
+      "children": [],
+      "depends_on": ["capabilities", "reliability", "issue55"],
+      "execution_status": "pending",
+      "attempt": 0,
+      "attempt_id": null,
+      "started_at": null,
+      "assignment": { "execution_mode": "main_session" }
+    }
+  ]
+}

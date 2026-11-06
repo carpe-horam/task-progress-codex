@@ -2,7 +2,7 @@
 
 日期：2026-11-06。定义版本：`pilot-v1`。
 
-状态：本文件固定试点方法、口径和模板；负责人已确认以 FIX-1、INV-2、MOD-1 各跑 A/B/C 一轮，共 9 轮校准。三类候选来源已定位，但盲化输入包、独立 oracle 与最终宿主配置仍未冻结，数值墙钟预算也未确认，**尚不满足实测开跑条件**。正式 36 轮仍未授权。实测均待采集，不能据此宣称收益或最终采用。缺失测量统一写 `unknown`，不能填零或从其他会话推断。
+状态：本文件固定试点方法、口径和模板；负责人已确认以 FIX-1、INV-2、MOD-1 各跑 A/B/C 一轮，共 9 轮校准。三项请求、限定证据/状态 fixture 和 evaluator-only oracle 已部分备齐并逐字节记 hash；A/B/C 逐轮运行包、实际宿主配置、reset 快照尚未冻结，数值墙钟预算也未确认，**尚不满足实测开跑条件**。正式 36 轮仍未授权。实测均待采集，不能据此宣称收益或最终采用。缺失测量统一写 `unknown`，不能填零或从其他会话推断。
 
 依据：[优化方案 S0、验收矩阵与试点标准](../design/2026-11-06-agent-collaboration-optimization-plan.md)。本文件只负责 S0；不新增监控服务，不运行产品测试，不改变派发、验收或依赖规则。
 
@@ -51,9 +51,9 @@ raw_log_uri: unknown
 
 | 组 | 固定定义 | 版本 |
 | --- | --- | --- |
-| A：单执行者 | 一个执行者完成工作；同一外部 oracle 在终稿上核验；不用 Task Progress 协调工作链、不派发 worker | 工作任务起点见各任务 manifest；本组提示/宿主 manifest 为 `unknown` |
-| B：当前用法 | 基准插件与基准技能，按实际支持能力派发和手工绑定，不预先采用 S1–S3 行为 | 上述基准 ref；宿主加载证明为 `unknown` |
-| C：优化用法 | 同一工作任务、oracle 和预算，启用已验收的 S1–S3；自动绑定仅限真宿主已验证的适配器 | 候选插件/技能 commit、能力与开关清单为 `unknown` |
+| A：单执行者 | 一个执行者完成工作；同一外部 oracle 在终稿上核验；不调用 Task Progress 协调工作链、不派发 worker | 最新安装 v0.2.21 的 Codex 插件目录仍暴露 Task Progress；单执行者提示可以准备，但工具隔离未验证 |
+| B：当前用法 | 基准插件与基准技能，按实际支持能力派发和手工绑定，不预先采用 S1–S3 行为 | 基准服务代码为 v0.2.19（本地缓存 `server.py` SHA 已记于 [selected-candidates-v1](inputs/selected-candidates-v1.md)）；v0.2.19 在当前 Codex 中的独立安装/加载未验证 |
+| C：优化用法 | 同一工作任务、oracle 和预算，启用已验收的 S1–S2；S3 自动绑定仅限真宿主已验证的适配器 | 当前 marketplace 固定到 v0.2.21，插件已安装/启用，共享服务已 loaded/healthy；本会话实际读取 overview 并收到 `assignment_sources_v1`、`fork_context_v1`、`acceptance_contract_v1`，证明当前 MCP 服务可用。会话内技能目录是否刷新仍未知。历史 selected-candidates v1 冻结的插件/技能 SHA 针对 v0.2.20，不能直接作为 v0.2.21 轮次配置。 |
 
 工作任务源码起点与插件源码版本分开记录。三组使用相同任务输入和 oracle；不把 C 已修复后的工作任务源码用作 B 的输入。组间重置独立输入状态和 agent context；组内允许按对应策略复用原 owner。A 的试验分组是测量方案，不授权违反实际任务或宿主规定；执行前确认宿主能合法提供三种配置，不能做到的组标 `unsupported` 并解释，不冒充已完成对照。
 
@@ -235,11 +235,11 @@ S5 事件直通另需真实重复转发成本与宿主投递/唤醒/停止契约
 
 | slot | 类别 | 历史请求/范围线索 | 可追溯基线 | 当前缺口 |
 | --- | --- | --- | --- | --- |
-| FIX-1 | 紧密耦合修复 | 主会话同一实例只允许一个 running leaf；其他工作排队或显式交给独立子智能体 | [PR #17](https://github.com/carpe-horam/task-progress-codex/pull/17)，base `8fb28a063d3fa9f5e14e217f8312c88ce9196d70`，head `47003587737663d85781ff8ecc5dc121adaa5547` | 原始会话提示、前置运行态 fixture、A/B/C 无答案版本提示与版本化 oracle 尚未整理 |
+| FIX-1 | 紧密耦合修复 | 主会话同一实例只允许一个 running leaf；其他工作排队或显式交给独立子智能体 | [PR #17](https://github.com/carpe-horam/task-progress-codex/pull/17)，base `8fb28a063d3fa9f5e14e217f8312c88ce9196d70`，head `47003587737663d85781ff8ecc5dc121adaa5547` | 原始用户提示与按持久化 attempt 时间重建的初始任务树已保存，见 [`fix-1-user-request.md`](inputs/fix-1-user-request.md) 和 [`fix-1-initial-state.json`](inputs/fix-1-initial-state.json)；归档不含原 task_instance_id，状态不是当时原始 API 响应；oracle 已草拟但 A/B/C 运行输入尚未冻结 |
 | FIX-2 | 紧密耦合修复 | “所有仍未解决的任务”继续保持可见、可重试；旧 `continue/covered/obsolete` 不应遮蔽当前未解决结果 | [PR #20](https://github.com/carpe-horam/task-progress-codex/pull/20)，base `ce51d982ac1591a8dae2bef57716c3ff2c50c365`，head `ce3f35f37f1fa417fef7e6ca07c69f0ef8d3aaa9` | 原始请求与含历史 inventory 决策的最小状态快照/hash、精确注入条件待恢复 |
 | INV-1 | 可并行调查 | 审查三个 NSlide 会话的任务拆分、依赖和实际进展是否匹配；历史请求来自 Task Progress Task 6 | 历史线程 `01a1a0c0-5b92-78f0-8337-e826b62033e5` | 会话当时状态和引用材料需导出快照；提示必须剥离已知结论，独立 oracle/rubric 需冻结 |
-| INV-2 | 可并行调查 | 解释 `review_stage_inventory` 的 exact-set 报错是否符合规则，并区分规则正确性与本次失败原因 | 历史线程 `01a1a559-8d96-7a51-b85c-4a1bf3385f22`；原始错误提及线程 `01a19f04-f0e7-75f3-a8ab-9b6b11e75cf1` | 需要读取并保存被引用线程、提交时任务树及 binding/fingerprint；当前只有历史错误文本，不能复原运行输入 |
-| MOD-1 | 多模块改动 | 移除无用的外部前置 unknown 状态，保留图依赖与旧历史数据；跨服务端、UI、HTML/XLSX | [PR #23](https://github.com/carpe-horam/task-progress-codex/pull/23)，base `050dd3175e0e4dde9b6cb09da9bcd1f51c173b87`，head `4e4f2595609ab3649e7a3a38c8caabaa4b01a9a5` | 原始请求、旧存储样本、相邻依赖输入及外部 oracle 需冻结；PR 已公开，需控制答案泄漏 |
+| INV-2 | 可并行调查 | 解释 `review_stage_inventory` 的 exact-set 报错是否符合规则，并区分规则正确性与本次失败原因 | 历史线程 `01a1a559-8d96-7a51-b85c-4a1bf3385f22`；原始错误提及线程 `01a19f04-f0e7-75f3-a8ab-9b6b11e75cf1`；提示与规则证据见 [`inv-2-user-request.md`](inputs/inv-2-user-request.md) 和 [`inv-2-evidence.md`](inputs/inv-2-evidence.md) | 被引用线程的提交时任务树、inventory binding/fingerprint 与失败调用材料仍缺；只可评估规则语义与可归因边界，不能判断原失败具体漏项/多项 |
+| MOD-1 | 多模块改动 | 移除无用的外部前置 unknown 状态，保留图依赖与旧历史数据；跨服务端、UI、HTML/XLSX | [PR #23](https://github.com/carpe-horam/task-progress-codex/pull/23)，base `050dd3175e0e4dde9b6cb09da9bcd1f51c173b87`，head `4e4f2595609ab3649e7a3a38c8caabaa4b01a9a5` | 原始请求、基于旧 schema 的**合成**兼容 fixture 与 evaluator-only oracle 已整理；fixture 不是历史真实存储快照，且 PR 已公开，需控制答案泄漏 |
 | MOD-2 | 多模块改动 | 原位修订计划时保留完整 before/after task tree，旧历史可读且不从现状伪造；跨服务端、历史 UI、导出 | [PR #19](https://github.com/carpe-horam/task-progress-codex/pull/19)，base `f517788feff00e35e9bf4ad77c7d23a8e5f8520d`，head `f3afeb1c22d35cf2e9e45955b33861a700d90bd2` | 原始请求、修订前/后 fixture 与旧 revision fixture 的 URI/hash，以及版本 oracle 待登记 |
 
 候选来源说明：PR 描述用于定位历史基线和已知产物，不作为执行者输入；INV 槽来源于既有用户调查任务，不得把上述线程摘要直接视为完整事实快照。候选池只减少搜集范围，不替代六份 manifest。
@@ -250,19 +250,53 @@ S5 事件直通另需真实重复转发成本与宿主投递/唤醒/停止契约
 
 | 候选 | 已核实材料 | 尚未冻结/不可声称的内容 |
 | --- | --- | --- |
-| FIX-1 | PR #17 的 base/head 对象存在于本地对象库；改动范围可定位到主会话并发/排队行为 | 原始用户请求、改动前精确任务树与 attempt 状态、A/B/C 的盲化输入包及独立 oracle manifest 尚未形成 |
-| INV-2 | 原始调查请求可追溯为“符合逻辑吗”，附有指向 Issue #223 排查会话的引用；该调查会话的完整原始提问/错误文本及历史分析回答可读 | 原请求时的任务树、inventory binding/fingerprint 与失败调用材料未能还原为不可变快照；只能对冻结的错误/规则证据评估“规则语义”和“现有证据能否归因”，不能评价是否查明当次根因 |
-| MOD-1 | PR #23 的 base/head 对象存在；原始请求可追溯为“现在都是显示‘外部前置未知’，这个没啥用，把这个逻辑删了吧” | 改动前旧存储样本、原任务完整约束与外部 oracle manifest 尚未整理；PR 已公开，必须从 worker 输入中排除其实现/评审内容 |
+| FIX-1 | PR #17 的 base/head 对象存在于本地对象库；改动范围可定位到主会话并发/排队行为；请求、状态及 evaluator-only oracle 由 [`selected-candidates-v1.md`](inputs/selected-candidates-v1.md) 固定 | 归档不含原 task_instance_id，状态是 archive-derived reconstruction；实际 A/B/C 宿主配置和九轮独立 reset 证明尚未冻结 |
+| INV-2 | 原始调查问题、规则证据和 evaluator-only oracle 由 [`selected-candidates-v1.md`](inputs/selected-candidates-v1.md) 固定 | 原失败树、inventory binding/fingerprint 与失败调用材料仍未还原；只能评估规则语义与归因边界，不能评价是否查明当次根因；实际宿主配置/reset 证明尚未冻结 |
+| MOD-1 | 原始请求、旧 schema 合成兼容 fixture 和 evaluator-only oracle 由 [`selected-candidates-v1.md`](inputs/selected-candidates-v1.md) 固定 | fixture 不是历史数据库记录；PR 已公开，须从 worker 输入中排除；实际宿主配置与九轮独立 reset 证明尚未冻结 |
 
-因此目前可确认校准范围与候选选择，但还不能称三份输入和 oracle 已冻结。INV-2 若继续使用，必须把试验目标限定为证据包中的规则解释与归因边界；不能把后来接受的盘点当作原失败状态。任何运行都不得拿 PR 描述、实现 diff、历史最终答案作为 worker 上下文。
+已恢复用户请求的转录字节（用于审计，不代表完整任务输入包）：
 
-### 建议的下一步预算闸门（待负责人确认）
+| 候选 | 转录 | SHA-256 |
+| --- | --- | --- |
+| FIX-1 | [`fix-1-user-request.md`](inputs/fix-1-user-request.md) | `5c60469aa151147d1513bfbb9538fed7ebfef63fd12928eefd659e9684225bf0` |
+| FIX-1 | [`fix-1-initial-state.json`](inputs/fix-1-initial-state.json) | `ec52ee606fb27993a243fb2f370f5a833ce6024ee697c1f4948d83679a39a527` |
+| INV-2 | [`inv-2-user-request.md`](inputs/inv-2-user-request.md) | `d00cad84341ead977dcde2686433de1d345c11abbdecbb7e6bb92673133e35f3` |
+| INV-2 | [`inv-2-evidence.md`](inputs/inv-2-evidence.md) | `cc98abf2fe72986b9b66de79b8547e6e340edbfa594f34ccfb9c0979a56f5538` |
+| MOD-1 | [`mod-1-user-request.md`](inputs/mod-1-user-request.md) | `55d9b4d840109aef4dafbae2055502232895c2bea0f744aafdc3f5da71fb32b8` |
+| MOD-1 | [`mod-1-legacy-fixture.json`](inputs/mod-1-legacy-fixture.json) | `1c24c2e23e86ba1bfabda0e0f967eaa32f94646855cf1de99e9b51bbdac65c24` |
+| evaluator-only | [`fix-1-oracle.md`](evaluator-only/fix-1-oracle.md) | `0aa97188d336964f6b516d7fca0a6422aacfad476d5ec1b9eae0eace2f297226` |
+| evaluator-only | [`inv-2-oracle.md`](evaluator-only/inv-2-oracle.md) | `afc98812e88608bc14ef8de400c199d009c8e2d40003750871ec65e08101540c` |
+| evaluator-only | [`mod-1-oracle.md`](evaluator-only/mod-1-oracle.md) | `9ccc79031854b21169dc434cc3b774d931d211a982bdfe6ce690be7fba578113` |
+| selected candidates | [`selected-candidates-v1.md`](inputs/selected-candidates-v1.md) | `34280ae9f704a51b317c0c656df0383a4ef1a4a34c44191bd242decd07f64463` |
+| selected candidates | [`selected-candidates-v2.md`](inputs/selected-candidates-v2.md) | `fb337534af7cb1d0bfed120e44031f4b20428c60303013fa40a780f18d19c0c3` |
+
+因此目前可确认校准范围与候选选择，且请求、边界证据/fixture、基线 ref、交付范围和 evaluator-only oracle 已收入 [`selected-candidates-v1.md`](inputs/selected-candidates-v1.md)。FIX-1 的状态仍是基于 attempt 时间的重建，原 task_instance_id 未保留；INV-2 不能归因原失败具体提交；MOD-1 fixture 是合成输入，不是历史样本。候选材料有 hash，不代表 A/B/C 三种 workflow、实际宿主配置和九轮 reset 快照都已冻结。任何运行都不得拿 PR 描述、实现 diff、历史最终答案作为 worker 上下文。
+
+### v1 时建议的下一步预算闸门（历史快照）
 
 建议预算：每轮最多 20 分钟、9 轮累计最多 180 分钟、每候选每配置只跑一次、不重试；外层串行以便隔离工作区状态。当前宿主没有可核验的逐轮 token/费用计量读数，token 上限与费用保持 `unknown`，不得估填或宣称受控。若负责人不接受 token 计量为 unknown，应先接入可核验计量，再启动。候选输入/oracle 和 A/B/C 宿主参数冻结完成后，才进入运行；校准仍不代表授权正式 36 轮。
 
-### 当前准备结论
+### v1 冻结时的准备结论（历史快照）
 
 - **已确认**：校准范围为 FIX-1、INV-2、MOD-1；每项 A/B/C 各一轮，共 9 轮。顺序串行、每配置不重试的设计可继续沿用。
 - **尚未确认**：建议的 20 分钟/轮与 180 分钟总墙钟上限；token/费用保持 `unknown` 的计量边界也未得到负责人确认。因此不启动任何轮次。
-- **输入冻结阻塞**：FIX-1 缺原始请求和改动前任务/attempt 快照；INV-2 缺原失败时任务树、inventory binding/fingerprint 与调用材料；MOD-1 缺旧存储样本和完整约束。三者均缺可供 A/B/C 复用的盲化输入包和定稿 oracle。可公开 PR 与历史答案不进入执行者上下文。
-- **恢复条件**：补齐三份逐字节可校验的输入及 oracle manifest、冻结 A/B/C 实际可用宿主配置，并明确每轮/总墙钟与 token/费用 unknown 接受边界；随后复核本节并登记版本，再执行校准。
+- **配置快照变化**：selected-candidates v1 是 v0.2.20 配置时冻结的 hash 清单；PR #27 发布后当前 marketplace/服务为 v0.2.21。该旧 manifest 仍保留原 hash 作为历史快照，但不能充当 v0.2.21 校准配置证明；开跑前需创建新的候选配置快照并重核 A/B/C。
+- **输入已冻结的部分**：三项请求、输入/证据 fixture、基线 ref、交付要求和 evaluator-only oracle 已由 selected-candidates v1 逐字节固定；FIX-1 历史状态是 reconstruction，INV-2 原失败 payload/binding 缺失，MOD-1 fixture 是 synthetic。
+- **仍未冻结/确认**：A/B/C workflow 与实际可用宿主/插件/技能配置、九轮隔离 reset 快照及校验回执、每轮/总墙钟上限、重试策略与 token/费用 unknown 接受边界。公开 PR 与历史答案不进入执行者上下文。
+- **恢复条件**：确认数值预算和 unknown 边界后，再按实际宿主能力冻结 A/B/C 配置、逐轮 reset 证明并复核输入 hash；任一配置 unsupported 则明确排除该组，不冒充完成对照。
+
+### v2 当前准备结论（2026-11-07）
+
+- 负责人确认的范围仍是 9 轮；selected-candidates v2 hash 为 `fb337534af7cb1d0bfed120e44031f4b20428c60303013fa40a780f18d19c0c3`，并引用不可变 v1 请求/fixture/oracle 清单。
+- A/B/C 共用 Codex CLI 0.166.0、请求模型 `gpt-6-luna`、effort `high`；A 不带 Task Progress MCP 且禁用多智能体，B/C 分别使用直连 stdio 的 v0.2.19/v0.2.21 服务。两个版本 initialize 和 35-tool 列表预检通过。Codex `exec` 的实际工具可见性仍待确认。
+- 九个隔离 worktree 均从候选 ref 创建并读回 clean；九份 blinded prompt 各有 SHA-256。当前 prompt manifest hash 为 `8584f2ebf3da3eee33297272b765c0a1fb4c768d89dcb03cd015923eefa43f4b`。
+- FIX-1-A 已完成一次校准：395.116 秒，exit 0；输入 3,722,401 tokens（其中 cached 3,606,528，包含在 input 总数内），输出 19,099，费用 unknown。独立 oracle 对准质量门 F1–F6 pass、F7 fail，整体质量门 fail；准确结果及 artifact hash 见 `/private/tmp/task-process-s0-calibration-v2/results/FIX-1-A.oracle-evaluation.md`。该产物留在私有评估目录。
+- 剩余 8 轮未启动。10 分钟/轮、90 分钟总墙钟及一次 prompt 暴露前重试是先前准备时采用的建议默认值，并未得到明确预算授权；FIX-1-A 产生的实际 token 用量也超过此前的可见预估。现等待负责人确认是否继续接受无 token/费用上限，或设定上限。
+
+### 2026-11-07 宿主配置复核
+
+- A/B/C 共用独立 Codex CLI 执行路线，避免依赖桌面会话里全局暴露的插件目录：A 用 `codex exec --ignore-user-config --disable multi_agent`；B/C 用相同 CLI 和 `--ignore-user-config`，以命令行 `mcp_servers.task_progress` 覆盖连接到各自版本的 stdio server。
+- 当前 `codex plugin list --json` 显示桌面插件 0.2.21 已启用；共享服务 loaded/healthy，端口 53421。v0.2.19 本机服务 `server.py` SHA-256 为 `d8787370aa1409467cd5fa79637b894a89e4f714742bd4e8d99a19115b2934d1`，v0.2.21 为 `ce904cc9d01894f9be04bd40aeac19f24ac5c488c4956e03ee6bc97cee98da01`。两版本直接 stdio initialize 与 `tools/list` 均成功，各返回 35 个工具；不切换全局服务。
+- 九份独立 Codex CLI prompt 与九个 clean detached worktree 已准备，具体输入、角色规则、plugin/skill refs、hash 和准备时预算见 [`selected-candidates-v2.md`](inputs/selected-candidates-v2.md)。FIX-1-A 的实际 `codex exec` 已验证 A 组 CLI 可启动并产出；本项不替代 B/C 各自工具可见性读回。
+- 准备时写入的预算默认值为 10 分钟/轮、90 分钟总墙钟、prompt 暴露前最多一次基础设施重试、token/费用 `unknown`。FIX-1-A 记录到 3,722,401 input（含 3,606,528 cached）和 19,099 output tokens，费用 unknown；该轮已先行执行，但其余 8 轮暂不启动，等待负责人确认 token/费用边界。
+- 没有切换全局插件、停止服务或复制凭据。v1 候选 manifest 保持不可变；配置快照 v2 保持原 hash，运行结果单独记录。

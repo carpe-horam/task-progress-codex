@@ -57,6 +57,33 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 `,workbook],{encoding:'utf8'}));
  assert.deepEqual(xlsxTitles,['Build leaf','Test leaf']);results[0].xlsxTitles=xlsxTitles;
  await report.close();
+ let serial=await rpc('init_task_network',{task_title:'serial waiting export'});const serialSid=serial.structuredContent.session_id;
+ await rpc('decompose_task',{session_id:serialSid,task_id:'root',tasks:[
+  {id:'active-main',title:'Active main task',assignment},
+  {id:'later-main',title:'Later main task',assignment}
+ ]});
+ serial=await rpc('update_task',{session_id:serialSid,task_id:'active-main',execution_status:'running',assignment});
+ const waitingNode=serial.structuredContent.progress.nodes.find(node=>node.id==='later-main');
+ assert.deepEqual(waitingNode.main_session_waiting_on,['active-main']);
+ const waitingFeedback=await exportSnapshot(serial);
+ const waitingFiles=fs.readdirSync(exportDir).filter(name=>name.includes('serial waiting export'));
+ const waitingHtml=fs.readFileSync(path.join(exportDir,waitingFiles.find(name=>name.endsWith('.html'))),'utf8');
+ assert.match(waitingHtml,/等待主会话当前执行项/);
+ assert.match(waitingHtml,/active-main/);
+ const waitingWorkbook=path.join(exportDir,waitingFiles.find(name=>name.endsWith('.xlsx')));
+ const waitingExport=JSON.parse(execFileSync('python3',['-c',`import json,sys,zipfile,xml.etree.ElementTree as E
+with zipfile.ZipFile(sys.argv[1]) as z:
+ doc=E.fromstring(z.read('xl/worksheets/sheet2.xml'))
+ ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+ rows=doc.findall('.//s:row',ns)
+ values=lambda row:[''.join(c.itertext()) for c in row.findall('s:c',ns)]
+ headers=values(rows[0]); id_index=headers.index('任务 ID'); waiting_header=next((header for header in headers if '等待主会话' in header),None)
+ row=next(values(row) for row in rows[1:] if values(row)[id_index]=='later-main')
+ print(json.dumps({'headers':headers,'task_id':row[id_index],'waiting_on':row[headers.index(waiting_header)] if waiting_header else None}))
+`,waitingWorkbook],{encoding:'utf8'}));
+ assert(waitingExport.headers.includes('等待主会话当前执行项'),JSON.stringify(waitingExport.headers));
+ assert.equal(waitingExport.task_id,'later-main');assert.equal(waitingExport.waiting_on,'active-main');
+ results.push({case:'serial_waiting_html_and_xlsx',feedback:waitingFeedback,waitingOn:waitingExport.waiting_on});
  r=await rpc('init_task_network',{task_title:'中'.repeat(47)+'😀'});
  results.push({case:'emoji_title_at_utf16_truncation_boundary',feedback:await exportSnapshot(r)});
  r=await rpc('init_task_network',{task_title:'中文😀正常标题'});
