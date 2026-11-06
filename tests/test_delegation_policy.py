@@ -101,6 +101,23 @@ class DelegationPolicyTests(unittest.TestCase):
                                assignment={"execution_mode": "main_session",
                                            "self_execution_reason": "Has dependencies"})
 
+    def test_capability_fallback_payload_keeps_binding_and_review_gates(self):
+        legacy_start = self.example("start")
+        self.assertIn("fork_turns", legacy_start["assignment"])
+        for field in ("model_source", "reasoning_effort_source", "fork_turns"):
+            legacy_start["assignment"].pop(field, None)
+        started = self.rpc("update_task", **legacy_start)["structuredContent"]
+        self.attempt = started["attempt_id"]
+        self.rpc("bind_task_agent", **self.example("bind"))
+        self.rpc("update_task", **self.example("submit"))
+        self.assertEqual(self.node("inspect")["review_status"], "pending")
+        fix_start = self.example("start")
+        fix_start["task_id"] = "fix"
+        with self.assertRaises(server.ProgressError):
+            self.rpc("update_task", **fix_start)
+        self.rpc("review_task", **self.example("review"))
+        self.assertEqual(self.node("inspect")["review_status"], "accepted")
+
     def test_published_start_bind_submit_review_sequence_controls_dependency(self):
         started = self.rpc("update_task", **self.example("start"))
         self.attempt = started["structuredContent"]["attempt_id"]
