@@ -12,6 +12,8 @@
 
 调用 `update_task`（启动示例）：
 
+以下启动示例用于 overview 明确返回 `assignment_sources_v1` 与 `fork_context_v1` 的服务端。旧服务没有相应能力标志时，不发送 `model_source`、`reasoning_effort_source` 或 `fork_turns` 新字段，按旧服务接受的显式配置路径执行；不要猜测值，也不能因此跳过绑定、提交或主会话复核。
+
 <!-- delegation-example:start -->
 ```json
 {
