@@ -2016,6 +2016,171 @@ def _current_stage_inventory_decisions(data: dict[str, Any]) -> dict[str, dict[s
     return decisions
 
 
+def _node_synthesis_ready(data: dict[str, Any], node: dict[str, Any],
+                          inventory_decisions: dict[str, dict[str, Any]] | None = None) -> bool:
+    """Whether this group still needs its parent to synthesize a result now."""
+    node_id = node.get("id")
+    if not node_id or not node.get("children") or node.get("execution_status") != "pending":
+        return False
+    if _accepted_closure(data, node_id):
+        return False
+    if node_id == data.get("root_id") and _handoff_closure(data):
+        return False
+    decisions = (_current_stage_inventory_decisions(data) if inventory_decisions is None
+                 else inventory_decisions)
+    if decisions.get(node_id, {}).get("decision") in ("obsolete", "covered"):
+        return False
+    return (_dependencies_satisfied(data, node)
+            and all(_node_settled(data, child_id) for child_id in node["children"]))
+
+
+def read_hook_snapshot(
+    session_id: str,
+    task_instance_id: str,
+    epoch: int,
+    task_id: str | None = None,
+    attempt_id: str | None = None,
+) -> dict[str, Any]:
+    """Fail-open public wrapper for a local hook state read."""
+    try:
+        return _read_hook_snapshot(session_id, task_instance_id, epoch, task_id, attempt_id)
+    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        return {
+            "snapshot_version": 1,
+            "status": "unknown",
+            "reason_code": "snapshot_unavailable",
+            "actor_resolution": "unknown",
+            "verification": "server_state_only",
+        }
+
+
+def _read_hook_snapshot(
+    session_id: str,
+    task_instance_id: str,
+    epoch: int,
+    task_id: str | None = None,
+    attempt_id: str | None = None,
+) -> dict[str, Any]:
+    """Read a bounded, read-only state projection for the local hook helper.
+
+    The explicit plugin IDs only select state. This function does not receive
+    or infer a Codex host session, agent, role, or authorization identity.
+    """
+    base = {
+        "snapshot_version": 1,
+        "actor_resolution": "unknown",
+        "verification": "server_state_only",
+    }
+    try:
+        sid = _normalize_session_id(session_id)
+    except ProgressError:
+        return {**base, "status": "unknown", "reason_code": "invalid_session_id"}
+    if (not isinstance(task_instance_id, str) or not task_instance_id
+            or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0
+            or (task_id is not None and (not isinstance(task_id, str) or not task_id))
+            or (attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id))):
+        return {**base, "status": "unknown", "reason_code": "invalid_target"}
+
+    with _session_lock(sid):
+        order = _read_order(sid)
+        document = _read(sid)
+        if document is None:
+            return {
+                **base,
+                "status": "stale" if order.get("require_task_instance_id") else "unknown",
+                "reason_code": "cleared" if order.get("require_task_instance_id") else "no_progress",
+                "session_id": sid,
+                "task_instance_id": task_instance_id,
+                "state_revision": order.get("state_revision", 0),
+            }
+        try:
+            data = _task_from_document(document, task_instance_id, writable=False)
+        except ProgressError:
+            return {
+                **base,
+                "status": "stale",
+                "reason_code": "instance_mismatch",
+                "session_id": sid,
+                "task_instance_id": task_instance_id,
+                "state_revision": order.get("state_revision", 0),
+            }
+        if data is None:
+            return {**base, "status": "unknown", "reason_code": "no_progress",
+                    "session_id": sid, "task_instance_id": task_instance_id,
+                    "state_revision": order.get("state_revision", 0)}
+        if data.get("schema_version") != 2:
+            return {**base, "status": "unknown", "reason_code": "unsupported_schema",
+                    "session_id": sid, "task_instance_id": task_instance_id,
+                    "state_revision": order.get("state_revision", 0)}
+
+        actual_instance_id = _task_instance_id(data)
+        actual_epoch = data.get("epoch", 0)
+        common = {
+            **base,
+            "session_id": sid,
+            "task_instance_id": actual_instance_id,
+            "epoch": actual_epoch,
+            "state_revision": order.get("state_revision", data.get("state_revision", 0)),
+            "planning_status": data.get("planning_status") or _legacy_planning_status(data),
+            "request_cancelled": bool(data.get("request_cancelled")),
+        }
+        if actual_epoch != epoch:
+            return {**common, "status": "stale", "reason_code": "epoch_mismatch"}
+        if data.get("request_cancelled"):
+            return {**common, "status": "stale", "reason_code": "request_cancelled"}
+        if task_id is None:
+            nodes = data.get("nodes", {})
+            pending_reviews = [
+                {"task_id": node_id, "attempt_id": node.get("attempt_id")}
+                for node_id, node in sorted(nodes.items())
+                if node.get("review_status") == "pending" and node.get("attempt_id")
+            ]
+            inventory_decisions = _current_stage_inventory_decisions(data)
+            synthesis_ready = [
+                {"task_id": node_id, "attempt_id": node.get("attempt_id")}
+                for node_id, node in sorted(nodes.items())
+                if _node_synthesis_ready(data, node, inventory_decisions)
+            ]
+            review_queue = {
+                "pending_reviews": pending_reviews[:20],
+                "pending_review_count": len(pending_reviews),
+                "pending_reviews_has_more": len(pending_reviews) > 20,
+                "synthesis_ready": synthesis_ready[:20],
+                "synthesis_ready_count": len(synthesis_ready),
+                "synthesis_ready_has_more": len(synthesis_ready) > 20,
+                "verification": "task_progress_state_only",
+            }
+            return {**common, "status": "current", "reason_code": "no_task_selected",
+                    "target": None, "review_queue": review_queue}
+
+        node = data.get("nodes", {}).get(task_id)
+        if node is None:
+            return {**common, "status": "stale", "reason_code": "task_missing",
+                    "target": {"task_id": task_id}}
+        inventory_decisions = _current_stage_inventory_decisions(data)
+        dispatch = node.get("dispatch") or {}
+        target = {
+            "task_id": task_id,
+            "attempt_id": node.get("attempt_id"),
+            "execution_status": node.get("execution_status"),
+            "outcome": node.get("outcome"),
+            "review_status": node.get("review_status"),
+            "ready": _node_is_ready(data, node, inventory_decisions),
+            "graph_ready": _node_is_graph_ready(data, node),
+            "status": _display_node_status(data, node, inventory_decisions),
+            "dispatch_status": dispatch.get("status"),
+            "dispatch_verification": dispatch.get("verification", "not_verified_by_codex_host"),
+            "stage_inventory_due": node.get("stage_inventory_due_attempt") == node.get("attempt_id")
+                and bool(node.get("attempt_id")),
+            "split_review_due": lifecycle.split_due(node),
+            "synthesis_ready": _node_synthesis_ready(
+                data, node, _current_stage_inventory_decisions(data)),
+        }
+        if attempt_id is not None and attempt_id != node.get("attempt_id"):
+            return {**common, "status": "stale", "reason_code": "attempt_mismatch", "target": target}
+        return {**common, "status": "current", "reason_code": "current", "target": target}
+
+
 def _planning_next_actions(data: dict[str, Any],
                            inventory_decisions: dict[str, dict[str, Any]] | None = None) -> list[str]:
     status = data.get("planning_status") or _legacy_planning_status(data)
@@ -3731,6 +3896,42 @@ def get_progress_view(session_id: str, include_history: bool = False, task_insta
     return _tool_result(_format_detail(progress), progress, sid, state_revision=revision, include_history=include_history, response_snapshot=response_snapshot)
 
 
+def select_work_context(session_id: str, task_instance_id: str, epoch: int,
+                        purpose: str = "work", task_id: str | None = None,
+                        attempt_id: str | None = None) -> dict[str, Any]:
+    """Return a receipt for an explicit, read-only selection of a current task context."""
+    sid = _normalize_session_id(session_id)
+    if not isinstance(task_instance_id, str) or not task_instance_id.strip():
+        raise ProgressError("task_instance_id 必须是非空字符串。")
+    _query_integer(epoch, "epoch", 0)
+    if purpose not in ("work", "dispatch", "resume"):
+        raise ProgressError("purpose 必须是 work、dispatch 或 resume。")
+    if task_id is not None and (not isinstance(task_id, str) or not task_id):
+        raise ProgressError("task_id 必须是非空字符串。")
+    if attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id):
+        raise ProgressError("attempt_id 必须是非空字符串。")
+
+    with _session_lock(sid):
+        response_snapshot = _capture_response_snapshot(sid)
+        document = response_snapshot["document"]
+        data = _task_from_document(document, task_instance_id, writable=False)
+        if data is None or data.get("schema_version") != 2:
+            raise ProgressError("目标实例不存在或不支持显式工作上下文选择。")
+        if data.get("epoch", 0) != epoch:
+            raise ProgressError("目标 epoch 已变化；请读取当前 overview/tree 后重新选择。")
+        selected_id = task_id or data.get("root_id")
+        node = data.get("nodes", {}).get(selected_id)
+        if node is None:
+            raise ProgressError("task_id 不存在于目标实例当前 epoch。")
+        current_attempt_id = node.get("attempt_id")
+        if attempt_id is not None and attempt_id != current_attempt_id:
+            raise ProgressError("attempt_id 已变化；请读取当前 tasks/records 后重新选择。")
+        progress = _progress_payload(data)
+        revision = response_snapshot["state_revision"]
+    return _tool_result("已选择显式 Task Progress 工作上下文；此选择不认证角色，也不改变任务状态。",
+                        progress, sid, state_revision=revision, response_snapshot=response_snapshot)
+
+
 def render_progress(session_id: str) -> dict[str, Any]:
     # The host must associate this tool's result with the UI template from the
     # tool descriptor so the rendered view receives structuredContent.
@@ -3802,7 +4003,8 @@ _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_ta
                            "record_task_execution", "start_task_execution", "review_task_split",
                            "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
-                           "handoff_request", "review_task_closure", "review_stage_inventory", "record_coverage"))
+                           "handoff_request", "review_task_closure", "review_stage_inventory", "record_coverage",
+                           "select_work_context"))
 
 
 def _query_integer(value: Any, name: str, minimum: int, maximum: int | None = None) -> int:
@@ -3958,6 +4160,89 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
     return {"content": [{"type": "text", "text": text}], "structuredContent": {**metadata, "progress": output}}
 
 
+def _receipt_context_effect(name: str, args: dict[str, Any], source: dict[str, Any],
+                           progress: dict[str, Any], target: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Describe accepted Task Progress state facts; never assert host identity."""
+    if name == "clear_progress":
+        return {"kind": "context_cleared", "session_id": source.get("session_id"),
+                "state_revision": source.get("state_revision"),
+                "verification": "task_progress_state_only"}
+
+    instance_id = progress.get("task_instance_id")
+    if not isinstance(instance_id, str) or not instance_id:
+        return None
+    session_id = progress.get("session_id") or source.get("session_id")
+    epoch = progress.get("epoch", 0)
+    effect = {
+        "session_id": session_id,
+        "task_instance_id": instance_id,
+        "epoch": epoch,
+        "state_revision": source.get("state_revision", progress.get("state_revision", 0)),
+        "view_sequence": source.get("view_sequence"),
+        "verification": "task_progress_state_only",
+    }
+    if target:
+        effect.update(
+            task_id=target.get("id", str(target.get("index")) if target.get("index") is not None else None),
+            attempt_id=target.get("attempt_id"),
+            execution_status=target.get("execution_status"),
+            outcome=target.get("outcome"),
+            review_status=target.get("review_status"),
+        )
+
+    if name in ("init_task_network", "init_progress"):
+        effect["kind"] = "anchor_created"
+        if progress.get("root_id"):
+            effect["task_id"] = progress["root_id"]
+    elif name == "rebuild_task_network":
+        effect["kind"] = "epoch_changed"
+        effect["task_id"] = progress.get("root_id")
+    elif name == "activate_request":
+        effect["kind"] = "foreground_activated"
+    elif name in ("update_task", "update_step"):
+        requested_status = args.get("execution_status", args.get("status"))
+        if requested_status == "running" or requested_status == "in_progress":
+            if args.get("retry") is True:
+                effect["kind"] = "attempt_restarted"
+                assignment = ((target or {}).get("assignment") or (target or {}).get("planned_assignment") or {})
+                effect["execution_mode"] = assignment.get("execution_mode")
+            else:
+                assignment = ((target or {}).get("assignment") or (target or {}).get("planned_assignment") or {})
+                effect["kind"] = "dispatch_prepared" if assignment.get("execution_mode") == "subagent" else "attempt_running"
+        elif requested_status in TERMINAL_EXECUTION_STATUSES or requested_status == "completed":
+            if target and target.get("review_status") == "pending":
+                effect["kind"] = "submission_pending_review"
+            else:
+                effect["kind"] = "attempt_ended"
+        else:
+            effect["kind"] = "task_state_changed"
+    elif name == "bind_task_agent":
+        effect["kind"] = "dispatch_bound"
+        # This is a value accepted by the plugin, not a host-authenticated agent ID.
+        effect["caller_declared_agent_name"] = args.get("agent_name")
+        effect["agent_binding_verification"] = "not_verified_by_codex_host"
+    elif name == "review_task":
+        effect["kind"] = "submission_reviewed" if target and target.get("review_status") in ("accepted", "rejected") else "task_state_changed"
+    elif name == "record_task_execution":
+        effect["kind"] = "execution_recorded"
+    elif name == "start_task_execution":
+        effect["kind"] = "execution_started"
+    elif name == "select_work_context":
+        effect["kind"] = "work_context_selected"
+        effect["selection_purpose"] = args.get("purpose", "work")
+    elif name == "route_request":
+        effect["kind"] = "request_registered"
+        if args.get("request_id"):
+            effect["request_id"] = args["request_id"]
+    elif name in ("decompose_task", "revise_task_plan", "update_task_context"):
+        effect["kind"] = "plan_changed" if name != "update_task_context" else "context_updated"
+    else:
+        # A receipt without a meaningful work-selection transition remains
+        # versioned but cannot silently change an active hook selection.
+        return None
+    return effect
+
+
 def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     source = result.get("structuredContent", {})
     p = source.get("progress") or {}
@@ -3965,9 +4250,13 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
     ack.update({key: p[key] for key in ("task_instance_id", "epoch", "revision", "root_id", "planning_status", "status") if key in p})
     ack["acknowledged"] = True
     ack["receipt"] = True
+    ack["receipt_version"] = 1
+    ack["operation"] = name
     if name == "render_progress":
         ack.update(bootstrap=True, view_tool="get_progress_view")
     task_id = args.get("task_id")
+    if name == "select_work_context" and not task_id:
+        task_id = p.get("root_id")
     nodes = p.get("nodes", [])
     if name == "update_step":
         index = args.get("step_index")
@@ -3983,6 +4272,9 @@ def _wire_receipt(name: str, args: dict[str, Any], result: dict[str, Any]) -> di
             ack["execution"] = target["execution_summary"]
     if name == "update_step":
         ack["step_index"] = args.get("step_index")
+    effect = _receipt_context_effect(name, args, source, p, target)
+    if effect is not None:
+        ack["context_effect"] = effect
     for key in ("handoff_id", "review_id", "snapshot_id", "coverage_id"):
         if args.get(key):
             ack[key] = args[key]
@@ -4901,6 +5193,21 @@ TOOLS = [
     },
 ]
 
+TOOLS.append({
+    "name": "select_work_context",
+    "title": "显式选择当前任务上下文",
+    "description": "为当前宿主 actor 显式选择一个已存在的 Task Progress 实例/epoch/节点；成功回执由 PostToolUse 观察后建立 actor scoped 关联。仅读取并返回小回执，不改变任务、attempt 或展示状态，也不认证调用者角色。task_id 省略时选择当前 root；attempt_id 可选但若提供必须匹配当前 attempt。purpose 用于记录选择意图，不构成角色/权限声明。",
+    "inputSchema": {"type": "object", "properties": {
+        "session_id": _session_property(),
+        "task_instance_id": _task_instance_property(),
+        "epoch": {"type": "integer", "minimum": 0},
+        "task_id": {"type": "string", "minLength": 1},
+        "attempt_id": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "enum": ["work", "dispatch", "resume"], "default": "work"},
+    }, "required": ["session_id", "task_instance_id", "epoch"]},
+    "_meta": _data_tool_meta(),
+})
+
 
 _REQUEST_PROPERTIES = {
     "session_id": _session_property(), "task_instance_id": _task_instance_property(),
@@ -4999,6 +5306,7 @@ for _name, _title, _description, _extra, _required in [
 
 
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "select_work_context": lambda args: select_work_context(**args),
     "record_task_execution": lambda args: record_task_execution(**args),
     "start_task_execution": lambda args: start_task_execution(**args),
     "review_task_split": lambda args: review_task_split(**args),
@@ -5217,11 +5525,12 @@ def handle(message: Any) -> str | None:
         if handler is None:
             return _err(message_id, -32601, f"未知工具：{name}")
         try:
-            if name in _MUTATION_TOOLS and args.get("session_id"):
+            if name in _MUTATION_TOOLS and name != "select_work_context" and args.get("session_id"):
                 _reconcile_executions(args["session_id"])
             return _ok(message_id, _wire_result(name, args, handler(args)))
         except ProgressError as exc:
-            _record_rejected_write(args, exc.recovery)
+            if name in _MUTATION_TOOLS and name != "select_work_context":
+                _record_rejected_write(args, exc.recovery)
             return _ok(
                 message_id,
                 {"content": [{"type": "text", "text": str(exc)}], "isError": True,

@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">交互演示</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.18">安装 0.2.18</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.19">安装 0.2.19</a> ·
   <a href="CHANGELOG.md">更新记录</a>
 </p>
 
@@ -29,9 +29,9 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-Task Progress 0.2.18 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
+Task Progress 0.2.19 首次连接时自动安装或更新本机共享后台服务。安装后**重启 Codex**。每个连接保留一个轻量 stdio→HTTP 桥接进程，任务仍由共享服务处理。macOS 使用 LaunchAgent，Linux 需要可用的 systemd 用户会话，Windows 使用当前登录用户的任务计划程序。平台前提见[安装与升级文档](docs/installation.md)。
 
-0.2.18 为新任务记录创建时间；未解决任务超过 30 分钟只会作为“可能过期”提示。更新任务状态时也会提醒 agent 查看失效结果和历史未闭环任务，不会自动改写状态。面板与导出会说明 obsolete/covered 处置原因和下一步，并区分依赖阻塞与等待主会话。
+0.2.19 增加会话执行期间的生命周期提醒：工具执行前后、子代理启动、等待返回后及下一次用户输入时，按当前绑定任务提示规划、派发、提交复核或汇总验收。已完成的父节点不会重复出现在汇总队列，子代理不会收到父级验收队列提醒；钩子只提供上下文，不自动改写任务状态。
 
 ## 开始使用
 
