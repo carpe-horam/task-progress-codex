@@ -81,9 +81,10 @@ _SESSION_LOCKS_GUARD = threading.Lock()
 class ProgressError(ValueError):
     """An expected progress operation error that should be shown to the caller."""
 
-    def __init__(self, message: str, recovery: dict[str, Any] | None = None):
+    def __init__(self, message: str, recovery: dict[str, Any] | None = None, *, error_code: str | None = None):
         super().__init__(message)
         self.recovery = recovery
+        self.error_code = error_code
 
 
 def _now() -> str:
@@ -1050,6 +1051,10 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
         "outcome": None,
         "summary": "",
         "evidence": [],
+        "acceptance": None,
+        "acceptance_checks": [],
+        "artifacts": [],
+        "verified_artifacts": [],
         "assignment": {},
         "planned_assignment": {},
         "responsibility_version": 1,
@@ -1067,6 +1072,153 @@ def _new_node(node_id: str, title: str, parent_id: str | None) -> dict[str, Any]
     }
 
 
+_ACCEPTANCE_METHODS = ("inspection", "command", "visual", "independent_review")
+_ACCEPTANCE_VERDICTS = ("pass", "fail", "not_run")
+
+
+def _normalize_acceptance(value: Any, *, field: str = "acceptance") -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if (not isinstance(value, dict) or not isinstance(value.get("version"), int)
+            or isinstance(value.get("version"), bool) or value.get("version") != 1):
+        raise ProgressError(f"{field} 必须是 version=1 的验收契约对象。")
+    criteria = value.get("criteria")
+    if not isinstance(criteria, list) or not 1 <= len(criteria) <= 20:
+        raise ProgressError(f"{field}.criteria 必须包含 1..20 项。")
+    normalized, seen = [], set()
+    for index, item in enumerate(criteria):
+        if not isinstance(item, dict):
+            raise ProgressError(f"{field}.criteria[{index}] 必须是对象。")
+        criterion_id = item.get("id")
+        text = item.get("text")
+        method = item.get("method")
+        required = item.get("required", True)
+        if not isinstance(criterion_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", criterion_id):
+            raise ProgressError(f"{field}.criteria[{index}].id 必须是 1..64 位字母、数字、连字符或下划线。")
+        if criterion_id in seen:
+            raise ProgressError(f"{field} criterion id 重复：{criterion_id}。")
+        seen.add(criterion_id)
+        if not isinstance(text, str) or not text.strip() or len(text) > 2000:
+            raise ProgressError(f"{field}.criteria[{index}].text 必须是 1..2000 字符。")
+        if method not in _ACCEPTANCE_METHODS:
+            raise ProgressError(f"{field}.criteria[{index}].method 必须是 {_ACCEPTANCE_METHODS} 之一。")
+        if not isinstance(required, bool):
+            raise ProgressError(f"{field}.criteria[{index}].required 必须是布尔值。")
+        normalized.append({"id": criterion_id, "text": text.strip(), "method": method, "required": required})
+    return {"version": 1, "criteria": normalized}
+
+
+def _acceptance_fingerprint(contract: dict[str, Any] | None) -> str | None:
+    if contract is None:
+        return None
+    payload = json.dumps(contract, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _normalize_artifacts(value: Any, *, field: str = "artifacts") -> list[dict[str, str]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 20:
+        raise ProgressError(f"{field} 必须是最多 20 项的列表。")
+    result, ids = [], set()
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ProgressError(f"{field}[{index}] 必须是对象。")
+        values = {}
+        for key in ("id", "uri", "version"):
+            raw = item.get(key)
+            if not isinstance(raw, str) or not raw.strip() or len(raw) > 4096:
+                raise ProgressError(f"{field}[{index}].{key} 必须是 1..4096 字符。")
+            values[key] = raw.strip()
+        if values["id"] in ids:
+            raise ProgressError(f"{field} artifact id 重复：{values['id']}。")
+        ids.add(values["id"])
+        result.append(values)
+    return result
+
+
+def _normalize_artifact_refs(value: Any, *, field: str) -> list[dict[str, str]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 20:
+        raise ProgressError(f"{field} 必须是最多 20 项的列表。")
+    result, keys = [], set()
+    required = ("source_task_id", "source_attempt_id", "artifact_id", "version")
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ProgressError(f"{field}[{index}] 必须是对象。")
+        normalized = {}
+        for key in required:
+            raw = item.get(key)
+            if not isinstance(raw, str) or not raw.strip() or len(raw) > 256:
+                raise ProgressError(f"{field}[{index}].{key} 必须是 1..256 字符。")
+            normalized[key] = raw.strip()
+        identity = tuple(normalized[key] for key in required)
+        if identity in keys:
+            raise ProgressError(f"{field} 中存在重复产物引用。")
+        keys.add(identity)
+        result.append(normalized)
+    return result
+
+
+def _normalize_acceptance_checks(value: Any, contract: dict[str, Any] | None,
+                                 *, field: str = "acceptance_checks") -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if contract is None:
+        raise ProgressError(f"{field} 不能用于未声明验收契约的任务。")
+    if not isinstance(value, list) or len(value) > 20:
+        raise ProgressError(f"{field} 必须是最多 20 项的列表。")
+    criteria = {item["id"]: item for item in contract["criteria"]}
+    normalized, seen = [], set()
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ProgressError(f"{field}[{index}] 必须是对象。")
+        criterion_id = item.get("criterion_id")
+        verdict = item.get("verdict")
+        if not isinstance(criterion_id, str) or criterion_id not in criteria:
+            raise ProgressError(f"{field}[{index}].criterion_id 不属于当前验收契约。")
+        if criterion_id in seen:
+            raise ProgressError(f"{field} criterion_id 重复：{criterion_id}。")
+        seen.add(criterion_id)
+        if verdict not in _ACCEPTANCE_VERDICTS:
+            raise ProgressError(f"{field}[{index}].verdict 必须是 {_ACCEPTANCE_VERDICTS} 之一。")
+        evidence = item.get("evidence", [])
+        if not isinstance(evidence, list) or len(evidence) > 20 or not all(isinstance(ref, str) and ref.strip() for ref in evidence):
+            raise ProgressError(f"{field}[{index}].evidence 必须是最多 20 项的非空字符串列表。")
+        note = item.get("note", "")
+        if not isinstance(note, str) or len(note) > 4000:
+            raise ProgressError(f"{field}[{index}].note 必须是最多 4000 字符的字符串。")
+        entry = {"criterion_id": criterion_id, "verdict": verdict,
+                 "evidence": [ref.strip() for ref in evidence]}
+        if note.strip():
+            entry["note"] = note.strip()
+        for key in ("verification_task_id", "verification_attempt_id", "target_task_id", "target_attempt_id"):
+            raw = item.get(key)
+            if raw is not None:
+                if not isinstance(raw, str) or not raw.strip() or len(raw) > 256:
+                    raise ProgressError(f"{field}[{index}].{key} 必须是 1..256 字符。")
+                entry[key] = raw.strip()
+        if "checked_artifacts" in item:
+            entry["checked_artifacts"] = _normalize_artifact_refs(item["checked_artifacts"], field=f"{field}[{index}].checked_artifacts")
+        normalized.append(entry)
+    return normalized
+
+
+def _require_required_acceptance_checks(contract: dict[str, Any] | None,
+                                        checks: list[dict[str, Any]], *, context: str) -> None:
+    if contract is None:
+        return
+    required = {item["id"] for item in contract["criteria"] if item["required"]}
+    observed = {item["criterion_id"]: item for item in checks}
+    missing = sorted(required - set(observed))
+    failed = sorted(cid for cid in required & set(observed)
+                    if observed[cid]["verdict"] != "pass" or not observed[cid].get("evidence"))
+    if missing or failed:
+        raise ProgressError(f"{context} 未满足验收契约：缺少 criterion_id={missing}；未通过或缺少证据={failed}。",
+                            error_code="acceptance_checks_required")
+
+
 def _normalize_main_session(value: Any) -> dict[str, Any] | None:
     """Record caller-reported session settings without implying host verification."""
     if value is None:
@@ -1075,6 +1227,8 @@ def _normalize_main_session(value: Any) -> dict[str, Any] | None:
         raise ProgressError("main_session 必须是对象。")
     model = value.get("model")
     effort = value.get("reasoning_effort")
+    if effort == "":
+        effort = None
     if model is not None and not isinstance(model, str):
         raise ProgressError("main_session.model 必须是字符串或省略。")
     if effort == "":
@@ -1108,6 +1262,7 @@ def _new_network(
     epoch: int = 0,
     main_session: dict[str, str] | None = None,
     reserved_ids: set[str] | None = None,
+    root_acceptance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = _now()
     root_id = "root" if epoch == 0 else f"root-e{epoch}"
@@ -1134,6 +1289,7 @@ def _new_network(
         "updated_at": now,
     }
     network["nodes"][root_id]["planned_assignment"] = {"execution_mode": "main_session"}
+    network["nodes"][root_id]["acceptance"] = deepcopy(root_acceptance)
     return network
 
 
@@ -1166,7 +1322,10 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
         if field_value is not None:
             if not isinstance(field_value, str):
                 raise ProgressError(f"assignment.{key} 必须是字符串。")
-            assignment[key] = field_value
+            # Empty selection values mean unknown; other strings retain their
+            # existing behavior and are validated by the relevant transition.
+            if key != "model" or field_value.strip():
+                assignment[key] = field_value
     execution_mode = value.get("execution_mode")
     if execution_mode is not None:
         if execution_mode not in EXECUTION_MODES:
@@ -1183,16 +1342,32 @@ def _normalize_assignment(value: Any) -> dict[str, Any]:
             raise ProgressError(f"profile 必须是 {PROFILES} 之一。")
         assignment["profile"] = profile
     effort = value.get("reasoning_effort")
+    if effort == "":
+        effort = None
     if effort is not None:
         if effort not in REASONING_EFFORTS:
             raise ProgressError(f"reasoning_effort 必须是 {REASONING_EFFORTS} 之一。")
         assignment["reasoning_effort"] = effort
+    for field, source_field in (("model", "model_source"),
+                                ("reasoning_effort", "reasoning_effort_source")):
+        selected_value = assignment.get(field)
+        source = value.get(source_field)
+        if source is None:
+            source = "explicit" if selected_value else "unknown"
+        if source not in ("explicit", "inherited", "unknown"):
+            raise ProgressError(f"assignment.{source_field} 必须是 explicit、inherited 或 unknown。")
+        if source == "explicit" and not selected_value:
+            raise ProgressError(f"assignment.{source_field}=explicit 时必须提供非空 {field}。")
+        if source != "explicit" and selected_value:
+            raise ProgressError(f"assignment.{source_field}={source} 时不能同时提供具体 {field}。")
+        assignment[source_field] = source
     fork_turns = value.get("fork_turns")
-    has_dispatch = execution_mode == "subagent" or any(assignment.get(key) for key in ("tool_identifier", "dispatch_text", "agent_name"))
-    if fork_turns is not None and fork_turns != "none":
-        raise ProgressError('子智能体配置必须使用 fork_turns="none"。')
-    if fork_turns == "none" or has_dispatch:
-        assignment["fork_turns"] = "none"
+    if fork_turns is not None:
+        if fork_turns not in ("none", "all"):
+            raise ProgressError('assignment.fork_turns 必须是 "none" 或 "all"。')
+        assignment["fork_turns"] = fork_turns
+    # Do not infer a context policy from the role or the presence of dispatch
+    # fields. In particular, omission remains an omitted (unknown) value.
     return assignment
 
 
@@ -1203,7 +1378,9 @@ def _require_execution_metadata(assignment: dict[str, Any] | None, *, dispatch_r
         # A missing host-readable setting is better represented as unknown than
         # guessed from config or model self-report; it must not block the work.
         return
-    missing = [key for key in ("model", "reasoning_effort") if not assignment.get(key)]
+    missing = [key for key in ("model", "reasoning_effort")
+               if assignment.get(f"{key}_source", "explicit" if assignment.get(key) else "unknown") == "explicit"
+               and not assignment.get(key)]
     if missing:
         raise ProgressError(f"启动子智能体任务时 assignment 必须包含派发配置：{', '.join(missing)}。")
     if dispatch_required:
@@ -1211,6 +1388,9 @@ def _require_execution_metadata(assignment: dict[str, Any] | None, *, dispatch_r
                    if not isinstance(assignment.get(key), str) or not assignment[key].strip()]
         if missing:
             raise ProgressError("启动子智能体任务必须记录派发工具和自包含文本：" + ", ".join(missing) + "。")
+    non_waking_tools = {"collaboration.send_message", "mcp__codex_app__send_message_to_thread"}
+    if assignment.get("execution_mode") == "subagent" and assignment.get("tool_identifier") in non_waking_tools:
+        raise ProgressError("send_message 只投递上下文，不证明 owner 已唤醒或开始新执行；保持当前 attempt，需启动/唤醒时使用 collaboration.followup_task。")
 
 
 def _require_self_execution_reason(assignment: dict[str, Any], *, atomic_reason: str = "") -> None:
@@ -1250,6 +1430,32 @@ def _stamp_assignment(assignment: dict[str, Any], *, scope: str) -> dict[str, An
     # authenticate Codex host metadata.
     stamped["metadata_provenance"] = _metadata_provenance(stamped, scope=scope)
     return stamped
+
+
+def _assignment_comparison_view(value: Any) -> dict[str, Any]:
+    """Read-only canonical view for immutable snapshots written by older servers.
+
+    Normalization derives selection-source values in memory for legacy
+    assignments, but callers must never persist this projection into history.
+    """
+    return _normalize_assignment(value)
+
+
+def _assignment_comparison_fields(raw: Any, normalized: dict[str, Any]) -> dict[str, Any]:
+    """Compare only fields supplied by a caller continuing a legacy attempt."""
+    if not isinstance(raw, dict):
+        return normalized
+    supplied = set(raw)
+    for field, source_field in (("model", "model_source"),
+                                ("reasoning_effort", "reasoning_effort_source")):
+        if field not in supplied and source_field not in supplied:
+            normalized = {key: value for key, value in normalized.items() if key != source_field}
+    return {
+        key: value for key, value in normalized.items()
+        if key in supplied
+        or (key == "model_source" and "model" in supplied)
+        or (key == "reasoning_effort_source" and "reasoning_effort" in supplied)
+    }
 
 
 def _historical_ids(data: dict[str, Any]) -> set[str]:
@@ -1375,6 +1581,7 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         node["depends_on"] = list(dependencies)
         node["dependency_policy"] = policy
         node["profile"] = profile
+        node["acceptance"] = _normalize_acceptance(item.get("acceptance"), field=f"任务 {node_id} acceptance")
         assignment = _normalize_assignment(item.get("assignment"))
         if not assignment.get("execution_mode"):
             raise ProgressError(f"任务 {node_id} 必须指定 assignment.execution_mode。")
@@ -1724,6 +1931,133 @@ def _dependencies_satisfied(data: dict[str, Any], node: dict[str, Any]) -> bool:
                for owner, dep_id in _dependency_constraints(data, node))
 
 
+def _attempt_acceptance(node: dict[str, Any]) -> dict[str, Any] | None:
+    attempt = next((item for item in reversed(node.get("attempts", []))
+                    if item.get("attempt_id") == node.get("attempt_id")), None)
+    if attempt is not None:
+        return deepcopy(attempt.get("acceptance"))
+    return deepcopy(node.get("acceptance"))
+
+
+def _acceptance_summary(node: dict[str, Any]) -> dict[str, Any]:
+    contract = node.get("acceptance") or _attempt_acceptance(node)
+    criteria = contract.get("criteria", []) if isinstance(contract, dict) else []
+    submission = node.get("submission") or {}
+    review = node.get("review") or {}
+    if review.get("acceptance_checks"):
+        checks, source = review["acceptance_checks"], "review"
+    elif submission.get("acceptance_checks"):
+        checks, source = submission["acceptance_checks"], "submission"
+    else:
+        checks, source = node.get("acceptance_checks", []), "main_session"
+    required = {item.get("id") for item in criteria if item.get("required", True)}
+    observed = {item.get("criterion_id"): item for item in checks}
+    required_pass_count = sum(1 for criterion_id in required
+                              if observed.get(criterion_id, {}).get("verdict") == "pass"
+                              and observed.get(criterion_id, {}).get("evidence"))
+    return {"declared": bool(criteria), "criterion_count": len(criteria),
+            "required_count": len(required), "required_pass_count": required_pass_count,
+            "checked_count": len(checks),
+            "pass_count": sum(item.get("verdict") == "pass" for item in checks),
+            "fail_count": sum(item.get("verdict") == "fail" for item in checks),
+            "not_run_count": sum(item.get("verdict") == "not_run" for item in checks),
+            "check_source": source if checks else None}
+
+
+def _is_descendant_or_self(data: dict[str, Any], node_id: str, ancestor_id: str) -> bool:
+    nodes = data.get("nodes", {})
+    current = nodes.get(node_id)
+    while current is not None:
+        if current.get("id") == ancestor_id:
+            return True
+        parent_id = current.get("parent_id")
+        current = nodes.get(parent_id) if parent_id else None
+    return False
+
+
+def _task_depends_on(data: dict[str, Any], consumer_id: str, target_id: str,
+                     seen: set[str] | None = None) -> bool:
+    nodes = data.get("nodes", {})
+    if consumer_id not in nodes or target_id not in nodes or consumer_id == target_id:
+        return False
+    seen = seen or set()
+    if consumer_id in seen:
+        return False
+    seen.add(consumer_id)
+    consumer = nodes[consumer_id]
+    dependencies = {dependency_id for _, dependency_id in _dependency_constraints(data, consumer)}
+    if target_id in dependencies:
+        return True
+    return any(_task_depends_on(data, dependency_id, target_id, seen)
+               for dependency_id in dependencies)
+
+
+def _current_artifacts(node: dict[str, Any]) -> list[dict[str, str]]:
+    submission = node.get("submission") or {}
+    return deepcopy(submission.get("artifacts") if submission else node.get("artifacts", []))
+
+
+def _validate_independent_review_check(data: dict[str, Any], owner: dict[str, Any],
+                                       check: dict[str, Any]) -> None:
+    required_fields = ("verification_task_id", "verification_attempt_id", "target_task_id", "target_attempt_id")
+    if any(not check.get(key) for key in required_fields):
+        raise ProgressError(f"independent_review criterion {check['criterion_id']} 必须绑定验证任务及目标 attempt。")
+    nodes = data.get("nodes", {})
+    verifier = nodes.get(check["verification_task_id"])
+    target = nodes.get(check["target_task_id"])
+    if verifier is None or target is None:
+        raise ProgressError("独立核验引用的验证任务或目标任务不在当前任务实例中。")
+    if (verifier.get("attempt_id") != check["verification_attempt_id"]
+            or not _accepted_resolved(verifier)):
+        raise ProgressError("独立核验任务必须是当前 attempt 且已接受并 resolved。")
+    if target.get("attempt_id") != check["target_attempt_id"]:
+        raise ProgressError("独立核验指向的目标 attempt 已过期。")
+    if not _accepted_resolved(target):
+        raise ProgressError("独立核验目标 attempt 必须已接受并 resolved。")
+    if not _task_depends_on(data, verifier["id"], target["id"]):
+        raise ProgressError("独立核验任务必须通过当前任务依赖链消费目标结果。")
+    if not (_is_descendant_or_self(data, target["id"], owner["id"])
+            and _is_descendant_or_self(data, verifier["id"], owner["id"])):
+        raise ProgressError("验收所在分组必须包含目标任务和独立核验任务。")
+    target_artifacts = _current_artifacts(target)
+    if not target_artifacts:
+        raise ProgressError("独立核验目标必须冻结 artifacts 清单。")
+    checked = check.get("checked_artifacts", [])
+    expected = {(target["id"], target["attempt_id"], item["id"], item["version"])
+                for item in target_artifacts}
+    observed = {(item["source_task_id"], item["source_attempt_id"], item["artifact_id"], item["version"])
+                for item in checked}
+    if observed != expected:
+        raise ProgressError("checked_artifacts 必须恰好覆盖目标 submission 的 artifacts 与版本。")
+    verifier_submission = verifier.get("submission") or {}
+    verified_artifacts = verifier_submission.get("verified_artifacts") or verifier.get("verified_artifacts", [])
+    verified = {(item["source_task_id"], item["source_attempt_id"], item["artifact_id"], item["version"])
+                for item in verified_artifacts}
+    if verified != expected:
+        raise ProgressError("验证任务的 verified_artifacts 必须与目标 artifacts 及版本一致。")
+    target_agent = (target.get("dispatch") or {}).get("agent_name")
+    verifier_agent = (verifier.get("dispatch") or {}).get("agent_name")
+    if not target_agent or not verifier_agent or target_agent == verifier_agent:
+        raise ProgressError("独立核验需要已记录且不同的目标/验证 agent ID；缺失时不能声明独立。")
+
+
+def _validate_acceptance_resolution(data: dict[str, Any], node: dict[str, Any],
+                                    checks: list[dict[str, Any]]) -> None:
+    contract = _attempt_acceptance(node)
+    _require_required_acceptance_checks(contract, checks, context="resolved 结果")
+    if contract is None:
+        return
+    criteria = {item["id"]: item for item in contract["criteria"]}
+    for check in checks:
+        criterion = criteria[check["criterion_id"]]
+        if check["verdict"] != "pass":
+            if criterion["required"]:
+                raise ProgressError(f"required criterion {criterion['id']} 未通过，不能接受 resolved。")
+            continue
+        if criterion["method"] == "independent_review":
+            _validate_independent_review_check(data, node, check)
+
+
 def _main_session_running_leaves(data: dict[str, Any], *, except_id: str | None = None) -> list[dict[str, Any]]:
     return [candidate for candidate in data.get("nodes", {}).values()
             if candidate.get("id") != except_id and not candidate.get("children")
@@ -1924,6 +2258,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
                 if _node_is_graph_ready(data, node) and (node.get("planned_assignment") or {}).get("execution_mode") == "main_session" else [],
             "blocked_by": unmet,
             "dependencies": dependencies,
+            "acceptance_summary": _acceptance_summary(node),
         })
     return {
         "schema_version": 2,
@@ -2282,6 +2617,7 @@ def init_task_network(
     request_id: str | None = None,
     new_task_reason: str | None = None,
     task_relationship: str | None = None,
+    root_acceptance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     requested_sid = _normalize_session_id(session_id) if session_id is not None else None
     if not isinstance(task_title, str) or not task_title.strip():
@@ -2294,12 +2630,14 @@ def init_task_network(
         raise ProgressError("request_id 必须是非空字符串。")
     normalized_title = task_title.strip()
     normalized_main = _normalize_main_session(main_session)
+    normalized_root_acceptance = _normalize_acceptance(root_acceptance, field="root_acceptance")
     fingerprint_main = (
         {key: normalized_main.get(key) for key in ("model", "reasoning_effort", "codex_thread_id", "codex_turn_id")}
         if normalized_main is not None else None
     )
     request_fingerprint = json.dumps(
         {"task_title": normalized_title, "tasks": tasks, "atomic_reason": atomic_reason,
+         **({"root_acceptance": normalized_root_acceptance} if root_acceptance is not None else {}),
          "main_session": fingerprint_main, **({"new_task_reason": new_task_reason} if new_task_reason is not None else {}), **({"task_relationship": task_relationship} if task_relationship is not None else {})}, sort_keys=True, ensure_ascii=False, default=str,
     )
     # One process/file lock protects allocation as well as the ledger. Session
@@ -2337,7 +2675,8 @@ def init_task_network(
                 data = previous
             else:
                 _assert_can_replace_task(previous, new_task_reason, task_relationship)
-                data = _new_network(sid, normalized_title, main_session=normalized_main)
+                data = _new_network(sid, normalized_title, main_session=normalized_main,
+                                    root_acceptance=normalized_root_acceptance)
                 if binding:
                     data["task_instance_id"] = binding["task_instance_id"]
                 if tasks is not None:
@@ -2449,11 +2788,15 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
     node["review"] = None
     node["review_status"] = None
     node["dispatch"] = None
+    contract = deepcopy(node.get("acceptance"))
+    node["acceptance_checks"] = []
+    node["artifacts"] = []
+    node["verified_artifacts"] = []
     if assignment.get("execution_mode") == "subagent":
         # A planned spawn alias is never a dispatch receipt. Only a known
         # executor addressed by an explicit follow-up tool can bind at start.
         tool = assignment.get("tool_identifier", "")
-        is_followup = tool in ("collaboration.followup_task", "collaboration.send_message", "mcp__codex_app__send_message_to_thread")
+        is_followup = tool == "collaboration.followup_task"
         agent_name = assignment.get("agent_name", "").strip() if is_followup else ""
         if is_followup and not agent_name:
             raise ProgressError("follow-up 派发必须填写真实工具返回的已有 agent_name；新执行者请使用 spawn 后 bind_task_agent。")
@@ -2470,13 +2813,16 @@ def _begin_attempt(node: dict[str, Any], assignment: dict[str, Any] | None, *, k
         "started_at": node["started_at"], "assignment": dict(node["assignment"]),
         "planned_assignment": deepcopy(node.get("planned_assignment")),
         "responsibility_version": 1, "dispatch": deepcopy(node["dispatch"]),
+        "acceptance": contract,
+        "acceptance_fingerprint": _acceptance_fingerprint(contract),
+        "acceptance_checks": [], "artifacts": [], "verified_artifacts": [],
     })
 
 
 def _record_attempt_result(node: dict[str, Any]) -> None:
     if node.get("attempts") and node.get("attempt_id"):
         node["attempts"][-1].update({key: deepcopy(node.get(key)) for key in (
-            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status", "failure_reason", "execution", "decomposition_review", "write_rejections"
+            "execution_status", "outcome", "summary", "evidence", "finished_at", "dispatch", "submission", "review", "review_status", "failure_reason", "execution", "decomposition_review", "write_rejections", "acceptance_checks", "artifacts", "verified_artifacts"
         )})
         if not _valid_boundary(node["attempts"][-1].get("started_at")):
             node["attempts"][-1]["started_at"] = node.get("started_at")
@@ -2782,6 +3128,9 @@ def update_task(
     assignment: dict[str, Any] | None = None,
     task_instance_id: str | None = None,
     failure_reason: str | None = None,
+    acceptance_checks: list[dict[str, Any]] | None = None,
+    artifacts: list[dict[str, Any]] | None = None,
+    verified_artifacts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     node_id = _validate_node_id(task_id)
@@ -2809,6 +3158,8 @@ def update_task(
         evidence = []
     if not isinstance(evidence, list) or not all(isinstance(item, str) for item in evidence):
         raise ProgressError("evidence 必须是字符串列表。")
+    if execution_status != "finished" and any(value is not None for value in (acceptance_checks, artifacts, verified_artifacts)):
+        raise ProgressError("acceptance_checks、artifacts 和 verified_artifacts 只能在 finished 提交时提供。")
     normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
     with _session_lock(sid):
         # The sole mutation of a completed parallel instance is an explicit
@@ -2848,8 +3199,10 @@ def update_task(
             elif execution.get("provider") == "managed_command" and execution.get("status") == "running":
                 raise ProgressError("托管命令仍在执行，不能提前收尾；等待退出回执，不得伪装停止。")
             if normalized_assignment is not None:
-                changed = [key for key, value in normalized_assignment.items()
-                           if node.get("assignment", {}).get(key) != value]
+                current_assignment = _assignment_comparison_view(node.get("assignment", {}))
+                comparison_fields = _assignment_comparison_fields(assignment, normalized_assignment)
+                changed = [key for key, value in comparison_fields.items()
+                           if current_assignment.get(key) != value]
                 if changed:
                     raise ProgressError("当前 attempt 的执行快照不可修改；不一致字段：" + ", ".join(changed) + "。")
         if node.get("children") and execution_status == "running":
@@ -2919,6 +3272,17 @@ def update_task(
             if previous_status != "running":
                 kind = "synthesis" if execution_status == "finished" else "group_termination"
                 _begin_attempt(node, normalized_assignment, kind=kind)
+        current_acceptance = _attempt_acceptance(node)
+        normalized_checks = _normalize_acceptance_checks(acceptance_checks, current_acceptance)
+        normalized_artifacts = _normalize_artifacts(artifacts)
+        normalized_verified_artifacts = _normalize_artifact_refs(verified_artifacts, field="verified_artifacts")
+        if execution_status == "finished" and outcome == "resolved" and (normalized_assignment or node.get("assignment", {})).get("execution_mode") != "subagent":
+            _validate_acceptance_resolution(data, node, normalized_checks)
+        if execution_status == "finished" and outcome == "open" and current_acceptance is not None:
+            failed_checks = [item for item in normalized_checks if item["verdict"] in ("fail", "not_run")
+                             and (item.get("note") or item.get("evidence"))]
+            if (normalized_assignment or node.get("assignment", {})).get("execution_mode") != "subagent" and not failed_checks:
+                raise ProgressError("有验收契约的主会话 open 结果须记录至少一项 fail/not_run 及原因或证据。")
         node["execution_status"] = execution_status
         node["outcome"] = outcome
         if previous_status != "running" and execution_status == "running":
@@ -2929,6 +3293,13 @@ def update_task(
             node["summary"] = summary
         if evidence:
             node["evidence"] = evidence
+        if execution_status == "finished" and (normalized_assignment or node.get("assignment", {})).get("execution_mode") != "subagent":
+            node["acceptance_checks"] = normalized_checks
+            node["artifacts"] = normalized_artifacts
+            node["verified_artifacts"] = normalized_verified_artifacts
+        elif execution_status == "finished":
+            node["artifacts"] = normalized_artifacts
+            node["verified_artifacts"] = normalized_verified_artifacts
         if execution_status in TERMINAL_EXECUTION_STATUSES:
             node["finished_at"] = _now()
             _ensure_time_bounds(node, node["finished_at"], "termination_fallback")
@@ -2951,7 +3322,9 @@ def update_task(
                     "agent_name": None, "bound_at": None, "legacy": True,
                     "verification": "not_verified_by_codex_host", "source": "legacy_unrecorded"}
             node["submission"] = {"attempt_id": node.get("attempt_id"), "outcome": outcome,
-                "summary": summary, "evidence": list(evidence), "submitted_at": _now()}
+                "summary": summary, "evidence": list(evidence), "submitted_at": _now(),
+                "acceptance_checks": normalized_checks, "artifacts": normalized_artifacts,
+                "verified_artifacts": normalized_verified_artifacts}
             node["outcome"] = None
             node["review_status"] = "pending"
             node["review"] = None
@@ -3047,7 +3420,8 @@ def bind_task_agent(session_id: str, task_id: str, attempt_id: str, agent_name: 
 
 
 def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, summary: str,
-                evidence: list[str], reviewer: dict[str, Any], task_instance_id: str | None = None) -> dict[str, Any]:
+                evidence: list[str], reviewer: dict[str, Any], task_instance_id: str | None = None,
+                acceptance_checks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     if decision not in ("accept", "reject"):
         raise ProgressError("decision 必须是 accept 或 reject。")
@@ -3062,8 +3436,19 @@ def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, s
             raise ProgressError("review_task 仅接受 subagent 叶结果；父/root 必须使用主会话 synthesis。")
         if node.get("review_status") != "pending" or node.get("execution_status") != "finished":
             raise ProgressError("当前没有 pending submission，不能重复或冲突验收。")
+        contract = _attempt_acceptance(node)
+        normalized_checks = _normalize_acceptance_checks(acceptance_checks, contract, field="review acceptance_checks")
+        if contract is not None:
+            if decision == "accept" and submission.get("outcome") == "resolved":
+                _validate_acceptance_resolution(data, node, normalized_checks)
+            else:
+                findings = [item for item in normalized_checks
+                            if item["verdict"] in ("fail", "not_run") and (item.get("note") or item.get("evidence"))]
+                if not findings:
+                    raise ProgressError("open 结果的接受或 reject 决定须记录至少一项 fail/not_run 及原因或证据。")
         node["review"] = {"attempt_id": attempt_id, "decision": decision, "summary": summary.strip(),
-                          "evidence": list(evidence), "reviewer": actor, "reviewed_at": _now()}
+                          "evidence": list(evidence), "reviewer": actor, "reviewed_at": _now(),
+                          "acceptance_checks": normalized_checks}
         node["review_status"] = "accepted" if decision == "accept" else "rejected"
         node["outcome"] = submission["outcome"] if decision == "accept" else "open"
         _record_attempt_result(node)
@@ -3337,13 +3722,15 @@ def _plan_revision_snapshot(data: dict[str, Any], captured_at: str) -> dict[str,
 def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reason: str,
                      expected_epoch: int, expected_revision: int, depends_on: list[str] | None = None,
                      dependency_policy: str | None = None, before_id: str | None = None,
-                     parent_id: str | None = None) -> dict[str, Any]:
+                     parent_id: str | None = None,
+                     acceptance: dict[str, Any] | None = None) -> dict[str, Any]:
     """Edit only an unstarted branch, retaining both sides of each change."""
     sid = _normalize_session_id(session_id)
     if not isinstance(reason, str) or not reason.strip():
         raise ProgressError("原位修订必须记录 reason。")
-    if depends_on is None and dependency_policy is None and before_id is None and parent_id is None:
-        raise ProgressError("请至少提供依赖、依赖策略、分组或同级顺序变更。")
+    normalized_acceptance = _normalize_acceptance(acceptance) if acceptance is not None else None
+    if depends_on is None and dependency_policy is None and before_id is None and parent_id is None and normalized_acceptance is None:
+        raise ProgressError("请至少提供依赖、依赖策略、分组、同级顺序或验收契约变更。")
     _query_integer(expected_epoch, "expected_epoch", 0)
     _query_integer(expected_revision, "expected_revision", 0)
     with _session_lock(sid):
@@ -3356,8 +3743,11 @@ def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reaso
         data = deepcopy(data)
         nodes = data["nodes"]
         node = nodes.get(task_id)
-        if node is None or task_id == data.get("root_id"):
-            raise ProgressError("只能修订当前计划中的非根节点。")
+        if node is None:
+            raise ProgressError("只能修订当前计划中的节点。")
+        is_root = task_id == data.get("root_id")
+        if is_root and (depends_on is not None or dependency_policy is not None or before_id is not None or parent_id is not None):
+            raise ProgressError("root 仅支持单独修订 acceptance；不通过此接口修改 root 结构或依赖。")
         def assert_unstarted_branch(branch_id: str) -> None:
             stack = [branch_id]
             while stack:
@@ -3376,7 +3766,8 @@ def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reaso
         revised_at = _now()
         before_plan = _plan_revision_snapshot(data, revised_at)
         old_order = list(nodes)
-        before = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": old_order}
+        before = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": old_order,
+                  "acceptance": deepcopy(node.get("acceptance"))}
         if parent_id is not None and parent_id != node.get("parent_id"):
             if parent_id not in nodes or parent_id == task_id:
                 raise ProgressError("目标分组不存在或无效。")
@@ -3401,13 +3792,16 @@ def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reaso
             node["depends_on"] = deepcopy(depends_on)
         if dependency_policy is not None:
             node["dependency_policy"] = dependency_policy
+        if normalized_acceptance is not None:
+            node["acceptance"] = deepcopy(normalized_acceptance)
         if before_id is not None:
             if before_id == task_id or before_id not in nodes or nodes[before_id].get("parent_id") != node.get("parent_id"):
                 raise ProgressError("before_id 必须是不同的同级节点。")
             order = list(nodes); order.remove(task_id); order.insert(order.index(before_id), task_id)
             data["nodes"] = nodes = {key: nodes[key] for key in order}
         _validate_network(data)
-        after = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": list(nodes)}
+        after = {"parent_id": node.get("parent_id"), "depends_on": deepcopy(node.get("depends_on", [])), "dependency_policy": node.get("dependency_policy", "resolved"), "node_order": list(nodes),
+                 "acceptance": deepcopy(node.get("acceptance"))}
         if before == after:
             raise ProgressError("修订没有改变计划。")
         data["revision"] = int(data.get("revision", 0)) + 1
@@ -3424,6 +3818,7 @@ def rebuild_task_network(
     reason: str,
     task_title: str = "",
     task_instance_id: str | None = None,
+    root_acceptance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     if not isinstance(reason, str) or not reason.strip():
@@ -3454,8 +3849,10 @@ def rebuild_task_network(
         })
         next_epoch = int(data["epoch"]) + 1
         new_title = task_title.strip() if isinstance(task_title, str) and task_title.strip() else data["task_title"]
+        normalized_root_acceptance = _normalize_acceptance(root_acceptance, field="root_acceptance")
         replacement = _new_network(sid, new_title, epoch=next_epoch,
-                                   reserved_ids=set(data["nodes"]) | _historical_ids(data))
+                                   reserved_ids=set(data["nodes"]) | _historical_ids(data),
+                                   root_acceptance=normalized_root_acceptance)
         data.update({key: replacement[key] for key in (
             "epoch", "root_id", "nodes", "task_title", "planning_status", "planning_note"
         )})
@@ -3828,9 +4225,10 @@ def update_step(
                     "assignment": deepcopy(step["assignment"]), "summary": "", "evidence": [],
                 })
             elif normalized_assignment is not None:
-                snapshot = step.get("assignment", {})
+                snapshot = _assignment_comparison_view(step.get("assignment", {}))
+                comparison_fields = _assignment_comparison_fields(assignment, normalized_assignment)
                 changed = [
-                    key for key, value in normalized_assignment.items()
+                    key for key, value in comparison_fields.items()
                     if snapshot.get(key) != value
                 ]
                 if changed:
@@ -3845,9 +4243,10 @@ def update_step(
                 step["finished_at"] = _now()
             _ensure_time_bounds(step, step["finished_at"] or _now(), "termination_fallback")
             if normalized_assignment is not None and previous_status in ("in_progress", "completed"):
-                snapshot = step.get("assignment", {})
+                snapshot = _assignment_comparison_view(step.get("assignment", {}))
+                comparison_fields = _assignment_comparison_fields(assignment, normalized_assignment)
                 changed = [
-                    key for key, value in normalized_assignment.items()
+                    key for key, value in comparison_fields.items()
                     if snapshot.get(key) != value
                 ]
                 if changed:
@@ -4028,6 +4427,7 @@ def _brief_node(node: dict[str, Any]) -> dict[str, Any]:
             "title_revision_count": node.get("title_revision_count", len(node.get("title_revisions", []))),
             "child_count": len(node.get("children", [])),
             "dependency_count": len(node.get("dependencies", [])),
+            "acceptance_summary": deepcopy(node.get("acceptance_summary", {"criterion_count": 0, "required_count": 0})),
             "execution_mode": (node.get("assignment") or node.get("planned_assignment") or {}).get("execution_mode")}
 
 
@@ -4070,6 +4470,10 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
         raise ProgressError("state_revision 已改变；请从第一页重新读取，不能混合不同版本的分页。")
     metadata = {key: source[key] for key in ("session_id", "state_revision", "view_sequence")}
     metadata.update(view=view, scope="instance", consistency="pin expected_state_revision across pages")
+    if view == "overview":
+        # Server support does not certify that a host adapter or skill has
+        # adopted the protocol yet.
+        metadata["protocol_capabilities"] = ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1"]
     p = source.get("progress")
     if p is None:
         return {"content": [{"type": "text", "text": "当前会话没有进度数据。"}],
@@ -4759,7 +5163,7 @@ def _display_tool_meta() -> dict[str, Any]:
 def _assignment_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。子智能体启动须 model/reasoning_effort/tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+        "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
         "properties": {
             "execution_mode": {"type": "string", "enum": list(EXECUTION_MODES), "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"},
             "self_execution_reason": {"type": "string", "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"},
@@ -4768,9 +5172,11 @@ def _assignment_schema() -> dict[str, Any]:
             "tool_name": {"type": "string", "description": "工具中文名称"},
             "dispatch_text": {"type": "string", "description": "完整、自包含的派发任务文本"},
             "agent_name": {"type": "string", "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"},
-            "fork_turns": {"type": "string", "enum": ["none"]},
+            "fork_turns": {"type": "string", "enum": ["none", "all"], "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"},
             "model": {"type": "string", "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"},
+            "model_source": {"type": "string", "enum": ["explicit", "inherited", "unknown"], "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"},
             "reasoning_effort": {"type": "string", "enum": list(REASONING_EFFORTS), "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"},
+            "reasoning_effort_source": {"type": "string", "enum": ["explicit", "inherited", "unknown"], "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"},
             "codex_thread_id": {"type": "string", "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"},
             "codex_turn_id": {"type": "string", "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"},
             "profile": {"type": "string", "enum": list(PROFILES)},
@@ -4798,6 +5204,7 @@ def _task_schema() -> dict[str, Any]:
                 "description": "resolved 要求前驱已解决；finished 允许前驱以 open/failed/cancelled 结束后放行，并携带证据。",
             },
             "profile": {"type": "string", "enum": list(PROFILES)},
+            "acceptance": _acceptance_schema(),
             "assignment": {
                 **_assignment_schema(),
                 "description": "必填。计划阶段标记此节点的执行者：execution_mode=main_session 或 subagent。分组节点设 main_session 表示主会话负责协调和综合验收；叶节点按分工指定。它不转移主会话的根任务统筹与集成职责。",
@@ -4806,6 +5213,50 @@ def _task_schema() -> dict[str, Any]:
         },
         "required": ["id", "title", "assignment"],
     }
+
+
+def _acceptance_schema() -> dict[str, Any]:
+    return {"type": "object", "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+            "properties": {"version": {"type": "integer", "enum": [1]},
+                "criteria": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
+                    "type": "object", "properties": {
+                        "id": {"type": "string", "minLength": 1, "maxLength": 64},
+                        "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+                        "method": {"type": "string", "enum": list(_ACCEPTANCE_METHODS)},
+                        "required": {"type": "boolean", "default": True}},
+                    "required": ["id", "text", "method"]}}},
+            "required": ["version", "criteria"]}
+
+
+def _artifact_schema() -> dict[str, Any]:
+    return {"type": "object", "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "uri": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "version": {"type": "string", "minLength": 1, "maxLength": 4096}},
+        "required": ["id", "uri", "version"]}
+
+
+def _artifact_ref_schema() -> dict[str, Any]:
+    return {"type": "object", "properties": {
+        "source_task_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_attempt_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "version": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "required": ["source_task_id", "source_attempt_id", "artifact_id", "version"]}
+
+
+def _acceptance_checks_schema() -> dict[str, Any]:
+    return {"type": "array", "maxItems": 20, "items": {"type": "object", "properties": {
+        "criterion_id": {"type": "string", "minLength": 1, "maxLength": 64},
+        "verdict": {"type": "string", "enum": list(_ACCEPTANCE_VERDICTS)},
+        "evidence": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1}},
+        "note": {"type": "string", "maxLength": 4000},
+        "verification_task_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "verification_attempt_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "target_task_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "target_attempt_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "checked_artifacts": {"type": "array", "maxItems": 20, "items": _artifact_ref_schema()}},
+        "required": ["criterion_id", "verdict"]}}
 
 
 TOOLS = [
@@ -4850,12 +5301,13 @@ TOOLS = [
     },
     {
         "name": "review_task", "title": "主会话接受或退回子任务结果",
-        "description": "仅验收当前 pending 的 subagent 叶 submission，需主会话 reviewer、summary 与非空 evidence。accept 保留提交的 resolved/open，reject 为 open；原上报和独立验收分别留存。旧/重复验收拒绝；父/root 使用 synthesis。角色未经宿主认证。",
+        "description": "仅验收当前 pending 的 subagent 叶 submission，需主会话 reviewer、summary 与非空 evidence。accept 保留提交的 resolved/open，reject 为 open；有 acceptance_contract 时需逐项独立核验，resolved 要求全部 required pass 且有证据，open/reject 要记录实际失败项。原上报和独立验收分别留存。旧/重复验收拒绝；父/root 使用 synthesis。角色未经宿主认证。",
         "inputSchema": {"type": "object", "properties": {
             "session_id": _session_property(), "task_id": {"type": "string"},
             "attempt_id": {"type": "string"}, "decision": {"type": "string", "enum": ["accept", "reject"]},
             "summary": {"type": "string", "minLength": 1},
             "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "acceptance_checks": _acceptance_checks_schema(),
             "reviewer": _assignment_schema(), "task_instance_id": _task_instance_property(),
         }, "required": ["session_id", "task_id", "attempt_id", "decision", "summary", "evidence", "reviewer"]},
         "_meta": _data_tool_meta(),
@@ -4975,6 +5427,7 @@ TOOLS = [
                 "new_task_reason": {"type": "string", "description": "用户明确开启新目标时，说明旧未完成任务如何处理；继续原目标应追加计划或重规划。"},
                 "task_relationship": {"type": "string", "enum": ["independent"], "description": "已有任务时必填 independent，表示独立新目标；归档、新计划或继续原目标不属于独立目标，应调用 rebuild_task_network。"},
                 "request_id": {"type": "string", "description": "可选稳定幂等键；重试同一初始化内容时复用。已知session按session隔离；省略session时键须全局唯一（建议UUID），并可随后带返回的session重试。哈希与身份墓碑保留至缓存整体删除，清除任务后旧键仍拒绝重建。"},
+                "root_acceptance": _acceptance_schema(),
             },
         "required": ["task_title"],
         },
@@ -5000,7 +5453,7 @@ TOOLS = [
     {
         "name": "update_task",
         "title": "更新任务节点",
-        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派。子智能体启动记录完整派发配置，spawn后 bind_task_agent；finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟由review_task_split/decompose_task解除服务端门禁；摘要不能豁免。命令用start_task_execution自动捕获退出，外部run用record_task_execution绑定；每attempt仅一轮执行，失败重跑必须新attempt。等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
+        "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派，同一紧密结果链可由原 owner 连续完成调查、实现和局部核验。子智能体启动记录完整派发文本及工具，模型/强度来源按 overview protocol_capabilities 选择；支持时 unknown/inherited 不需猜值。spawn后 bind_task_agent；send_message只投递上下文，不等于唤醒/开始新执行。finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟由review_task_split/decompose_task解除服务端门禁；摘要不能豁免。命令用start_task_execution自动捕获退出，外部run用record_task_execution绑定；每attempt仅一轮执行，失败重跑必须新attempt。等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -5016,6 +5469,9 @@ TOOLS = [
                 "summary": {"type": "string"},
                 "failure_reason": {"type": "string", "description": "叶任务 failed 或 finished/open 时记录明确的失败原因；连续两次未解决后重试会提供最近原因和摘要，提示 agent 判断是否相关。"},
                 "evidence": {"type": "array", "items": {"type": "string"}},
+                "acceptance_checks": _acceptance_checks_schema(),
+                "artifacts": {"type": "array", "maxItems": 20, "items": _artifact_schema(), "description": "finished 提交的不可变产物引用；独立核验目标必须提供版本。"},
+                "verified_artifacts": {"type": "array", "maxItems": 20, "items": _artifact_ref_schema(), "description": "finished 验证任务提交的被核验产物版本。"},
                 "attempt_id": {"type": "string", "description": "running 任务返回的当前尝试 ID"},
                 "retry": {"type": "boolean", "description": "从终态重新进入 running 时设为 true"},
                 "assignment": _assignment_schema(),
@@ -5071,7 +5527,8 @@ TOOLS = [
             "depends_on": {"type": "array", "items": {"type": "string"}},
             "dependency_policy": {"type": "string", "enum": list(DEPENDENCY_POLICIES)},
             "parent_id": {"type": "string", "description": "可选已有分组的 ID；保守检查受影响分组及消费者未开始。"},
-            "before_id": {"type": "string", "description": "移动目标节点至此同级节点之前。"}},
+            "before_id": {"type": "string", "description": "移动目标节点至此同级节点之前。"},
+            "acceptance": _acceptance_schema()},
             "required": ["session_id", "task_instance_id", "task_id", "reason", "expected_epoch", "expected_revision"]},
         "_meta": _data_tool_meta(),
     },
@@ -5086,6 +5543,7 @@ TOOLS = [
                 "task_instance_id": _task_instance_property(),
                 "reason": {"type": "string", "description": "重规划原因，写入计划轮次 history"},
                 "task_title": {"type": "string", "description": "可选的新根任务标题"},
+                "root_acceptance": _acceptance_schema(),
             },
             "required": ["session_id", "reason"],
         },
@@ -5094,7 +5552,7 @@ TOOLS = [
     {
         "name": "update_step",
         "title": "更新任务步骤",
-        "description": "更新旧版线性步骤。pending 须先 in_progress 才可 completed；每次启动生成新的 attempt_id，首次启动须提供 execution_mode；随后运行更新、完成、重置和重开都须传当前 attempt_id。重置把运行尝试记为 cancelled，保留 attempts 历史；重新启动取得新ID，旧ID不能完成新尝试。旧存储无ID的现有尝试仅在首次收尾/重置前兼容省略；以后启动均升级到严格ID校验。主会话的 model/reasoning_effort 可未知并省略；子智能体须提供派发配置。入参为调用方填报、未经宿主核验。会话存在 task_history 或清空过进度时须传当前 task_instance_id。普通更新只写数据，首次展示调用 render_progress。",
+        "description": "更新旧版线性步骤。pending 须先 in_progress 才可 completed；每次启动生成新的 attempt_id，首次启动须提供 execution_mode；随后运行更新、完成、重置和重开都须传当前 attempt_id。重置把运行尝试记为 cancelled，保留 attempts 历史；重新启动取得新ID，旧ID不能完成新尝试。旧存储无ID的现有尝试仅在首次收尾/重置前兼容省略；以后启动均升级到严格ID校验。主会话的 model/reasoning_effort 可未知并省略；子智能体需提供完整派发文本与工具，模型/强度来源按服务端能力记录，未知不得猜测。入参为调用方填报、未经宿主核验。会话存在 task_history 或清空过进度时须传当前 task_instance_id。普通更新只写数据，首次展示调用 render_progress。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -5113,7 +5571,7 @@ TOOLS = [
     {
         "name": "get_progress",
         "title": "按需读取任务进度",
-        "description": "显式读取目标实例。默认overview仅概览；优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。",
+        "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -5331,6 +5789,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "review_task": lambda args: review_task(
         args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decision"),
         args.get("summary"), args.get("evidence"), args.get("reviewer"), args.get("task_instance_id"),
+        args.get("acceptance_checks"),
     ),
     "review_stage_inventory": lambda args: review_stage_inventory(
         args.get("session_id"), args.get("task_id"), args.get("attempt_id"), args.get("decisions"),
@@ -5354,7 +5813,8 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     ),
     "init_task_network": lambda args: init_task_network(
         args.get("task_title", ""), args.get("session_id"), args.get("main_session"),
-        args.get("tasks"), args.get("atomic_reason"), args.get("request_id"), args.get("new_task_reason"), args.get("task_relationship")
+        args.get("tasks"), args.get("atomic_reason"), args.get("request_id"), args.get("new_task_reason"), args.get("task_relationship"),
+        args.get("root_acceptance")
     ),
     "decompose_task": lambda args: decompose_task(
         args.get("session_id"), args.get("task_id"), args.get("tasks", []),
@@ -5372,11 +5832,14 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
         args.get("assignment"),
         args.get("task_instance_id"),
         args.get("failure_reason"),
+        args.get("acceptance_checks"),
+        args.get("artifacts"),
+        args.get("verified_artifacts"),
     ),
     "get_ready_tasks": lambda args: get_ready_tasks(args.get("session_id"), args.get("task_instance_id")),
     "rebuild_task_network": lambda args: rebuild_task_network(
         args.get("session_id"), args.get("reason", ""), args.get("task_title", ""),
-        args.get("task_instance_id"),
+        args.get("task_instance_id"), args.get("root_acceptance"),
     ),
     "update_step": lambda args: update_step(
         args.get("session_id"),
@@ -5534,6 +5997,7 @@ def handle(message: Any) -> str | None:
             return _ok(
                 message_id,
                 {"content": [{"type": "text", "text": str(exc)}], "isError": True,
+                 **({"error_code": exc.error_code} if exc.error_code else {}),
                  **({"structuredContent": {"recovery": exc.recovery}} if exc.recovery else {})},
             )
         except Exception as exc:  # noqa: BLE001

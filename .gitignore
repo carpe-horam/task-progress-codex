@@ -4,3 +4,6 @@ __pycache__/
 
 # Local audits, runtime snapshots, and generated verification evidence.
 /docs/reviews/
+!/docs/reviews/
+/docs/reviews/*
+!/docs/reviews/2026-11-06-agent-collaboration-pilot-baseline.md

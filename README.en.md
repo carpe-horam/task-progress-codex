@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://carpe-horam.github.io/task-progress-codex/">Interactive demo</a> ·
-  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.19">Get 0.2.19</a> ·
+  <a href="https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.2.20">Get 0.2.20</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -29,9 +29,9 @@ codex plugin marketplace add carpe-horam/task-progress-codex
 codex plugin add task-progress@task-progress-codex
 ```
 
-Task Progress 0.2.19 installs or updates the shared local service on first connection. **Restart Codex** after installation. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
+Task Progress 0.2.20 installs or updates the shared local service on first connection. **Restart Codex** after installation. Each connection keeps a lightweight stdio-to-HTTP bridge; task processing stays in the shared service. macOS uses LaunchAgent, Linux requires a working systemd user session, and Windows uses Task Scheduler for the signed-in user. See [installation and upgrade details](docs/installation.md) (Chinese), including platform prerequisites and native validation limits.
 
-Version 0.2.19 adds lifecycle reminders during tool execution, subagent start, wait returns, and the next user prompt. Reminders use the currently bound task and keep parent synthesis reviews out of child actor contexts; completed parents are removed from the synthesis queue. Hooks add context only and never change task state automatically.
+Version 0.2.20 adds optional per-task acceptance contracts, separate worker self-checks and main-session reviews, artifact-version binding, and clearer owner continuity and configuration-source rules. Tasks without a contract keep their existing behavior; hooks do not dispatch, accept results, or change task state automatically.
 
 ## Getting started
 

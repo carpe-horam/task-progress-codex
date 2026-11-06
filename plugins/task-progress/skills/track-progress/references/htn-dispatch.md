@@ -2,9 +2,13 @@
 
 实际调用 `collaboration.spawn_agent` 前，先将任务挂到父节点、分配 `subagent`，再调用 `get_ready_tasks`；只启动 ready 叶节点。复杂工作即使只能串行仍委派，同一依赖链可顺序交给同一 agent；共享文件明确 owner 并串行交接。Task Progress 不会自动创建子智能体。
 
-**顺序是 start → spawn → bind。**派发前展示协作表格，先用 `update_task` 开始 attempt，保存回执 `structuredContent.attempt_id`，再调用真实协作工具。新 subagent attempt 要有非空 `tool_identifier`、完整 `dispatch_text`、模型及思考强度。agent ID 尚未返回时省略 `agent_name`，不得填虚构占位 ID；不可变 assignment 与可补充的 dispatch 绑定分开保存。
+**顺序是 start → spawn/follow-up → bind。**派发前展示协作表格，先用 `update_task` 开始 attempt，保存回执 `structuredContent.attempt_id`，再调用真实协作工具。新 subagent attempt 要有非空 `tool_identifier` 和完整 `dispatch_text`。读取 overview 的 `protocol_capabilities`：服务端支持 `assignment_sources_v1` 时模型与推理强度各自可记为 explicit/inherited/unknown；继承或未知不带具体值。没有该能力时沿用旧的可行路径。agent ID 尚未返回时省略 `agent_name`，不得填虚构占位 ID；不可变 assignment 与 dispatch 绑定分开保存。
 
-如果宿主只允许继承默认值，而模型或强度未被明确提供，插件的必填字段无法如实填写：不要启动该 subagent attempt，也不要派发后补造配置。若宿主及任务规则允许主会话执行，由主会话先用 `reassign_task` 显式改派 pending 叶节点，记录具体限制和自执行理由，再按主会话流程启动；不允许改派或无合适执行者时保留未执行状态，说明限制。不要把继承默认值猜成已知配置，也不要把改派当成额外授权。
+服务端返回 `assignment_sources_v1` 且宿主只允许继承默认值时，照实传 `model_source="inherited"` / `reasoning_effort_source="inherited"`，省略具体值并继续宿主支持的派发；未知值分别记 `unknown`。没有能力标志的旧服务端仍按旧流程处理，不能伪造配置或向旧服务端发送新字段。显式选择仍须与实际派发一致；若 host 明确拒绝，则如实收尾本次 attempt。
+
+同一紧密工作链优先由同一个 worker 连续处理调查、实现和局部核验；不为阶段本身派发新 agent。新 spawn 需要 fresh 探索时明确 `fork_turns="none"`；仅当 spawn 工具确实接收完整继承上下文时才传 `all`。follow-up 复用原 owner/thread 的现有上下文；若该 host 工具未提供 `fork_turns` 字段，就省略而不推断。主会话用 `followup_task` 复用原 owner 并发起新的 attempt，配置和 attempt ID 重新记录，owner 身份保持相同。
+
+`collaboration.send_message`、thread 消息等仅投递内容，不证明 idle worker 被唤醒。若 owner 仍在原 attempt 执行，消息可作为该 attempt 上下文，不启动新 attempt；若它已空闲且要继续执行，调用能唤醒/继续执行的 follow-up 工具。仅收到消息发送成功不能当作工作已开始或完成。
 
 调用 `update_task`（启动示例）：
 

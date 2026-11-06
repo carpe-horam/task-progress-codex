@@ -210,11 +210,72 @@ async function checkMetricContract() {
   assert.equal(fs.readFileSync(source,'utf8'),before,'history metric projection remains read-only');
   results.push('Panel, historical task, HTML and XLSX consume the same server accepted/ended metrics and floor percentages; raw legacy resolved never implies acceptance or root synthesis.');
 }
+async function checkSelectionSources() {
+  let r=await host.rpc('init_task_network',{task_title:'Inherited and unknown execution configuration',tasks:[
+    {id:'worker',title:'Worker with inherited settings',assignment:{execution_mode:'subagent',complexity:'complex',tool_identifier:'collaboration.spawn_agent',dispatch_text:'Run a bounded fixture task.',model_source:'inherited',reasoning_effort_source:'unknown',fork_turns:'all'}},
+    {id:'peer',title:'Independent peer',assignment:mainAssignment}]});
+  r=await host.rpc('update_task',{...binding(r),task_id:'worker',execution_status:'running',assignment:{execution_mode:'subagent',complexity:'complex',tool_identifier:'collaboration.spawn_agent',dispatch_text:'Run a bounded fixture task.',model_source:'inherited',reasoning_effort_source:'unknown',fork_turns:'all'}});
+  r=await host.rpc('bind_task_agent',{...binding(r),task_id:'worker',attempt_id:node(r).attempt_id,agent_name:'fixture-inherited-worker'});
+  const expected=['模型继承配置（实际值未记录）','模型配置来源：继承配置，实际值未记录','思维强度来源：未知'];
+  await checkApp(r,expected);
+  await checkExport(r,expected.slice(1),{reviewRows:0});
+  results.push('Inherited/unknown model and effort sources are visible in app, offline HTML and XLSX without inventing concrete values.');
+}
+async function checkAcceptanceContractExports() {
+  const contract={version:1,criteria:[{id:'artifact',text:'输出包含版本化构建产物',method:'inspection',required:true},{id:'legacy',text:'旧版数据仍可读取',method:'command',required:true}]};
+  let r=await host.rpc('init_task_network',{task_title:'Acceptance contract UI and exports',atomic_reason:'Single contract fixture',root_acceptance:contract});
+  r=await host.rpc('update_task',{...binding(r),task_id:'root',execution_status:'running',assignment:mainAssignment});
+  r=await host.rpc('update_task',{...binding(r),task_id:'root',attempt_id:node(r,'root').attempt_id,execution_status:'finished',outcome:'resolved',summary:'Contract fixture passed',evidence:['ROOT_CONTRACT_EVIDENCE'],acceptance_checks:[{criterion_id:'artifact',verdict:'pass',evidence:['artifact sha256 abc']},{criterion_id:'legacy',verdict:'pass',evidence:['legacy fixture command']}],artifacts:[{id:'bundle',uri:'file:///tmp/bundle.zip',version:'sha256:abc'}]});
+  r=await host.rpc('get_progress_view',{...binding(r),include_history:true});
+  const page=await host.page(),frame=await host.mount(page,'main',r),root=frame.locator('#steps > .step > details');
+  await root.locator(':scope > summary').click();
+  await root.locator(':scope > .task-details > summary').click();
+  const more=root.locator('.more-details'); await more.locator(':scope > summary').click();
+  const detailText=await more.textContent();
+  for(const value of ['验收契约','artifact','legacy','ROOT_CONTRACT_EVIDENCE','sha256:abc']) assert(detailText.includes(value),`App missing acceptance detail ${value}`);
+  await page.close();
+  const exported=await host.exportReport(r),htmlText=await exported.report.locator('#rp-current').textContent();
+  for(const value of ['输出包含版本化构建产物','artifact sha256 abc','sha256:abc']) assert(htmlText.includes(value),`HTML missing acceptance detail ${value}`);
+  const call=await exported.hostPage.evaluate(()=>window.host.calls.find(c=>c.name==='save_export_files'));
+  const sheets=readWorkbook(call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path),tasks=sheets['任务清单'];
+  for(const column of ['验收契约','执行方核验','主会话复核','提交产物及版本']) assert(tasks[0].includes(column),`XLSX missing ${column} column`);
+  const row=tasks[1],rowText=JSON.stringify(row);
+  assert(rowText.includes('输出包含版本化构建产物')&&rowText.includes('ROOT_CONTRACT_EVIDENCE')&&rowText.includes('sha256:abc'));
+  await exported.report.close();await exported.hostPage.close();
+  results.push('Acceptance contract, per-criterion evidence and immutable artifact version appear in task details, offline HTML and XLSX.');
+}
+async function checkIndependentAcceptanceChecksExport() {
+  const contract={version:1,criteria:[{id:'verify',text:'Reviewer independently checked the output',method:'inspection'}]};
+  let r=await host.rpc('init_task_network',{task_title:'Independent acceptance checks export',tasks:[{id:'worker',title:'Contracted worker',assignment:subAssignment,acceptance:contract},{id:'peer',title:'Unstarted peer',assignment:mainAssignment}]});
+  r=await host.rpc('update_task',{...binding(r),task_id:'worker',execution_status:'running',assignment:subAssignment});
+  const attempt=node(r).attempt_id;
+  r=await host.rpc('bind_task_agent',{...binding(r),task_id:'worker',attempt_id:attempt,agent_name:'acceptance-export-worker'});
+  r=await host.rpc('update_task',{...binding(r),task_id:'worker',attempt_id:attempt,execution_status:'finished',outcome:'resolved',summary:'Worker checked output',evidence:['WORKER_RESULT_EVIDENCE'],acceptance_checks:[{criterion_id:'verify',verdict:'pass',evidence:['WORKER_SELF_CHECK']}],artifacts:[{id:'output',uri:'artifact://output',version:'v2'}]});
+  r=await host.rpc('review_task',{...binding(r),task_id:'worker',attempt_id:attempt,decision:'accept',summary:'Main session independently checked output',evidence:['MAIN_REVIEW_EVIDENCE'],reviewer:mainAssignment,acceptance_checks:[{criterion_id:'verify',verdict:'pass',evidence:['MAIN_INDEPENDENT_CHECK']}]});
+  r=await host.rpc('get_progress_view',{...binding(r),include_history:true});
+  const page=await host.page(),frame=await host.mount(page,'main',r),worker=frame.locator('#steps .step > details').filter({has:frame.locator(':scope > summary .step-id').filter({hasText:/^worker$/})});
+  await worker.locator(':scope > summary').click();
+  await worker.locator(':scope > .task-details > summary').click();
+  const more=worker.locator('.more-details');await more.locator(':scope > summary').click();
+  const text=await more.textContent();
+  for(const value of ['WORKER_SELF_CHECK','MAIN_INDEPENDENT_CHECK','v2'])assert(text.includes(value),`App missing independent acceptance evidence ${value}`);
+  await page.close();
+  const exported=await host.exportReport(r),record=exported.report.locator('#rp-current [data-node-id="worker"]'),html=await record.textContent();
+  for(const value of ['WORKER_SELF_CHECK','MAIN_INDEPENDENT_CHECK','MAIN_REVIEW_EVIDENCE','v2'])assert(html.includes(value),`HTML missing independent acceptance evidence ${value}`);
+  const call=await exported.hostPage.evaluate(()=>window.host.calls.find(c=>c.name==='save_export_files'));
+  const sheets=readWorkbook(call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path),rows=JSON.stringify(sheets);
+  for(const value of ['WORKER_SELF_CHECK','MAIN_INDEPENDENT_CHECK','MAIN_REVIEW_EVIDENCE','v2'])assert(rows.includes(value),`XLSX missing independent acceptance evidence ${value}`);
+  await exported.report.close();await exported.hostPage.close();
+  results.push('Worker self-check and separate main-session checks/review evidence remain distinct in app, offline HTML and XLSX.');
+}
 async function main() {
   const sourceAtStart=sourceIdentity(),startedAt=new Date().toISOString();
   host=await createHost();
   await checkPendingBoundaries();
   await checkMetricContract();
+  await checkSelectionSources();
+  await checkAcceptanceContractExports();
+  await checkIndependentAcceptanceChecksExport();
   let r=await host.rpc('init_task_network',{task_title:'Responsibility acceptance and retry',tasks:[{id:'worker',title:'Complex worker',assignment:subAssignment},{id:'consumer',title:'Main integration',depends_on:['worker'],assignment:mainAssignment}]});
   r=await start(r); r=await submit(r);
   assert.equal(node(r).outcome,null); assert.equal(node(r).review_status,'pending');

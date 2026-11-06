@@ -35,11 +35,11 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 
 主会话负责目标、计划、协调、复核和根任务验收。获派子智能体只更新自己的节点，不建立重复 root，也不验收自己的结果。
 
-- 在用户和宿主允许委派时，复杂分析、实现、专门验证及独立评审默认委派。串行依赖本身不是主会话包办的理由。
+- 在用户和宿主允许委派时，复杂分析、实现、专门验证及独立评审默认委派。紧密耦合的一条结果链优先复用同一 worker 完成调查、实现与局部核验；阶段切换本身不要求新 agent。主会话设定结果边界、依赖、资源与最终验收，worker 自主安排范围内步骤，发现新独立结果或范围变化时回主会话调整。串行依赖本身不是主会话包办的理由。
 - 主会话自执行叶任务时记录具体 `self_execution_reason`；已记录 `atomic_reason` 的原子 root 除外。共享文件先明确 owner 并串行交接。分工与改派规则见 [协作与职责](references/delegation.md)。
 - 实际派发前，读取 [协作与职责](references/delegation.md)、[模型选择](references/model-selection.md) 和 [HTN 派发](references/htn-dispatch.md)。遵守宿主允许的模型、强度和委派规则；不能获得的配置不得虚构。
-- 子智能体启动必须记录明确的模型和强度。若只能继承未知默认值，无法如实提供必填配置：不要启动或伪报；按派发引用说明的流程改派或保留未执行状态。
-- 展示派发信息并提供自包含的背景、目标、约束、路径及验收条件。执行顺序是：`update_task` 启动 attempt → 调用实际协作工具 → `bind_task_agent` 绑定返回的真实 ID。记录 assignment 不等于实际派发或宿主执行回执。
+- 子智能体启动先读 overview 的 `protocol_capabilities`。当含 `assignment_sources_v1` 时，模型与强度来源可分别记录为 `explicit`、`inherited` 或 `unknown`；继承/未知不带具体值，也不阻止宿主已支持的委派。没有能力标志时沿用旧服务端流程，不发送新字段。不要猜测模型或配置值。
+- 展示派发信息并提供自包含的背景、目标、约束、路径及验收条件。执行顺序是：`update_task` 启动 attempt → 调用实际协作工具 → `bind_task_agent` 绑定返回的真实 ID。`send_message` 只投递上下文，不证明 idle worker 被唤醒；要启动/唤醒 owner 使用 `followup_task`。记录 assignment 不等于实际派发或宿主执行回执。
 - 每次 attempt 记录执行角色。主会话模型、强度及宿主 ID 未明确提供时保持未知，不从配置或目录猜测；详见 [会话元数据](references/session-metadata.md)。
 
 ## 4. 执行、复核和调整

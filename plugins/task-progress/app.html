@@ -498,12 +498,21 @@ h1{font-size:18px;line-height:1.35}
   const metadataEvidence = value => {
     const data = value && typeof value === 'object' ? value : {};
     const provenance = data.metadata_provenance && typeof data.metadata_provenance === 'object' ? data.metadata_provenance : null;
+    const sourceText = (field, label, selected) => {
+      const source = data[field];
+      if (source === 'explicit') return `${label}：明确指定`;
+      if (source === 'inherited') return `${label}：继承配置，实际值未记录`;
+      if (source === 'unknown') return `${label}：未知`;
+      return selected ? `${label}：历史记录，来源未标注` : `${label}：未记录`;
+    };
+    const selection = [sourceText('model_source','模型配置来源',data.model),
+      sourceText('reasoning_effort_source','思维强度来源',data.reasoning_effort)].join('；');
     if (provenance?.verification === 'not_verified_by_codex_host') {
-      return '调用方填报，未经 Codex 宿主核验' + (provenance.captured_at ? ' · ' + String(provenance.captured_at) : '');
+      return '调用方填报，未经 Codex 宿主核验 · ' + selection + (provenance.captured_at ? ' · ' + String(provenance.captured_at) : '');
     }
-    if (provenance?.verification === 'verified_by_codex_host') return 'Codex 宿主提供' + (provenance.captured_at ? ' · ' + String(provenance.captured_at) : '');
-    if (data.model || data.reasoning_effort) return '历史记录，来源未标注';
-    return '模型与思维强度未记录';
+    if (provenance?.verification === 'verified_by_codex_host') return 'Codex 宿主提供 · ' + selection + (provenance.captured_at ? ' · ' + String(provenance.captured_at) : '');
+    if (data.model || data.reasoning_effort) return '历史记录，来源未标注 · ' + selection;
+    return selection;
   };
   function exportDuration(startedAt, finishedAt, snapshotAt = '') {
     const start = timestamp(startedAt);
@@ -730,6 +739,11 @@ h1{font-size:18px;line-height:1.35}
           startedAt: String(node.started_at || ''), finishedAt: String(node.finished_at || ''), durationSeconds: node.time_boundary_sources?.started_at?'':exportDuration(node.started_at, node.finished_at, node.execution_status==='running'?snapshotAt:''),
           ...executionTiming(node, byId, childMap, snapshotAt),
           summary: String(node.summary || ''), evidence: list(node.evidence).map(printable).join('\n'),
+          acceptance: node.acceptance && typeof node.acceptance === 'object' ? node.acceptance : null,
+          acceptanceFingerprint: String(node.acceptance_fingerprint || ''),
+          acceptanceChecks: list(node.acceptance_checks), acceptanceArtifacts: list(node.artifacts), verifiedArtifacts: list(node.verified_artifacts),
+          reviewAcceptanceChecks: list(node.review?.acceptance_checks),
+          submissionAcceptanceChecks: list(node.submission?.acceptance_checks), submissionArtifacts: list(node.submission?.artifacts),
           execution: node.execution || node.execution_summary || null,
           splitReviewRequired: !!node.split_review_required, latestWriteRejection: node.latest_write_rejection || null,
           dispatchText: String(assignment.dispatch_text || '')
@@ -749,6 +763,11 @@ h1{font-size:18px;line-height:1.35}
             thinking: String(attemptAssignment.reasoning_effort || ''), dispatchText: String(attemptAssignment.dispatch_text || ''),
             startedAt: String(attempt.started_at || ''), finishedAt: String(attempt.finished_at || ''),
             durationSeconds: attempt.time_boundary_sources?.started_at?'':exportDuration(attempt.started_at, attempt.finished_at, attempt.execution_status==='running'?snapshotAt:''), timeBoundarySources: attempt.time_boundary_sources || {}, summary: String(attempt.summary || ''), evidence: list(attempt.evidence).map(printable).join('\n'),
+            acceptance: attempt.acceptance && typeof attempt.acceptance === 'object' ? attempt.acceptance : null,
+            acceptanceFingerprint: String(attempt.acceptance_fingerprint || ''),
+            acceptanceChecks: list(attempt.acceptance_checks), acceptanceArtifacts: list(attempt.artifacts), verifiedArtifacts: list(attempt.verified_artifacts),
+            reviewAcceptanceChecks: list(attempt.review?.acceptance_checks),
+            submissionAcceptanceChecks: list(attempt.submission?.acceptance_checks), submissionArtifacts: list(attempt.submission?.artifacts),
             invalidatedBy: String(attempt.invalidated_by || ''), invalidatedAt: String(attempt.invalidated_at || ''), validity: attempt.invalidated_by ? '已失效' : '有效'
           });
         });
@@ -906,8 +925,8 @@ h1{font-size:18px;line-height:1.35}
   function buildXlsx(data) {
     const headers = {
       overview:['项目','值'],
-      tasks:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','父任务 ID','层级','完整路径','任务名称','节点类型','叶任务','状态','执行状态','结果','依赖任务','当前阻塞','依赖条件','执行者','模型','思维强度','元数据来源','配置档','尝试次数','Attempt ID','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间'],
-      attempts:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','任务名称','类型','尝试次数','Attempt ID','状态','结果','有效性','失效来源','失效时间','执行者','模型','思维强度','元数据来源','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间'],
+      tasks:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','父任务 ID','层级','完整路径','任务名称','节点类型','叶任务','状态','执行状态','结果','依赖任务','当前阻塞','依赖条件','执行者','模型','思维强度','元数据来源','配置档','尝试次数','Attempt ID','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间','验收契约','执行方核验','主会话复核','提交产物及版本','核验产物来源'],
+      attempts:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','任务名称','类型','尝试次数','Attempt ID','状态','结果','有效性','失效来源','失效时间','执行者','模型','思维强度','元数据来源','开始时间','结束时间','耗时（秒）','结果摘要','证据','派发文本','归档时间','验收契约快照','执行方核验','主会话复核','提交产物及版本','核验产物来源'],
       evidence:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','任务 ID','完整路径','证据来源','序号','证据内容'],
       plans:['任务范围','任务实例','任务实例 ID','计划轮次','轮次标识','当前计划','计划名称','状态','根任务 ID','节点数','叶任务数','已验收解决叶任务','已结束叶任务','快照更新时间','关闭时间','修订号','历史记录数','重规划原因','与前轮关系','主会话模型','主会话思维强度','元数据来源','元数据采集时间']
     };
@@ -916,8 +935,9 @@ h1{font-size:18px;line-height:1.35}
     const responsibilityValues=t=>[t.plannedExecutor||'计划执行者未记录',t.agentName,t.dispatchStatus,t.selfExecutionReason,t.reviewLabel||'验收未记录',t.submittedOutcome,t.submissionSummary,t.submissionEvidence,t.submittedAt];
     headers.plans.push('已验收解决比例（%）','已结束比例（%）');
     headers.tasks.push(...responsibilityHeaders,'展示开始时间','展示结束时间','开始边界状态','结束边界状态','时间来源','时间来源节点 / 尝试','累计执行耗时','整体历时 / 分组观察跨度'); headers.attempts.push(...responsibilityHeaders,'开始时间保底来源','结束时间保底来源');
-    const taskRows=tasks.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.parentId,t.depth,t.pathTitles,t.title,t.type,t.leaf?'是':'否',t.status,t.executionStatus,t.outcome,t.dependencies,t.blockedBy,t.dependencyConditions||'',t.executor,t.model,t.thinking,t.metadataEvidence,t.profile,t.attempt,t.attemptId,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,[t.evidence,executionReceiptText(t.execution)].filter(Boolean).join('\n'),t.dispatchText,t.archivedAt,...responsibilityValues(t),t.timeStart,t.timeEnd,t.timeStartState,t.timeEndState,t.timeSource,t.timeEvidence,t.cumulativeTime,t.overallTime]);
-    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,[t.evidence,executionReceiptText(t.execution)].filter(Boolean).join('\n'),t.dispatchText,t.archivedAt,...responsibilityValues(t),t.timeBoundarySources?.started_at||'',t.timeBoundarySources?.finished_at||'']);
+    const acceptanceColumns=t=>[JSON.stringify(t.acceptance||null),JSON.stringify(list(t.acceptanceChecks).length?t.acceptanceChecks:list(t.submissionAcceptanceChecks)),JSON.stringify(t.reviewAcceptanceChecks||[]),JSON.stringify(list(t.acceptanceArtifacts).length?t.acceptanceArtifacts:list(t.submissionArtifacts)),JSON.stringify(t.verifiedArtifacts||[])];
+    const taskRows=tasks.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.parentId,t.depth,t.pathTitles,t.title,t.type,t.leaf?'是':'否',t.status,t.executionStatus,t.outcome,t.dependencies,t.blockedBy,t.dependencyConditions||'',t.executor,t.model,t.thinking,t.metadataEvidence,t.profile,t.attempt,t.attemptId,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,[t.evidence,executionReceiptText(t.execution)].filter(Boolean).join('\n'),t.dispatchText,t.archivedAt,...acceptanceColumns(t),...responsibilityValues(t),t.timeStart,t.timeEnd,t.timeStartState,t.timeEndState,t.timeSource,t.timeEvidence,t.cumulativeTime,t.overallTime]);
+    const attemptRows=data.attempts.map(t=>[t.taskCurrent?'当前任务':'归档任务',t.instanceTitle,t.taskInstanceId,t.roundLabel,t.roundKey,t.taskId,t.taskTitle,t.kindLabel,t.number,t.attemptId,t.status,t.outcome,t.validity,t.invalidatedBy,t.invalidatedAt,t.executor,t.model,t.thinking,t.metadataEvidence,t.startedAt,t.finishedAt,t.durationSeconds,t.summary,[t.evidence,executionReceiptText(t.execution)].filter(Boolean).join('\n'),t.dispatchText,t.archivedAt,...acceptanceColumns(t),...responsibilityValues(t),t.timeBoundarySources?.started_at||'',t.timeBoundarySources?.finished_at||'']);
     const reviewRecords=data.attempts.filter(t=>['pending','accepted','rejected'].includes(t.reviewStatus) || t.reviewDecision || t.kind==='synthesis').map(t=>t.kind==='synthesis' ? {...t,reviewLabel:'综合验收已记录',reviewKind:'synthesis',reviewDecision:'',reviewer:t.executor,reviewSummary:t.summary,reviewEvidence:t.evidence,reviewedAt:t.finishedAt} : t);
     tasks.filter(t=>(['pending','accepted','rejected'].includes(t.reviewStatus) || t.reviewDecision) && !reviewRecords.some(a=>a.roundKey===t.roundKey && a.taskId===t.taskId && a.attemptId===t.attemptId)).forEach(t=>reviewRecords.push({...t,taskTitle:t.title}));
     const reviewHeaders=['任务范围','任务实例','计划轮次','任务 ID','任务名称','Attempt ID','验收状态','提交结果','验收决定','验收者','验收者 ID','验收摘要','验收证据','验收时间','有效性','记录类型'];
@@ -1092,17 +1112,24 @@ h1{font-size:18px;line-height:1.35}
     }).join('');
     const legend=`<div class="rp-legend" aria-label="颜色含义">${[['danger','!','失败 / 退回'],['attention','!','待验收 / 阻塞'],['running','●','执行中'],['replan','◆','重规划'],['success','✓','已解决'],['neutral','○','历史 / 其他']].map(([tone,icon,label])=>`<span data-tone="${tone}"><i aria-hidden="true">${icon}</i>${label}</span>`).join('')}</div>`;
     const evidence = value => String(value||'').trim() ? `<pre class="rp-evidence">${esc(value)}</pre>` : '';
+    const acceptanceReport = task => {
+      const contract=task.acceptance,checks=list(task.acceptanceChecks).length?task.acceptanceChecks:list(task.submissionAcceptanceChecks),reviewChecks=list(task.reviewAcceptanceChecks);
+      if(!contract&&!checks.length&&!reviewChecks.length&&!list(task.acceptanceArtifacts).length&&!list(task.submissionArtifacts).length&&!list(task.verifiedArtifacts).length)return '<p>未使用逐项验收契约；不得推断逐项通过。</p>';
+      const checkText=values=>values.length?values.map(c=>`${esc(c.criterion_id)} · ${esc(({pass:'通过',fail:'未通过',not_run:'未执行'}[c.verdict])||c.verdict)}${c.note?' · '+esc(c.note):''}${c.evidence?' · '+esc(c.evidence):''}`).join('<br>'):'未记录';
+    const artifactText=values=>values.length?values.map(a=>[a.source_task_id,a.source_attempt_id,a.artifact_id,a.id,a.version,a.uri].filter(Boolean).map(esc).join(' · ')).join('<br>'):'未记录';
+      return `<p><strong>验收契约</strong>：${contract?`v${esc(contract.version)} · ${list(contract.criteria).length} 项`:'未记录'}</p>${task.acceptanceFingerprint?`<p><strong>契约指纹</strong>：${esc(task.acceptanceFingerprint)}</p>`:''}${contract?`<p><strong>验收标准</strong><br>${list(contract.criteria).map(c=>`${esc(c.id)}（${c.required===false?'可选':'必需'} · ${esc(c.method)}）· ${esc(c.text)}`).join('<br>')}</p>`:''}<p><strong>执行方核验</strong><br>${checkText(checks)}</p><p><strong>主会话复核</strong><br>${checkText(reviewChecks)}</p><p><strong>提交产物及版本</strong><br>${artifactText(list(task.acceptanceArtifacts).length?task.acceptanceArtifacts:task.submissionArtifacts)}</p><p><strong>核验产物及来源尝试</strong><br>${artifactText(list(task.verifiedArtifacts))}</p>`;
+    };
     const responsibility = t => `<div class="rp-responsibility"><p>计划执行者：${esc(t.plannedExecutor||'计划执行者未记录')} · 实际执行者：${esc(t.executor||'未记录')}</p>${t.agentName||t.dispatchStatus?`<p>实际智能体 ID：${esc(t.agentName||'未绑定 / 未记录')} · 派发：${esc(t.dispatchStatus||'未记录')}</p>`:''}${t.selfExecutionReason?`<p>主会话自执行原因：${esc(t.selfExecutionReason)}</p>`:''}<p>验收状态：${esc(t.reviewLabel||'验收未记录（旧记录不推断验收）')}</p>${t.reviewStatus==='accepted'&&t.submittedOutcome==='open'?'<p>接受的是结果报告；任务仍未解决。</p>':''}${t.submittedOutcome?`<details class="rp-subdetails rp-submission"><summary>执行提交 · ${esc(t.submittedOutcome)}</summary><p>执行已结束，不等于验收通过。</p><p>${esc(t.submissionSummary)}</p>${evidence(t.submissionEvidence)}<p>提交时间：${esc(stamp(t.submittedAt))}</p></details>`:''}</div>`;
     const review = t => `<article class="rp-review"><p>${esc(t.reviewLabel||'验收未记录')} · ${esc(t.attemptId||'执行编号未记录')}${t.invalidatedBy?' · 已失效':''}</p>${t.kind==='synthesis'?`<p>综合验收执行记录 · ${esc(t.executor)} · ${esc(stamp(t.finishedAt))}</p><p>${esc(t.summary)}</p>${evidence(t.evidence)}`:t.reviewDecision?`<p>决定：${esc(t.reviewDecision==='accept'?'接受':t.reviewDecision==='reject'?'退回':t.reviewDecision)} · 验收者：${esc(t.reviewer||'未记录')}${t.reviewerName?' · '+esc(t.reviewerName):''} · ${esc(stamp(t.reviewedAt))}</p><p>${esc(t.reviewSummary)}</p>${evidence(t.reviewEvidence)}`:'<p>执行者已经提交结果，主会话尚未接受或退回。</p>'}</article>`;
     const executionMarkup = task => task.execution ? `<p class="rp-execution-receipt">${esc(executionReceiptText(task.execution))}</p>` : '';
-    const attemptMarkup = a => `<article class="rp-attempt">${executionMarkup(a)}<p>尝试时标题：${esc(a.taskTitle)}</p><p><strong>第 ${esc(a.number||'—')} 次 · ${esc(a.kindLabel)}</strong> · ${esc(a.status)} · ${esc(a.outcome)} · ${esc(a.validity||'有效')}</p><p>尝试开始 ${esc(a.startedAt?stamp(a.startedAt):'历史未记录')}${a.timeBoundarySources?.started_at?'（开始未知，以结束边界保底）':''}<br>尝试结束 ${esc(a.finishedAt?stamp(a.finishedAt):a.executionStatus==='running'||a.status==='执行中'?'尚未结束':'历史未记录')}${a.timeBoundarySources?.finished_at?'（关闭时保底）':''}</p><p>${esc(a.summary||'暂无执行摘要。')}</p>${responsibility(a)}<p>模型：${esc(a.model||'未记录')} / ${esc(a.thinking||'未记录')} · ${esc(a.metadataEvidence||'来源未记录')}</p>${a.invalidatedBy?`<p class="r-amber">失效来源：${esc(a.invalidatedBy)} · 失效时间：${esc(stamp(a.invalidatedAt))}</p>`:''}${a.dispatchText?`<details><summary>派发任务文本</summary>${evidence(a.dispatchText)}</details>`:''}${evidence(a.evidence)}<p class="r-source">Attempt ID：${esc(a.attemptId||'未记录')}</p></article>`;
+    const attemptMarkup = a => `<article class="rp-attempt">${executionMarkup(a)}<p>尝试时标题：${esc(a.taskTitle)}</p><p><strong>第 ${esc(a.number||'—')} 次 · ${esc(a.kindLabel)}</strong> · ${esc(a.status)} · ${esc(a.outcome)} · ${esc(a.validity||'有效')}</p><p>尝试开始 ${esc(a.startedAt?stamp(a.startedAt):'历史未记录')}${a.timeBoundarySources?.started_at?'（开始未知，以结束边界保底）':''}<br>尝试结束 ${esc(a.finishedAt?stamp(a.finishedAt):a.executionStatus==='running'||a.status==='执行中'?'尚未结束':'历史未记录')}${a.timeBoundarySources?.finished_at?'（关闭时保底）':''}</p><p>${esc(a.summary||'暂无执行摘要。')}</p>${acceptanceReport(a)}${responsibility(a)}<p>模型：${esc(a.model||'未记录')} / ${esc(a.thinking||'未记录')} · ${esc(a.metadataEvidence||'来源未记录')}</p>${a.invalidatedBy?`<p class="r-amber">失效来源：${esc(a.invalidatedBy)} · 失效时间：${esc(stamp(a.invalidatedAt))}</p>`:''}${a.dispatchText?`<details><summary>派发任务文本</summary>${evidence(a.dispatchText)}</details>`:''}${evidence(a.evidence)}<p class="r-source">Attempt ID：${esc(a.attemptId||'未记录')}</p></article>`;
     const titleHistoryMarkup = task => `<details class="rp-title-history"><summary>原始标题与标题修订 · ${list(task.titleRevisions).length} 次</summary><p>原始标题：${esc(task.originalTitle||task.title)}</p>${list(task.titleRevisions).map(r=>`<p>${esc(r.before)} → ${esc(r.after)} · ${esc(stamp(r.revised_at))}</p><p>修订原因：${esc(r.reason)}</p>`).join('')}</details>`;
     const taskBody = task => {
       const attempts=attemptsFor(task), reviews=attempts.filter(a=>['pending','accepted','rejected'].includes(a.reviewStatus)||a.reviewDecision||a.kind==='synthesis');
       const dependencyIds=String(task.dependencies||'').split('、').filter(Boolean),blockedIds=new Set(String(task.blockedBy||'').split('、').filter(Boolean)),peerTitles=new Map(tasksFor(task.roundKey).map(t=>[t.taskId,t.title]));
       const dependencyMarkup=dependencyIds.map(id=>esc(peerTitles.get(id)||id)+(blockedIds.has(id)?'（未满足）':'（已满足）')).join('；');
       if ((['pending','accepted','rejected'].includes(task.reviewStatus)||task.reviewDecision)&&!reviews.some(a=>a.attemptId===task.attemptId)) reviews.push(task);
-      return `<div class="rp-node-body r-detail-inner">${titleHistoryMarkup(task)}${executionMarkup(task)}${task.splitReviewRequired?'<p>须复核拆分</p>':''}${task.latestWriteRejection&&task.latestWriteRejection.requires_recovery!==false&&!task.latestWriteRejection.recovered_at?'<p>收尾写入被拒 · 待恢复</p>':''}<p>原始状态：${esc(task.status)} · ${esc(task.executionStatus)}${task.outcome?' · '+esc(task.outcome):''}</p><p class="r-detail-summary">${esc(task.summary||'暂无执行摘要。')}</p><div class="r-times"><span class="rp-lifecycle-source">${esc(task.timeSource||'原始记录')}</span><span>${esc(task.cumulativeTime||'')}</span><span>${esc(task.overallTime||'')}</span><span>来源节点 / 尝试：${esc(task.timeEvidence||'未记录')}</span><span>展示开始 ${esc(task.timeStart?stamp(task.timeStart):task.timeStartState||'历史未记录')}</span><span>展示结束 ${esc(task.timeEnd?stamp(task.timeEnd):task.timeEndState||'历史未记录')}</span><span>${task.historyAttemptCount?'另保留 '+esc(task.historyAttemptCount)+' 条历史尝试；不作为当前开始或结束。':''}</span><span title="${esc(task.startedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾开始':'当前尝试开始'} ${esc(task.startedAt?stamp(task.startedAt):task.timeKind==='derived'?'未记录':task.timeStartState||'历史未记录')}</span><span title="${esc(task.finishedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾结束':'当前尝试结束'} ${esc(task.finishedAt?stamp(task.finishedAt):task.timeKind==='derived'?'未记录':task.timeEndState||'历史未记录')}</span><span>执行角色 ${esc(task.executor||'未记录')}</span>${task.durationSeconds!==''?`<span>当前尝试耗时${!task.finishedAt?'（截至快照）':''}：${esc(task.durationSeconds)} 秒</span>`:''}</div>${dependencyMarkup?`<p>前置条件：${dependencyMarkup}</p>${task.dependencyConditions?`<p>放行要求：${esc(task.dependencyConditions)}</p>`:''}`:''}${task.blockedBy?`<p class="r-amber">阻塞前置：${esc(task.blockedBy)}</p>`:''}${task.statusKey==='waiting_main_session'?`<p>等待主会话当前执行项：${esc(task.mainSessionWaitingOn)}</p>`:''}${['inventory_obsolete','inventory_covered'].includes(task.statusKey)?`<p>${esc(task.status)}${task.inventoryReason?' · 原因：'+esc(task.inventoryReason):''}</p><p>下一步：${esc(inventoryNextStep)}</p>`:''}${responsibility(task)}<p>模型：${esc(task.model||'未记录')} / 思维强度 ${esc(task.thinking||'未记录')} · ${esc(task.metadataEvidence||'来源未记录')}</p>${task.evidence?`<details class="rp-subdetails"><summary>当前证据</summary>${evidence(task.evidence)}</details>`:''}${task.dispatchText?`<details class="rp-subdetails"><summary>派发说明</summary>${evidence(task.dispatchText)}</details>`:''}<details class="rp-subdetails"><summary>执行记录 · ${attempts.length} 次</summary>${attempts.length?[...attempts].reverse().map(attemptMarkup).join(''):'<p>未记录执行尝试。</p>'}</details><details class="rp-subdetails rp-review-history"><summary>验收历史 · ${reviews.length} 次</summary>${reviews.length?reviews.map(review).join(''):`<p>${!task.responsibilityCurrent?'未记录；旧执行记录不代表主会话已接受。':!task.leaf?'尚未记录综合验收。':task.reviewNotRequired?'主会话直接执行，无需独立提交复核。':'尚无验收记录。'}</p>`}</details><p class="r-source">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)} · 父节点 ID：${esc(task.parentId||'无')}<br>任务实例：${esc(task.taskInstanceId)}<br>轮次：${esc(task.roundKey)}</p></div>`;
+      return `<div class="rp-node-body r-detail-inner">${titleHistoryMarkup(task)}${executionMarkup(task)}${task.splitReviewRequired?'<p>须复核拆分</p>':''}${task.latestWriteRejection&&task.latestWriteRejection.requires_recovery!==false&&!task.latestWriteRejection.recovered_at?'<p>收尾写入被拒 · 待恢复</p>':''}<p>原始状态：${esc(task.status)} · ${esc(task.executionStatus)}${task.outcome?' · '+esc(task.outcome):''}</p><p class="r-detail-summary">${esc(task.summary||'暂无执行摘要。')}</p>${acceptanceReport(task)}<div class="r-times"><span class="rp-lifecycle-source">${esc(task.timeSource||'原始记录')}</span><span>${esc(task.cumulativeTime||'')}</span><span>${esc(task.overallTime||'')}</span><span>来源节点 / 尝试：${esc(task.timeEvidence||'未记录')}</span><span>展示开始 ${esc(task.timeStart?stamp(task.timeStart):task.timeStartState||'历史未记录')}</span><span>展示结束 ${esc(task.timeEnd?stamp(task.timeEnd):task.timeEndState||'历史未记录')}</span><span>${task.historyAttemptCount?'另保留 '+esc(task.historyAttemptCount)+' 条历史尝试；不作为当前开始或结束。':''}</span><span title="${esc(task.startedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾开始':'当前尝试开始'} ${esc(task.startedAt?stamp(task.startedAt):task.timeKind==='derived'?'未记录':task.timeStartState||'历史未记录')}</span><span title="${esc(task.finishedAt||'未记录')}">${task.timeKind==='derived'?'综合验收 / 收尾结束':'当前尝试结束'} ${esc(task.finishedAt?stamp(task.finishedAt):task.timeKind==='derived'?'未记录':task.timeEndState||'历史未记录')}</span><span>执行角色 ${esc(task.executor||'未记录')}</span>${task.durationSeconds!==''?`<span>当前尝试耗时${!task.finishedAt?'（截至快照）':''}：${esc(task.durationSeconds)} 秒</span>`:''}</div>${dependencyMarkup?`<p>前置条件：${dependencyMarkup}</p>${task.dependencyConditions?`<p>放行要求：${esc(task.dependencyConditions)}</p>`:''}`:''}${task.blockedBy?`<p class="r-amber">阻塞前置：${esc(task.blockedBy)}</p>`:''}${task.statusKey==='waiting_main_session'?`<p>等待主会话当前执行项：${esc(task.mainSessionWaitingOn)}</p>`:''}${['inventory_obsolete','inventory_covered'].includes(task.statusKey)?`<p>${esc(task.status)}${task.inventoryReason?' · 原因：'+esc(task.inventoryReason):''}</p><p>下一步：${esc(inventoryNextStep)}</p>`:''}${responsibility(task)}<p>模型：${esc(task.model||'未记录')} / 思维强度 ${esc(task.thinking||'未记录')} · ${esc(task.metadataEvidence||'来源未记录')}</p>${task.evidence?`<details class="rp-subdetails"><summary>当前证据</summary>${evidence(task.evidence)}</details>`:''}${task.dispatchText?`<details class="rp-subdetails"><summary>派发说明</summary>${evidence(task.dispatchText)}</details>`:''}<details class="rp-subdetails"><summary>执行记录 · ${attempts.length} 次</summary>${attempts.length?[...attempts].reverse().map(attemptMarkup).join(''):'<p>未记录执行尝试。</p>'}</details><details class="rp-subdetails rp-review-history"><summary>验收历史 · ${reviews.length} 次</summary>${reviews.length?reviews.map(review).join(''):`<p>${!task.responsibilityCurrent?'未记录；旧执行记录不代表主会话已接受。':!task.leaf?'尚未记录综合验收。':task.reviewNotRequired?'主会话直接执行，无需独立提交复核。':'尚无验收记录。'}</p>`}</details><p class="r-source">${esc(task.pathTitles)}<br>节点 ID：${esc(task.taskId)} · 父节点 ID：${esc(task.parentId||'无')}<br>任务实例：${esc(task.taskInstanceId)}<br>轮次：${esc(task.roundKey)}</p></div>`;
     };
     // Each generated key is scoped to the normalized instance and round, never to a reused task ID.
     const renderTree = plan => {
@@ -1688,8 +1715,9 @@ h1{font-size:18px;line-height:1.35}
     const value = key => typeof data[key] === 'string' ? data[key].trim() : '';
     const mode = value('execution_mode');
     const executor = mode === 'main_session' ? '主会话' : mode === 'subagent' ? '子智能体' : '执行者未记录';
-    const model = value('model') || '模型未记录';
-    const effort = value('reasoning_effort') ? '思考 ' + value('reasoning_effort') : '思考未记录';
+    const model = value('model') || (value('model_source') === 'inherited' ? '模型继承配置（实际值未记录）' : '模型未记录');
+    const effort = value('reasoning_effort') ? '思考 ' + value('reasoning_effort')
+      : value('reasoning_effort_source') === 'inherited' ? '思考强度继承配置（实际值未记录）' : '思考强度未记录';
     const provenance = data.metadata_provenance?.verification === 'not_verified_by_codex_host' ? '未由 Codex 核实'
       : data.metadata_provenance ? '来源未知' : (data.model || data.reasoning_effort ? '来源未标注' : '');
     return [executor, value('agent_name'), model, effort, provenance].filter(Boolean).join(' · ');
@@ -1701,7 +1729,10 @@ h1{font-size:18px;line-height:1.35}
     // A pending dispatch can contain a planning alias in the immutable assignment.
     // Only legacy records without dispatch metadata fall back to that old field.
     const agent = text(node.dispatch ? node.dispatch.agent_name : assignment.agent_name);
-    const summary = [role, agent, text(assignment.model), text(assignment.reasoning_effort) ? '思考 ' + text(assignment.reasoning_effort) : ''].filter(Boolean).join(' · ');
+    const model = text(assignment.model) || (assignment.model_source === 'inherited' ? '模型继承配置（实际值未记录）' : '');
+    const effort = text(assignment.reasoning_effort) ? '思考 ' + text(assignment.reasoning_effort)
+      : assignment.reasoning_effort_source === 'inherited' ? '思考强度继承配置（实际值未记录）' : '';
+    const summary = [role, agent, model, effort].filter(Boolean).join(' · ');
     if (!summary) return;
     const line = document.createElement('span'); line.className = 'step-execution-meta'; line.textContent = summary; target.append(line);
   }
@@ -1752,6 +1783,34 @@ h1{font-size:18px;line-height:1.35}
     return Array.from(text).length > previewLimit || text.split('\n').length > 2
       ? collapsibleField(label, text, key, openDetails, className, previewLimit)
       : field(label, text, className);
+  }
+  function acceptanceDetails(record, prefix, openDetails, { includeContract = false } = {}) {
+    const contract = record.acceptance && typeof record.acceptance === 'object' ? record.acceptance : null;
+    const checks = list(record.acceptance_checks);
+    const submissionChecks = list(record.submission?.acceptance_checks);
+    const reviewChecks = list(record.review?.acceptance_checks);
+    const artifacts = list(record.artifacts).length ? list(record.artifacts) : list(record.submission?.artifacts);
+    const verified = list(record.verified_artifacts).length ? list(record.verified_artifacts) : list(record.submission?.verified_artifacts);
+    const labelVerdict = value => ({pass:'通过',fail:'未通过',not_run:'未执行'}[value] || String(value || '未记录'));
+    const formatChecks = values => values.length ? values.map(item => [item.criterion_id, labelVerdict(item.verdict), item.note, item.evidence].filter(Boolean).join(' · ')).join('\n') : '未记录';
+    const formatArtifacts = values => values.length ? values.map(item => [item.id, item.version, item.uri].filter(Boolean).join(' · ')).join('\n') : '未记录';
+    const formatRefs = values => values.length ? values.map(item => [item.source_task_id, item.source_attempt_id, item.artifact_id, item.version].filter(Boolean).join(' · ')).join('\n') : '未记录';
+    if (!includeContract && !checks.length && !submissionChecks.length && !reviewChecks.length && !artifacts.length && !verified.length) return null;
+    const block = document.createElement('div'); block.className = 'detail-group-content acceptance-record';
+    if (includeContract) {
+      block.append(field('验收契约', contract ? 'v' + String(contract.version) + ' · ' + list(contract.criteria).length + ' 项' : '未使用逐项验收契约；不得推断逐项通过。'));
+      if (record.acceptance_fingerprint) block.append(field('契约指纹', record.acceptance_fingerprint));
+      if (contract) block.append(field('验收标准', list(contract.criteria).map(item => item.id + (item.required === false ? '（可选）' : '（必需）') + ' · ' + item.method + ' · ' + item.text).join('\n') || '未记录'));
+      block.append(field('执行方核验', formatChecks(checks.length ? checks : submissionChecks)));
+      block.append(field('主会话复核', formatChecks(reviewChecks)));
+      block.append(field('提交产物及版本', formatArtifacts(artifacts)));
+      block.append(field('核验产物及来源尝试', formatRefs(verified)));
+    } else {
+      block.append(field('执行方逐项核验', formatChecks(checks.length ? checks : submissionChecks)));
+      block.append(field('提交产物及版本', formatArtifacts(artifacts)));
+      block.append(field('核验产物及来源尝试', formatRefs(verified)));
+    }
+    return block;
   }
   function responsibilityDetails(record, planned, prefix, openDetails, { omitSubmissionSummary = false, compact = false } = {}) {
     const value = responsibilityFields(record, planned);
@@ -1828,6 +1887,7 @@ h1{font-size:18px;line-height:1.35}
       if (attempt.execution) body.append(field('本轮执行回执', executionReceiptText(attempt.execution), 'execution-receipt'));
       body.append(field('配置来源', metadataEvidence(attempt.assignment), 'metadata-provenance'));
       body.append(responsibilityDetails(attempt, attempt.planned_assignment, record.dataset.key, openDetails));
+      const acceptance = acceptanceDetails(attempt, record.dataset.key, openDetails, {includeContract:true}); if (acceptance) body.append(acceptance);
       if (attempt.invalidated_by) body.append(field('失效原因', '任务 ' + attempt.invalidated_by + ' 已重试，此次结果保留作历史。'));
       if (attempt.summary) body.append(compactField('结果摘要', attempt.summary, record.dataset.key + ':summary', openDetails));
       if (list(attempt.evidence).length) body.append(evidenceField(attempt.evidence, record.dataset.key + ':evidence', openDetails));
@@ -2060,6 +2120,13 @@ h1{font-size:18px;line-height:1.35}
       const isRoot = id === String(rootId) && childIds.length > 0;
       const resultSummary = !childIds.length ? (node.review_status === 'pending' ? node.submission?.summary || node.summary : node.summary) : '';
       if (resultSummary) details.append(compactField('结果摘要', resultSummary, prefix + ':' + id + ':result-summary', openDetails, 'leaf-result-summary', 160));
+      const acceptanceSummary = node.acceptance_summary;
+      if (acceptanceSummary && acceptanceSummary.declared) {
+        const marker = document.createElement('span'); marker.className = 'request-tag';
+        const sourceLabel = acceptanceSummary.check_source === 'review' ? '主会话核验' : acceptanceSummary.check_source === 'submission' ? '执行自检' : '自检';
+        marker.textContent = sourceLabel + ' ' + String(acceptanceSummary.required_pass_count || 0) + '/' + String(acceptanceSummary.required_count || 0);
+        right.append(marker);
+      }
       const body = document.createElement('details'); body.className = 'task-details execution-review' + (isRoot ? ' root-metadata' : '');
       body.dataset.key = prefix + ':' + id + (isRoot ? ':root-metadata' : ':execution-review'); body.open = openDetails.get(body.dataset.key) || false;
       const heading=document.createElement('summary'); heading.textContent=isRoot ? '统筹与综合验收详情' : '执行与验收详情'; body.append(heading);
@@ -2085,6 +2152,7 @@ h1{font-size:18px;line-height:1.35}
       more.dataset.key = prefix + ':' + id + ':more'; more.open = openDetails.get(more.dataset.key) || false;
       const moreHeading = document.createElement('summary'); moreHeading.textContent = '更多详情';
       const moreContent = document.createElement('div'); moreContent.className = 'detail-group-content';
+      const acceptance = acceptanceDetails(node, prefix + ':' + id, openDetails, {includeContract:true}); if (acceptance) moreContent.append(acceptance);
       if (node.is_added) moreContent.append(field('追加原因', node.addition_reason || '未记录'));
       if (node.stage_inventory_due_attempt) moreContent.append(field('阶段盘点', '待主会话盘点未解决任务。'));
       if (list(node.stage_inventories).length) {
