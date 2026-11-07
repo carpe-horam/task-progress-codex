@@ -24,7 +24,7 @@ async function main(){
   const frame=await host.mount(page,'lifecycle',await host.rawRpc('render_progress',{session_id:binding.session_id}),'fullscreen');
   const task=frame.locator('details[data-key="task:'+binding.task_instance_id+':epoch:0:check"]');
   await task.waitFor();
-  assert.match(await task.locator(':scope > summary').textContent(),/已重试 1 次/);
+  assert.match(await task.locator(':scope > summary').textContent(),/第 2 轮执行/);
   assert.match(await task.locator(':scope > summary .step-right').textContent(),/执行已结束 · 待任务收尾/);
   await task.locator(':scope > summary').click();
   assert.match(await task.locator('.execution-receipt').first().textContent(),/browser-run-2/);
