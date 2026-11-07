@@ -2023,7 +2023,9 @@ h1{font-size:18px;line-height:1.35}
   function appendRetryBadge(title, attempt) {
     if (!Number.isSafeInteger(attempt) || attempt <= 1) return;
     const badge = document.createElement('span'); badge.className = 'retry-badge';
-    badge.textContent = '↻ 已重试 ' + (attempt - 1) + ' 次'; title.append(badge);
+    badge.textContent = '↻ 第 ' + attempt + ' 轮执行';
+    badge.title = '累计执行 ' + attempt + ' 轮（含首次执行）；此数字不表示失败次数。';
+    title.append(badge);
   }
   function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false, timeContext = null, rootContext = null, rootStart = 1) {
     const fragment = document.createDocumentFragment();

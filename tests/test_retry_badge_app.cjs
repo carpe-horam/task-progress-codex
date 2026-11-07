@@ -24,16 +24,16 @@ async function main() {
   const refresh=async()=>{await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();};
   await refresh();
   const badge=work.locator(':scope > summary .retry-badge');
-  assert.equal(await badge.textContent(),'↻ 已重试 1 次');
+  assert.equal(await badge.textContent(),'↻ 第 2 轮执行');
   assert.equal(await work.getAttribute('open'),null);
   assert.match(await work.locator(':scope > summary .step-right').textContent(),/进行中|执行中/);
   await host.rawRpc('update_task',{...binding,task_id:'work',attempt_id:attempt,execution_status:'finished',outcome:'resolved',summary:'Resolved'});
   await refresh();
-  assert.equal(await badge.textContent(),'↻ 已重试 1 次');
+  assert.equal(await badge.textContent(),'↻ 第 2 轮执行');
   assert.match(await work.locator(':scope > summary .step-right').textContent(),/已解决/);
   started=await host.rawRpc('update_task',{...binding,task_id:'work',execution_status:'running',retry:true,assignment});
   await refresh();
-  assert.equal(await badge.textContent(),'↻ 已重试 2 次');
+  assert.equal(await badge.textContent(),'↻ 第 3 轮执行');
   await page.setViewportSize({width:320,height:800});
   assert.equal(await badge.isVisible(),true);
   assert.equal(await frame.locator('body').evaluate(e=>e.scrollWidth <= e.clientWidth),true);
@@ -48,7 +48,7 @@ async function main() {
   const page2=await host.page();
   const frame2=await host.mount(page2,'linear',await host.rawRpc('render_progress',{session_id:lb.session_id}),'fullscreen');
   await frame2.locator('#steps .retry-badge').waitFor();
-  assert.equal(await frame2.locator('#steps .retry-badge').textContent(),'↻ 已重试 1 次');
+  assert.equal(await frame2.locator('#steps .retry-badge').textContent(),'↻ 第 2 轮执行');
   assert.deepEqual(host.errors,[]);
   await page2.close();
   console.log('Retry badge: first attempt, repeated retries, resolved retry, linear step and compact viewport passed.');
