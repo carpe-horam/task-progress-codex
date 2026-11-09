@@ -2,6 +2,17 @@
 
 进度内容默认不附在写操作或展示入口的会话消息里；仅显式查询才返回对应数据。优先读最小范围，不在每次 mutation 后机械地查询整树或全量。
 
+### 先选查询目的，再读最小范围
+
+- **首次开始或恢复**：先查一次 `overview`。恢复时按主 skill 再查 `context` 和完整的请求分页；如果只是继续当前叶任务，不要每轮都重复读 context。
+- **判断计划或依赖**：只在建立/修改计划、阶段切换或需要挑选下一项工作时读 `tree`、指定 `tasks` 或 `get_ready_tasks`。已知目标节点时优先查该节点；不要为了读取一个节点而请求 `full`。
+- **核对提交与证据**：验收子智能体结果时查对应 `tasks`；只有摘要缺少执行尝试或失效记录等必要证据时再读该节点的 `records`。
+- **检查历史**：只在用户询问历史、需要审计先前计划或当前证据明确依赖历史时分页读取对应 `history_kind`。`full` 仅用于确需完整目标实例、且无法由定向查询满足的问题。
+- **写后读取**：一次写操作的成功回执已经证明该操作被记录。只有下一步确实依赖被写入的节点详情、依赖证据、review 状态或当前计划结构时再查；相邻的多次写操作可先完成后做一次合并的定向读取。
+- **分页与版本冲突**：同一组分页固定沿用第一页的 `state_revision`。工具明确报告 revision 变化时，从第一页用新 revision 重读一次，不要混用新旧页；身份或参数错误则按主 skill 的失败处理规则停止盲目重试。
+
+同一轮内若刚成功读取了仍有效的视图，且期间没有计划/状态写入、上下文恢复或用户新问题，复用已有结果，不要重复调用相同的 `get_progress`。不要为“确认工具还可用”而轮询；等待、无变化状态和宿主后台刷新均不需要模型再次查询。
+
 - 写操作的身份与状态位于 `structuredContent` 顶层：保存 `session_id`、`task_instance_id`、`root_id`、`epoch`；启动返回的 `attempt_id` 也在顶层，单个目标状态在 `affected`。回执无 `progress`、节点摘要、证据或 `session_work`，不能从中读取完整结果。请求回执另含 `request_id`、`request_task_instance_id`、`request_status`；`route_request` 创建并行实例后使用 `request_task_instance_id`，不要误用当前主任务 ID。
 - `get_progress` 默认 `view="overview"`，只含计数、`history_summary`、`session_work_summary` 和至多 20 个 `split_review_due_ids`，没有完整上下文或节点。查询元数据在 `structuredContent` 顶层，数据在 `structuredContent.progress`。
 - overview 的 `stage_inventory_due` 也最多列出 20 项；检查 `stage_inventory_due_count` 和 `stage_inventory_due_has_more`。被截断时分页读取 root 的 `tree`，从节点的 `stage_inventory_due_attempt` 收集完整提醒。提交盘点后 revision 改变，下一次盘点须重新读取。
