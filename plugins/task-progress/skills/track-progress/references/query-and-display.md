@@ -13,6 +13,10 @@
 
 同一轮内若刚成功读取了仍有效的视图，且期间没有计划/状态写入、上下文恢复或用户新问题，复用已有结果，不要重复调用相同的 `get_progress`。不要为“确认工具还可用”而轮询；等待、无变化状态和宿主后台刷新均不需要模型再次查询。
 
+**合并同一轮的读取。**需要比较多个节点时，优先一次 `view="tasks"` 传入最多 20 个 `task_ids`；批量结果已包含当前提交、派发、review 和证据时，不要仅因节点失败、待复核或状态变化而补读 `records`。只有下一步判断确实需要、且 `tasks` 未提供的历史尝试或失效记录等细节时，才读取相关节点的 `records`，不要再把同一批节点逐个重查。`select_work_context` 用于切换到具体节点/attempt 或恢复执行；在范围未变时，不要把它当作状态刷新工具。
+
+**降低外部运行的轮询噪声。**等待长时间 Dagu gate 时优先使用宿主的事件等待能力；若只能轮询，稳定运行期间通常每 60–90 秒读取一次 run 状态，临近预期完成或需要及时处理结果时可缩短间隔。仅在 run 阶段变化、失败，或下一步判断确实依赖详细输出时读取 `step_log`；无变化时不要每个轮询周期同时重读完整日志。发现阶段变化后再刷新相关状态与日志，不把“已等待一段时间”本身记录为状态变化。
+
 - 写操作的身份与状态位于 `structuredContent` 顶层：保存 `session_id`、`task_instance_id`、`root_id`、`epoch`；启动返回的 `attempt_id` 也在顶层，单个目标状态在 `affected`。回执无 `progress`、节点摘要、证据或 `session_work`，不能从中读取完整结果。请求回执另含 `request_id`、`request_task_instance_id`、`request_status`；`route_request` 创建并行实例后使用 `request_task_instance_id`，不要误用当前主任务 ID。
 - `get_progress` 默认 `view="overview"`，只含计数、`history_summary`、`session_work_summary` 和至多 20 个 `split_review_due_ids`，没有完整上下文或节点。查询元数据在 `structuredContent` 顶层，数据在 `structuredContent.progress`。
 - overview 的 `stage_inventory_due` 也最多列出 20 项；检查 `stage_inventory_due_count` 和 `stage_inventory_due_has_more`。被截断时分页读取 root 的 `tree`，从节点的 `stage_inventory_due_attempt` 收集完整提醒。提交盘点后 revision 改变，下一次盘点须重新读取。

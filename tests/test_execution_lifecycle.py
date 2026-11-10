@@ -119,7 +119,8 @@ class ExecutionLifecycleTests(unittest.TestCase):
         result = self.write("update_task", attempt_id=self.aid, execution_status="running", summary="继续工作")
         self.assertEqual(result["structuredContent"]["recovery"]["code"], "split_review_required")
         self.assertTrue(self.write("review_task_split", attempt_id=self.aid, reason="Two outcomes",
-                                  remaining_outcomes=["Gate", "Push"], evidence=["fixture://scope"]).get("isError"))
+                                  remaining_outcomes=["Gate", "Push"], evidence=["fixture://scope"],
+                                  summary="No split needed").get("isError"))
         review = self.write("review_task_split", attempt_id=self.aid, reason="Only the existing check exit remains",
                             remaining_outcomes=["Check result"], evidence=["fixture://scope"], valid_for_seconds=60)
         self.assertFalse(review.get("isError"), review)
@@ -128,6 +129,22 @@ class ExecutionLifecycleTests(unittest.TestCase):
         self.assertTrue(self.node()["split_review_required"], "a new execution changes the reviewed scope")
         self.event(status="failed", exit_code=1, evidence=["fixture://failure"])
         self.assertEqual(self.node()["execution_status"], "failed")
+
+    def test_optional_split_review_summary_is_validated_and_persisted(self):
+        schema = next(tool["inputSchema"] for tool in server.TOOLS if tool["name"] == "review_task_split")
+        self.assertNotIn("summary", schema["required"])
+        self.assertEqual(schema["properties"]["summary"]["maxLength"], 12000)
+        args = dict(attempt_id=self.aid, reason="One remaining result",
+                    remaining_outcomes=["Check result"], evidence=["fixture://scope"])
+        for invalid in ("  ", "x" * 12001):
+            with self.subTest(length=len(invalid)):
+                result = self.write("review_task_split", **args, summary=invalid)
+                self.assertTrue(result.get("isError"), result)
+        result = self.write("review_task_split", **args, summary="  Wait for the current check.  ")
+        self.assertFalse(result.get("isError"), result)
+        records = self.rpc("get_progress", session_id=self.sid, task_instance_id=self.iid, view="records",
+                           task_id="check", record_kind="split_reviews")["structuredContent"]["progress"]["records"]
+        self.assertEqual([record["summary"] for record in records], ["Wait for the current check."])
 
     def test_split_decision_expires(self):
         self.write("review_task_split", attempt_id=self.aid, reason="One remaining result",
