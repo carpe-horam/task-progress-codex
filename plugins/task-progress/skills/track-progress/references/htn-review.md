@@ -44,6 +44,8 @@
 
 需要跨任务独立核验时，先在提交中给产物写固定版本：`artifacts:[{id,uri,version}]`；验证提交携带 `verified_artifacts`，主会话的独立核验项引用 `checked_artifacts`，均绑定来源 task/attempt、产物 ID 与版本。只写可变路径不足以证明核验对象一致。服务端只检查账本引用，不读取或校验文件字节；版本真实性仍须由实际核验者确认。界面、HTML 与 XLSX 会保留契约、双方 checks 和产物版本引用。
 
+**在启动目标 attempt 前规划独立核验。**若验收方法选 `independent_review`，先在同一任务分组中建立独立 verifier 叶节点，并让它依赖目标任务；验收分组必须包含目标和 verifier。目标任务与 verifier 必须分别绑定不同的实际 agent ID；目标提交固定版本的 `artifacts`，verifier 对该版本提交 `verified_artifacts`。两项结果都被接受为 `resolved` 后，主会话才在上层验收中逐项引用完全相同的产物版本。不要让目标任务的契约要求一个依赖该目标的 verifier，否则形成验收循环；把独立验收契约放在同时包含目标和 verifier 的上层结果节点。若只是由主会话检查一份评审报告，用 `inspection` 等适合的验收方法，不要把报告节点自身设为需要另一个 verifier 的 `independent_review`。契约在 attempt 启动时冻结，事后补 verifier 可能需要重规划并保留原尝试。
+
 继续执行时按需读取 context、tree/tasks 或 ready 列表核对实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
 
 `pending` 是新节点初始状态，`update_task` 不接受 pending。叶任务必须先启动再完成；只有 `finished` 须传 `outcome=resolved|open`。主会话自执行叶任务可直接结束，但要保留自执行原因。失败/取消也记录 summary/evidence。结果复核后再次 `get_ready_tasks`，将未解决前驱的证据传给能够处理它的后继。

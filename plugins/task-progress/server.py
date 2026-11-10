@@ -2895,9 +2895,10 @@ def _require_fresh_execution(data, node, execution_id, provider):
 
 
 def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcomes, evidence,
-                      task_instance_id=None, valid_for_seconds=600):
+                      task_instance_id=None, valid_for_seconds=600, summary=None):
     sid = _normalize_session_id(session_id)
     _nonempty(reason, "reason")
+    normalized_summary = _nonempty(summary, "summary") if summary is not None else None
     _query_integer(valid_for_seconds, "valid_for_seconds", 1, 600)
     if (not isinstance(remaining_outcomes, list) or len(remaining_outcomes) != 1
             or not all(isinstance(x, str) and x.strip() for x in remaining_outcomes)):
@@ -2912,6 +2913,7 @@ def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcome
         node["decomposition_review"] = {
             "attempt_id": attempt_id, "scope_fingerprint": lifecycle.fingerprint(node),
             "reason": reason, "remaining_outcomes": list(remaining_outcomes), "evidence": list(evidence),
+            "summary": normalized_summary,
             "reviewed_at": reviewed.isoformat(), "expires_at": (reviewed + timedelta(seconds=valid_for_seconds)).isoformat(),
         }
         node.setdefault("split_reviews", []).append(deepcopy(node["decomposition_review"]))
@@ -5756,6 +5758,7 @@ for _name, _title, _description, _extra, _required in [
     ("review_task_split", "结构化复核长任务拆分", "仅一个剩余结果可暂时保留原子叶；多个结果须decompose_task。复核绑定attempt/执行ID，最多有效10分钟；换执行立即失效。服务端拒绝摘要豁免；终态收尾始终允许。", {
         "reason": {"type": "string", "minLength": 1}, "remaining_outcomes": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}},
         "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "valid_for_seconds": {"type": "integer", "minimum": 1, "maximum": 600},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 12000, "description": "可选备注；仅记录在拆分复核，不豁免结构化拆分要求。"},
     }, ["session_id", "task_instance_id", "task_id", "attempt_id", "reason", "remaining_outcomes", "evidence"]),
 ]:
     TOOLS.append({"name": _name, "title": _title, "description": _description,
