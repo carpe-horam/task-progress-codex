@@ -49,6 +49,27 @@ codex plugin add task-progress@task-progress-codex
 
 安装后重启 Codex，首次 MCP 连接自动安装后台服务。已有同名 Marketplace 时先移除旧登记；更新源码后需重新安装插件并重启 Codex。此方式安装检出的源码，请在需要固定版本时自行检出相应标签或提交。
 
+### 安装到 DeepSeekRuntime（dsh）
+
+同一仓库在 `plugins/task-progress/dsh` 下另带一个 DeepSeekRuntime bundle，与 Codex 共用 `server.py`、`mcp_bridge.py`、`app.html`、skill 正文、后台服务和 `~/.cache/task-progress` 数据目录。
+
+```sh
+# 方式一：桌面端 Plugins → Add plugin → Local directory，选择
+#   <repo>/plugins/task-progress/dsh
+# 方式二：让 agent 调用 plugin_manager 的 install_bundle，target 填同一绝对路径
+```
+
+安装会为当前 profile 增加一行 `task-progress`（包名 `dsh-task-progress-plugin`），对 profile 内所有会话生效并在重启后保留；随后重新加载页面或重启应用一次，让面板前端生效。卸载使用 `remove_bundle`，仅移除插件行与依赖，不删除任务数据、凭据或后台服务。
+
+安装后的差异只在包装层，运行期行为与 Codex 一致：
+
+- 工具：插件在挂载时读取 `tools/list`，用**相同工具名**（`render_progress`、`get_progress` 等）注册到 `ctx.tools`，因此 skill 正文与示例命令在两个宿主中都有效。
+- skill：`track-progress` 与 `cleanup-task-progress-history` 通过 `ctx.skills` 注册，无需 `.dsh/skills` 链接或复制。
+- 交互卡片：`render_progress` 在会话内渲染 `app.html`；插件侧补上了 DeepSeekRuntime 缺失的 MCP Apps 宿主（握手 + `tools/call` 转发）。
+- 生命周期 hooks：`hooks/hooks.json` 尚未适配，DeepSeekRuntime 中的规划提醒只来自 skill 正文。
+
+自检：`GET <Web 地址>/task-progress/status` 返回解析到的插件目录、启动器、已注册工具名与 skill 名，以及桥接进程状态；这是区分「插件没挂载」和「Python 侧失败」最快的方式。更细的排障见 [plugins/task-progress/dsh/README.md](../plugins/task-progress/dsh/README.md)。
+
 ### 共享后台服务与连接桥接
 
 本机用户的 Codex 连接共享 `http://127.0.0.1:53421/mcp` 上的 **一个 Python 后台服务进程**。每条 MCP stdio 连接另有轻量 Python 桥接进程，仅负责启动检查、读取私有凭据与 HTTP 转发，不载入任务引擎或持有任务状态。关闭连接只结束桥接；服务由原生服务管理器托管，继续运行。请求不会经过 `http_headers_helper`；凭据助手不负责启动或托管后台服务。

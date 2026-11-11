@@ -1,0 +1,44 @@
+{
+  "name": "dsh-task-progress-plugin",
+  "version": "0.2.25",
+  "description": "DeepSeekRuntime (dsh) bundle for Task Progress: registers the task_progress MCP server, the track-progress skill, and the interactive progress card.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "task-progress",
+    "mcp",
+    "progress"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "icon": "./icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carpe-horam/task-progress-codex.git"
+  },
+  "homepage": "https://carpe-horam.github.io/task-progress-codex/"
+}

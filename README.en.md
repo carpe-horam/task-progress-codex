@@ -54,6 +54,33 @@ If you only have `python3` or `py`, configure a Python 3 `python` command that C
 
 </details>
 
+### 1b. Install into DeepSeekRuntime (dsh)
+
+The same repository also ships a DeepSeekRuntime bundle at
+`plugins/task-progress/dsh`:
+
+- **Desktop**: Plugins → Add plugin → Local directory, then pick that directory.
+- **CLI or other clients**: call `plugin_manager` `install_bundle` with that
+  directory's absolute path.
+
+The install adds one `task-progress` row (`dsh-task-progress-plugin`) for the
+whole profile and keeps it across restarts; reload the page (or restart the app)
+once so the panel front end loads. `remove_bundle` uninstalls it without deleting
+task data or the background service.
+
+Both hosts share `server.py`, `mcp_bridge.py`, `app.html`, the skill bodies, the
+background service and `~/.cache/task-progress`. Only the packaging differs:
+
+| Concern | Codex | DeepSeekRuntime |
+| --- | --- | --- |
+| Tools | `.mcp.json` starts the stdio MCP server | the bundle registers the same tool names from `tools/list` |
+| Skills | manifest `"skills"` | registered into `ctx.skills` at mount |
+| Interactive card | MCP Apps resource | in-conversation `render_progress` card with a local MCP Apps proxy |
+| Lifecycle hooks | `hooks/hooks.json` | not adapted yet; reminders come from the skill text alone |
+
+`GET /task-progress/status` on the Web origin reports the resolved paths and the
+registered tools and skills. Details: [dsh/README.md](plugins/task-progress/dsh/README.md).
+
 ### 2. Give it a real task
 
 Paste this into Codex and replace the text in brackets:
@@ -91,7 +118,7 @@ Ask Codex to **“Open Task Progress.”** The panel refreshes automatically. Ex
 
 ## How it fits into Codex
 
-Codex plans, executes and coordinates the work. Task Progress saves and displays task state, dependencies and evidence. Task data is stored locally, with separate progress for each session.
+Codex plans, executes and coordinates the work. Task Progress saves and displays task state, dependencies and evidence. Task data is stored locally, with separate progress for each session. Behavior is the same in DeepSeekRuntime, where the bundle registers the tools, skills and progress card at mount time.
 
 <details>
 <summary><strong>Three things to know</strong></summary>

@@ -162,7 +162,16 @@ h1{font-size:18px;line-height:1.35}
   const $ = id => document.getElementById(id);
   const setText = (id, value) => { const element = $(id); const text = String(value); if (element.textContent !== text) element.textContent = text; };
   let sessionId = null;
-  const viewId = 'view-' + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+  // A host may pin the view identity (the DeepSeekRuntime right-sidebar tab does):
+  // a remount then renews its own lease instead of colliding with the lease its
+  // previous frame left behind as a second fullscreen view of the same session.
+  const pinnedViewId = (() => {
+    try {
+      const value = new URLSearchParams(location.search).get('view_id');
+      return typeof value === 'string' && /^[A-Za-z0-9._:-]{1,120}$/.test(value) ? value : null;
+    } catch (_) { return null; }
+  })();
+  const viewId = pinnedViewId || 'view-' + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
   let displayMode = null;
   let availableDisplayModes = null;
   let displayIntent = null;
