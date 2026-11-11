@@ -1,5 +1,31 @@
 # Changelog
 
+## 未发布 — 双宿主打包（Codex + DeepSeekRuntime）
+
+- **新增 DeepSeekRuntime bundle**：`plugins/task-progress/dsh` 可安装到 dsh profile。插件在挂载时按 `tools/list` 注册同名 MCP 工具、通过 `ctx.skills` 注册 `track-progress` 与 `cleanup-task-progress-history`，并为 `render_progress` 提供会话内进度卡片（补上 dsh 缺失的 MCP Apps 宿主）。Codex 侧 `.codex-plugin/plugin.json`、`.mcp.json` 与 skill 正文不变，两套宿主共用 `server.py`、`mcp_bridge.py`、`app.html`、后台服务与数据目录。
+- **实现约束（有据）**：linked bundle 在本版 dsh 无法解析 `@deepseek-ai/dsh-tools`（`ERR_MODULE_NOT_FOUND`），故工具用普通定义对象注册；`ctx.tools.register` 要求每个工具声明 `output { schema, render }`；`@deepseek-ai/dsh-mcp-client` 行需要静态 `command`，无法从库检出目录自解析，因此改为插件自行注册工具。
+- **已验证**：`install_bundle` 返回 `application: applied`；`GET /task-progress/status` 报告 35 个工具与 2 个 skill 注册成功；`tool.call.toolview` 出现 `render_progress` 占用者；经 `/task-progress/rpc` 完成 `init_progress` → `get_progress` 真实往返。
+- **修复（安装后重启报错）**：bundle 清单的 `icon` 曾指向目录外的 `../assets/task-progress-icon.svg`，dsh 校验元信息时判定 `icon must remain inside its manifest directory`，导致整行在冷启动时不加载（进程内 reload 不跑这项校验，所以当时看不出问题）。现随包携带 `dsh/icon.svg` 并在 `files` 中声明；新增回归用例逐项检查 `icon`/`main`/`exports`/`dsh.bundle.patch`/`files` 均留在清单目录内且指向真实文件。
+- **清理**：移除早期失败安装留下的重复 bundle 记录（`dsh-task-progress`，其 source 为畸形的 `dsh-task-progress@link:...` 且与本 bundle 争用同一行 `task-progress`）。
+- **修复（实测发现）**：MCP 结果只转发了 `content`，而 `session_id`、`task_instance_id`、`epoch`、`revision` 都在 `structuredContent` 里，导致 agent 拿到「已记录。」后无法继续下一次调用。现在两半都转发。
+- **修复（实测发现）**：卡片此前在拿不到会话 id 时不挂 iframe，MCP Apps 握手因此永不发生。现在 iframe 始终挂载，会话依次取自工具调用参数、工具结果、宿主记录的最近一次进度调用（`GET /task-progress/session`）。
+- **新增侧边栏面板**：`sidebar.panellist`（id `task-progress`，序 30）与对应 `main` 面板，与卡片共用同一会话，进度不必回滚到工具调用行才能看到。
+- **实测记录**：卡片内容正确显示；侧边栏项注册为 active；工具 35 个、skill 2 个；`tests/test_dsh_bundle.py` 15 项、后端 341 项通过。
+- **侧边栏面板改为原生内容优先**：`sidebar.panellist`（id `task-progress`）面板自己用 `get_progress(view:"tree")` 每 5 秒取数，渲染标题、进度条、完成/执行中/待复核/未解决计数与最多 40 个任务节点（状态徽标 + 层级缩进），嵌入的 `app.html` 只作为增强；因此嵌入失败时侧边栏仍有内容。
+- **新增诊断端点**：`GET /task-progress/status`（路径、工具/skill 名、bridge、会话、`diagnostics`）、`GET /task-progress/session`、`POST /task-progress/diag`（客户端上报，宿主保留最近 40 条）。卡片与面板会上报 `card-frame-loaded` / `panel-mounted` / `panel-frame-loaded`，使「挂载但空白」与「从未挂载」可从宿主侧区分。
+- **修复（用户实测报错）**：侧边栏面板报 `React is not defined`。`useSession` / `useHostSession` 写在了 IIFE 顶层，而 `React` 只是 `createX(React)` 工厂的形参；面板每次渲染都抛 `ReferenceError`，加错误边界前正是「点开是空白」的真因（与布局无关）。已移入 `createSessionHooks(React)`。
+- **新增渲染回归**：`test_every_registered_component_actually_renders` 用 Node `vm` 执行真实 `client.js`（注入 React 替身与 `__ModuleLoader__`），逐个调用三个注册组件并断言不抛错 —— 这类自由变量问题静态审查看不出。
+- **端到端验收（用户确认）**：刷新后侧边栏面板正常显示；宿主 `diagnostics.events` 记录到 `panel-mounted {frameHeight: 600, viewport: 820}` 与 `panel-frame-loaded`，`pageLoads: 1`。
+- **改为右侧栏 tab（按 dsh-context 的做法）**：此前误判「DSH 未开放右侧栏插件 tab」，实际存在 `sidebarRightTabs` 服务。现按 `dsh-context` 的模式注册：`ctx.inject(["sidebarRightTabs","slots"])` → `sidebarRightTabs.register({id, kind, title, guide})`，再把 pane body/title 注册到 `sidebar.right.pane.tab` 与 `sidebar.right.pane.tab.title`（key 同为 `task-progress`）。同时移除左栏 `main`/`sidebar.panellist` 与 `shell.overlay` 停靠方案，避免覆盖聊天区或浮在窗口边缘。
+- **实测**：`sidebar.right.pane.tab` 占用者出现 `dsh-task-progress-plugin / key: task-progress / active`，与 `dsh-context` 并列；标题槽同样注册成功。
+- **改为「只保留 UI」**：右栏 tab 不再渲染原生标题/进度条/任务树，避免同一份数据出现两遍（纯文字 + 嵌入 UI）；frame 也不再自绘边框与白底（深色主题下那圈浅色边来自 token 的浅色兜底）。
+- **修复（用户实测）**：深色主题下嵌入面板仍是白色。`hostTheme()` 读的是 `documentElement.dataset.theme`，本 shell 并不写这个属性，于是恒判为 `light`。改读 `ctx.theme.getTheme().active.colorScheme`（shell 自身渲染所用的值），并订阅 `theme/change` 通过 `ui/notifications/host-context-changed` 转发给 iframe。
+- **修复（实测）**：会话绑定只在内存，重启后 `bindings: 0`，右栏显示「当前会话暂无任务」。现持久化到 `~/.cache/task-progress/dsh-bindings.json`（原子写、防抖、坏文件退化为空态，`TASK_PROGRESS_DSH_BINDINGS` 可覆盖）。
+- **修复（实测）**：`refresh`/轮询无法让常驻面板更新 —— `register_ui_view` 的 fullscreen 租约冲突导致 `duplicate_fullscreen`；现把右栏视图 ID 固定为 `view_id=tab-<宿主会话ID>`，重挂载即续租自己。读取类工具（含 `register_ui_view`/`unregister_ui_view`）不计入变更计数，避免自激循环。
+- **实时同步（用户确认）**：面板每 5 秒把 `get_progress(view:"full")` 快照经 `ui/notifications/tool-result` 推给 iframe，并额外在宿主 `revision` 变化时立即推送。**关键约束**：`app.html` 的 `receiveResult` 在首个会话被采用后丢弃其他会话的数据，所以换会话（新建任务）时必须更换 iframe（`key` 含会话），否则面板会一直停在旧任务，只能关标签重开。
+- **端到端验收（用户确认）**：现场演示「新建任务 → 三步推进 → 根验收」期间，iframe 注册的 `state_revision` 随每步前进（1→2→3→4→5→6→7→8，`pageLoads` 因换会话重挂而增长），右栏自行走到 100%，无需关闭标签。
+- **未验证 / 未适配**：Codex 侧未在此改动后回归安装；dsh 中 `hooks/hooks.json` 的生命周期提醒未适配；未在 Windows 上验证。
+
 ## 0.2.25 — 2026-11-10
 
 [发布说明、首次安装与升级命令](docs/releases/0.2.25.md)

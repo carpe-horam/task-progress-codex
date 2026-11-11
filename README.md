@@ -54,6 +54,26 @@ codex plugin add task-progress@task-progress-codex
 
 </details>
 
+### 1b. 安装到 DeepSeekRuntime（dsh）
+
+同一个仓库也提供 DeepSeekRuntime bundle，安装在 `plugins/task-progress/dsh`：
+
+- **桌面端**：Plugins → Add plugin → Local directory，选择该目录。
+- **命令行/其他客户端**：使用 `plugin_manager` 的 `install_bundle`，目标填写该目录的绝对路径。
+
+安装会给当前 profile 增加一行 `task-progress`（包名 `dsh-task-progress-plugin`），对 profile 内所有会话生效，并在重启后保留；随后重新加载页面或重启应用一次，让面板前端生效。卸载使用 `remove_bundle`，不会删除任务数据或后台服务。
+
+两套宿主共用同一份 `server.py`、`mcp_bridge.py`、`app.html` 与 skill 正文，也共用同一个后台服务和 `~/.cache/task-progress` 数据目录。差异只在包装层：
+
+| 能力 | Codex | DeepSeekRuntime |
+| --- | --- | --- |
+| 工具入口 | `.mcp.json` 启动 stdio MCP | 插件按 `tools/list` 注册同名工具 |
+| skill 发现 | 插件清单 `"skills"` | 挂载时注册到 `ctx.skills` |
+| 交互卡片 | MCP Apps 资源 | 会话内 `render_progress` 卡片 + 本地 MCP Apps 代理 |
+| 生命周期 hooks | `hooks/hooks.json` | 尚未适配，规划提醒只来自 skill 正文 |
+
+自检地址：Web 端 `GET /task-progress/status` 会返回解析到的路径、已注册工具名与 skill 名。细节见 [dsh/README.md](plugins/task-progress/dsh/README.md)。
+
 ### 2. 给它一个真实任务
 
 把下面这段话复制到 Codex，替换方括号里的内容：
@@ -90,7 +110,7 @@ codex plugin add task-progress@task-progress-codex
 
 ## 它如何与你的 Codex 配合
 
-Codex 负责规划、执行和协调；Task Progress 负责保存与展示任务状态、依赖和证据。任务数据保存在本机，多个会话各自保留进度。
+Codex 负责规划、执行和协调；Task Progress 负责保存与展示任务状态、依赖和证据。任务数据保存在本机，多个会话各自保留进度。DeepSeekRuntime 中行为相同，只是由插件在挂载时注册工具、skill 与进度卡片。
 
 <details>
 <summary><strong>使用前，了解这三个约定</strong></summary>
