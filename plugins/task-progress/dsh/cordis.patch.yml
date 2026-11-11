@@ -1,0 +1,11 @@
+# Task Progress — DeepSeekRuntime (dsh) bundle patch
+#
+# One row: this package. It registers the Task Progress MCP tools, the
+# `track-progress` skills and the progress panel by itself, so nothing here
+# depends on another row mounting first or on an environment value.
+#
+# Tool names stay exactly as the MCP server declares them (`render_progress`,
+# `get_progress`, …), which keeps the skill bodies valid in both hosts.
+- insert:
+    - id: task-progress
+      name: 'dsh-task-progress-plugin'
