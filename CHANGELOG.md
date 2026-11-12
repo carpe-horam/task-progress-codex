@@ -1,6 +1,14 @@
 # Changelog
 
-## 未发布 — 双宿主打包（Codex + DeepSeekRuntime）
+## 0.2.26 — 2026-11-12
+
+[发布说明、首次安装与升级命令](docs/releases/0.2.26.md)
+
+- **拆分复核与执行回执**：可提供 `execution_id` 核对当前执行，继续支持保存 `summary`。外部执行回执缺少证据或误用失败字段时，工具给出可直接修正的提示。
+- **恢复与盘点**：Codex 恢复时，钩子从有效绑定提供精确的只读查询。实例身份不匹配时提示如何找回当前实例。阶段盘点与结果验收错误指出需补充的字段，任务读取按视图与实际证据需求进行。
+- **独立核验**：启动前拦截叶任务无法满足的必需独立核验契约，提示将契约设在包含目标与核验任务的分组上。
+
+### 双宿主打包（Codex + DeepSeekRuntime）
 
 - **新增 DeepSeekRuntime bundle**：`plugins/task-progress/dsh` 可安装到 dsh profile。插件在挂载时按 `tools/list` 注册同名 MCP 工具、通过 `ctx.skills` 注册 `track-progress` 与 `cleanup-task-progress-history`，并为 `render_progress` 提供会话内进度卡片（补上 dsh 缺失的 MCP Apps 宿主）。Codex 侧 `.codex-plugin/plugin.json`、`.mcp.json` 与 skill 正文不变，两套宿主共用 `server.py`、`mcp_bridge.py`、`app.html`、后台服务与数据目录。
 - **实现约束（有据）**：linked bundle 在本版 dsh 无法解析 `@deepseek-ai/dsh-tools`（`ERR_MODULE_NOT_FOUND`），故工具用普通定义对象注册；`ctx.tools.register` 要求每个工具声明 `output { schema, render }`；`@deepseek-ai/dsh-mcp-client` 行需要静态 `command`，无法从库检出目录自解析，因此改为插件自行注册工具。

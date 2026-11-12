@@ -115,6 +115,42 @@ class AcceptanceContractTests(unittest.TestCase):
         self.assertEqual(self.node("work")["outcome"], "open")
         self.assertEqual(self.node("work")["review_status"], "accepted")
 
+    def test_reject_without_findings_names_the_field_and_current_criteria(self):
+        self.submit(acceptance_checks=PASS)
+        before = server._session_file(self.sid).read_bytes()
+        with self.assertRaises(server.ProgressError) as rejected:
+            self.review(decision="reject")
+        self.assertEqual(rejected.exception.error_code, "review_finding_required")
+        self.assertIn("acceptance_checks", str(rejected.exception))
+        self.assertIn("behavior", str(rejected.exception))
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+        self.review(decision="reject", acceptance_checks=[
+            {"criterion_id": "behavior", "verdict": "not_run", "note": "The candidate has changed."},
+        ])
+        self.assertEqual(self.node("work")["review_status"], "rejected")
+
+    def test_main_open_without_findings_names_the_field_and_frozen_criteria(self):
+        receipt = server.init_task_network("Open result fixture", atomic_reason="One result",
+                                          root_acceptance=CONTRACT)["structuredContent"]
+        sid, iid, root_id = receipt["session_id"], receipt["progress"]["task_instance_id"], receipt["progress"]["root_id"]
+        server.update_task(sid, root_id, "running", assignment=MAIN, task_instance_id=iid)
+        aid = server._read(sid)["nodes"][root_id]["attempt_id"]
+        args = {"session_id": sid, "task_instance_id": iid, "task_id": root_id, "attempt_id": aid,
+                "execution_status": "finished", "outcome": "open", "summary": "Validation is pending"}
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                   "params": {"name": "update_task", "arguments": args}}
+        before = server._session_file(sid).read_bytes()
+        rejected = json.loads(server.handle(request))["result"]
+        self.assertEqual(rejected.get("error_code"), "open_finding_required")
+        self.assertIn("acceptance_checks", rejected["content"][0]["text"])
+        self.assertIn("behavior", rejected["content"][0]["text"])
+        self.assertEqual(server._session_file(sid).read_bytes(), before)
+
+        args["acceptance_checks"] = [{"criterion_id": "behavior", "verdict": "not_run", "note": "Awaiting validation"}]
+        accepted = json.loads(server.handle(request))["result"]
+        self.assertFalse(accepted.get("isError"), accepted)
+        self.assertEqual(accepted["structuredContent"]["affected"]["outcome"], "open")
+
     def test_main_session_root_contract_requires_checks_and_atomic_init_supports_root_acceptance(self):
         contract = {"version": 1, "criteria": [{"id": "delivery", "text": "Delivery was checked", "method": "inspection"}]}
         p = server.init_task_network("Atomic acceptance", atomic_reason="One self-contained result",
@@ -148,6 +184,59 @@ class AcceptanceContractTests(unittest.TestCase):
         self.unchanged_rejection(lambda: server.revise_task_plan(self.sid, self.iid, "root", "Too late", current["epoch"],
             current["revision"], acceptance=CONTRACT))
         self.assertEqual(self.node("work")["attempt_id"], attempt)
+
+    def test_required_independent_review_cannot_start_as_a_leaf(self):
+        plan = server.get_progress(self.sid, view="overview", task_instance_id=self.iid)["structuredContent"]["progress"]
+        contract = {"version": 1, "criteria": [
+            {"id": "verify", "text": "Check the report", "method": "independent_review"},
+        ]}
+        server.revise_task_plan(self.sid, self.iid, "work", "Plan the report check",
+                                plan["epoch"], plan["revision"], acceptance=contract)
+        before = server._session_file(self.sid).read_bytes()
+        with self.assertRaises(server.ProgressError) as rejected:
+            self.begin()
+        self.assertEqual(rejected.exception.error_code, "independent_review_requires_group")
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+        self.assertIsNone(self.node("work")["attempt_id"])
+
+        plan = server.get_progress(self.sid, view="overview", task_instance_id=self.iid)["structuredContent"]["progress"]
+        contract["criteria"][0]["method"] = "inspection"
+        server.revise_task_plan(self.sid, self.iid, "work", "Main session inspects the report",
+                                plan["epoch"], plan["revision"], acceptance=contract)
+        self.assertIsNotNone(self.begin())
+
+    def test_legacy_leaf_review_reports_the_contract_problem_and_allows_rejection(self):
+        attempt_id = self.submit(acceptance_checks=PASS)
+        data = server._read(self.sid)
+        node = data["nodes"]["work"]
+        legacy_contract = server._normalize_acceptance(CONTRACT)
+        legacy_contract["criteria"][0]["method"] = "independent_review"
+        node["acceptance"] = legacy_contract
+        node["attempts"][-1]["acceptance"] = legacy_contract
+        node["attempts"][-1]["acceptance_fingerprint"] = server._acceptance_fingerprint(legacy_contract)
+        original_submission = node["submission"]
+        server._write(self.sid, data)
+
+        args = {"session_id": self.sid, "task_instance_id": self.iid, "task_id": "work",
+                "attempt_id": attempt_id, "decision": "accept", "summary": "Review the report",
+                "evidence": ["test://review"], "reviewer": MAIN, "acceptance_checks": PASS}
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                   "params": {"name": "review_task", "arguments": args}}
+        before = server._session_file(self.sid).read_bytes()
+        rejected = json.loads(server.handle(request))["result"]
+        self.assertEqual(rejected.get("error_code"), "independent_review_requires_group")
+        self.assertIn("reject", rejected["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+        args["decision"] = "reject"
+        args["acceptance_checks"] = [{"criterion_id": "behavior", "verdict": "not_run",
+                                      "note": "The frozen leaf contract requires a group"}]
+        response = json.loads(server.handle(request))["result"]
+        self.assertFalse(response.get("isError"), response)
+        recovered = self.node("work")
+        self.assertEqual(recovered["review_status"], "rejected")
+        self.assertEqual(recovered["outcome"], "open")
+        self.assertEqual(recovered["submission"], original_submission)
 
     def test_independent_review_binds_two_agents_to_the_same_frozen_artifact_version(self):
         root_contract = {"version": 1, "criteria": [{"id": "verify", "text": "Independent owner checked final artifact", "method": "independent_review"}]}

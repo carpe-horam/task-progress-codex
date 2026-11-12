@@ -49,6 +49,11 @@ class ExecutionLifecycleTests(unittest.TestCase):
 
     def test_failed_receipt_closes_attempt_and_retry_retains_each_run(self):
         self.assertFalse(self.event().get("isError"))
+        missing_evidence = self.event(status="failed", exit_code=1)
+        self.assertTrue(missing_evidence["isError"])
+        self.assertIn("status=failed 的执行回执至少须提供一条非空 evidence",
+                      missing_evidence["content"][0]["text"])
+        self.assertEqual(self.node()["execution"]["status"], "running")
         failed = self.event(status="failed", exit_code=1, evidence=["fixture://run-1/failure"])
         self.assertEqual(failed["structuredContent"]["affected"]["execution_status"], "failed")
         old = self.node()
@@ -68,6 +73,21 @@ class ExecutionLifecycleTests(unittest.TestCase):
                            view="records", task_id="check")["structuredContent"]["progress"]["records"]
         self.assertEqual([a["execution"]["execution_id"] for a in records], ["run-1", "run-2"])
         self.assertEqual([a["execution_status"] for a in records], ["failed", "finished"])
+
+    def test_external_failure_reason_belongs_in_receipt_summary(self):
+        self.assertFalse(self.event().get("isError"))
+        before = server._session_file(self.sid).read_bytes()
+        receipt = dict(attempt_id=self.aid, execution_id="run-1", provider="dagu",
+                       status="failed", summary="Validation command exited with code 1",
+                       exit_code=1, evidence=["fixture://failure"])
+        rejected = self.write("record_task_execution", **receipt, failure_reason="Validation failed")
+        self.assertTrue(rejected["isError"])
+        self.assertIn("请将外部执行的失败或阻塞原因写入 summary", rejected["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+        accepted = self.write("record_task_execution", **receipt)
+        self.assertFalse(accepted.get("isError"), accepted)
+        self.assertEqual(self.node()["failure_reason"], receipt["summary"])
 
     def test_second_run_and_in_place_retry_are_rejected(self):
         self.event()
@@ -130,6 +150,14 @@ class ExecutionLifecycleTests(unittest.TestCase):
         self.event(status="failed", exit_code=1, evidence=["fixture://failure"])
         self.assertEqual(self.node()["execution_status"], "failed")
 
+    def test_split_review_missing_evidence_returns_validation_without_writing(self):
+        before = server._session_file(self.sid).read_bytes()
+        result = self.write("review_task_split", attempt_id=self.aid, reason="One remaining result",
+                            remaining_outcomes=["Check result"], summary="Wait for the current check")
+        self.assertTrue(result["isError"])
+        self.assertIn("至少一条非空 evidence", result["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
     def test_optional_split_review_summary_is_validated_and_persisted(self):
         schema = next(tool["inputSchema"] for tool in server.TOOLS if tool["name"] == "review_task_split")
         self.assertNotIn("summary", schema["required"])
@@ -145,6 +173,21 @@ class ExecutionLifecycleTests(unittest.TestCase):
         records = self.rpc("get_progress", session_id=self.sid, task_instance_id=self.iid, view="records",
                            task_id="check", record_kind="split_reviews")["structuredContent"]["progress"]["records"]
         self.assertEqual([record["summary"] for record in records], ["Wait for the current check."])
+
+    def test_split_review_checks_the_registered_execution_id(self):
+        self.assertFalse(self.event("current-run").get("isError"))
+        review = dict(attempt_id=self.aid, reason="One remaining result",
+                      remaining_outcomes=["Check result"], evidence=["fixture://scope"])
+        rejected = self.write("review_task_split", **review, execution_id="stale-run")
+        self.assertTrue(rejected.get("isError"), rejected)
+        self.assertIn("与当前 attempt 已登记的执行不匹配", rejected["content"][0]["text"])
+
+        accepted = self.write("review_task_split", **review, execution_id="current-run",
+                              summary="Checked the current execution")
+        self.assertFalse(accepted.get("isError"), accepted)
+        records = self.rpc("get_progress", session_id=self.sid, task_instance_id=self.iid, view="records",
+                           task_id="check", record_kind="split_reviews")["structuredContent"]["progress"]["records"]
+        self.assertEqual([record["summary"] for record in records], ["Checked the current execution"])
 
     def test_split_decision_expires(self):
         self.write("review_task_split", attempt_id=self.aid, reason="One remaining result",
@@ -206,6 +249,30 @@ class ExecutionLifecycleTests(unittest.TestCase):
         self.assertEqual(node["execution_status"], "failed")
         self.assertEqual(node["execution"]["exit_code"], 7)
         self.assertEqual(node["execution"]["verification"], "managed_worker")
+
+    def test_invalid_managed_execution_id_reports_the_offending_field(self):
+        before = server._session_file(self.sid).read_bytes()
+        result = self.write("start_task_execution", attempt_id=self.aid, execution_id="review-run",
+                            command=[sys.executable, "-c", "pass"], cwd=self.temp.name,
+                            summary="Invalid managed execution identity")
+        self.assertTrue(result.get("isError"), result)
+        self.assertIn("execution_id 必须是 UUID", result["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+        self.assertFalse((Path(self.temp.name) / ".executions").exists())
+
+    def test_failed_closeout_lists_all_invalid_result_fields_before_retry(self):
+        before = server._session_file(self.sid).read_bytes()
+        args = {"attempt_id": self.aid, "execution_status": "failed", "summary": "Validation failed"}
+        rejected = self.write("update_task", outcome="open", acceptance_checks=[],
+                              artifacts=[], verified_artifacts=[], **args)
+        self.assertTrue(rejected.get("isError"), rejected)
+        self.assertIn("execution_status=failed 时请省略 outcome, acceptance_checks, artifacts, verified_artifacts",
+                      rejected["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+        accepted = self.write("update_task", **args)
+        self.assertFalse(accepted.get("isError"), accepted)
+        self.assertEqual(accepted["structuredContent"]["affected"]["execution_status"], "failed")
 
     def test_managed_success_needs_acceptance_and_replay_does_not_repeat_command(self):
         count = Path(self.temp.name) / "count"

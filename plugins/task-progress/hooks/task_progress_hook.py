@@ -307,6 +307,27 @@ def has_structured_terminal_result(event: dict) -> bool:
     return isinstance(result.get("exit_code"), int)
 
 
+def _resume_overview_query(event: dict) -> str:
+    """Offer a read-only query when this actor's observed binding is still current."""
+    try:
+        from hook_state import read_context, read_snapshot
+        binding = read_context(event)
+        actor_scope = binding.get("actor_scope") or {}
+        if (binding.get("status") != "bound"
+                or binding.get("association_source") != "host_observed_successful_task_progress_receipt"
+                or actor_scope.get("kind") == "dispatched_child"):
+            return ""
+        target = binding["foreground"]
+        session_id = target["session_id"]
+        instance_id = target["task_instance_id"]
+        snapshot = read_snapshot(session_id, instance_id, target["epoch"], target.get("task_id"))
+        if snapshot.get("status") != "current":
+            return ""
+        return json.dumps({"session_id": session_id, "task_instance_id": instance_id, "view": "overview"})
+    except Exception:
+        return ""
+
+
 def context_for(event: dict) -> str:
     name = event.get("hook_event_name")
     source = event.get("source")
@@ -323,9 +344,16 @@ def context_for(event: dict) -> str:
                 "before substantive work; do not infer the old active attempt from the cleared context."
             )
         if source in ("resume", "compact"):
+            overview_query = _resume_overview_query(event)
+            identity_guidance = (
+                " Read the current overview with get_progress using " + overview_query + "."
+                if overview_query else
+                " Recover the exact plugin IDs from the last successful receipt before calling get_progress. "
+                "If the IDs cannot be recovered, leave that lookup pending."
+            )
             return (
-                "Task Progress: this is a resumed Codex session. Before continuing, read the current "
-                "overview with get_progress and reuse its task_instance_id; do not initialize a "
+                "Task Progress: this is a resumed Codex session." + identity_guidance
+                + " Reuse its task_instance_id; do not initialize a "
                 "duplicate task. If there is no active task and the new request is substantive, plan first. "
                 "For multi-stage work, submit a coarse task tree before editing, running checks, or delegation. "
                 "Resuming does not transfer parent ownership; keep any explicitly assigned node scope."

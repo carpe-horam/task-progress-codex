@@ -9,13 +9,19 @@
 - **核对提交与证据**：验收子智能体结果时查对应 `tasks`；只有摘要缺少执行尝试或失效记录等必要证据时再读该节点的 `records`。
 - **检查历史**：只在用户询问历史、需要审计先前计划或当前证据明确依赖历史时分页读取对应 `history_kind`。`full` 仅用于确需完整目标实例、且无法由定向查询满足的问题。
 - **写后读取**：一次写操作的成功回执已经证明该操作被记录。只有下一步确实依赖被写入的节点详情、依赖证据、review 状态或当前计划结构时再查；相邻的多次写操作可先完成后做一次合并的定向读取。
-- **分页与版本冲突**：同一组分页固定沿用第一页的 `state_revision`。工具明确报告 revision 变化时，从第一页用新 revision 重读一次，不要混用新旧页；身份或参数错误则按主 skill 的失败处理规则停止盲目重试。
+- **分页与版本冲突**：从同一查询的第一页取得 `state_revision`，再用它固定后续页。独立的单次 `tasks` 或 `records` 查询需要最新结果时，省略 `expected_state_revision`；只有确实需要对齐另一份快照时才传那份快照的版本。工具明确报告 revision 变化时，从第一页重新开始，不混用新旧页。身份或参数错误按主 skill 的失败处理规则处置。
 
 同一轮内若刚成功读取了仍有效的视图，且期间没有计划/状态写入、上下文恢复或用户新问题，复用已有结果，不要重复调用相同的 `get_progress`。不要为“确认工具还可用”而轮询；等待、无变化状态和宿主后台刷新均不需要模型再次查询。
 
+遇到 `task_instance_id` 不匹配且已确认 `session_id` 时，用一次省略 `task_instance_id` 的 `get_progress(view="overview")` 找回当前主实例。若目标是并行请求，读取 `view="context"` 的 `session_work.requests`，按请求身份核对其 `task_instance_id`。若旧写入所属的实例或 attempt 已失效，保留原回执和错误，不把结果改投给新实例或 attempt。
+
 **合并同一轮的读取。**需要比较多个节点时，优先一次 `view="tasks"` 传入最多 20 个 `task_ids`；批量结果已包含当前提交、派发、review 和证据时，不要仅因节点失败、待复核或状态变化而补读 `records`。只有下一步判断确实需要、且 `tasks` 未提供的历史尝试或失效记录等细节时，才读取相关节点的 `records`，不要再把同一批节点逐个重查。`select_work_context` 用于切换到具体节点/attempt 或恢复执行；在范围未变时，不要把它当作状态刷新工具。
 
+如果宿主截断查询结果，只返回不完整的文本，把所需节点分成更小的批次，避免原样重试。需要对照同一快照时，各批使用同一个 `expected_state_revision`，版本变化后从首批重读。
+
 **降低外部运行的轮询噪声。**等待长时间 Dagu gate 时优先使用宿主的事件等待能力；若只能轮询，稳定运行期间通常每 60–90 秒读取一次 run 状态，临近预期完成或需要及时处理结果时可缩短间隔。仅在 run 阶段变化、失败，或下一步判断确实依赖详细输出时读取 `step_log`；无变化时不要每个轮询周期同时重读完整日志。发现阶段变化后再刷新相关状态与日志，不把“已等待一段时间”本身记录为状态变化。
+
+**核对托管命令退出。**等待 `start_task_execution` 启动的命令时，需要判断退出才用 `get_progress(view="tasks", task_ids=["<执行节点 ID>"])` 读取当前节点的 `execution`。该查询会同步已落盘的退出回执；可复用同一次读取的状态和退出码。`records(record_kind="attempts")` 留给比较旧尝试或查找当前节点视图没有的证据。当前回执仍为 running 时等待下一次有意义的检查，避免立即重读。
 
 - 写操作的身份与状态位于 `structuredContent` 顶层：保存 `session_id`、`task_instance_id`、`root_id`、`epoch`；启动返回的 `attempt_id` 也在顶层，单个目标状态在 `affected`。回执无 `progress`、节点摘要、证据或 `session_work`，不能从中读取完整结果。请求回执另含 `request_id`、`request_task_instance_id`、`request_status`；`route_request` 创建并行实例后使用 `request_task_instance_id`，不要误用当前主任务 ID。
 - `get_progress` 默认 `view="overview"`，只含计数、`history_summary`、`session_work_summary` 和至多 20 个 `split_review_due_ids`，没有完整上下文或节点。查询元数据在 `structuredContent` 顶层，数据在 `structuredContent.progress`。
