@@ -448,7 +448,11 @@ def _task_from_document(document: dict[str, Any] | None, task_instance_id: str |
     else:
         data = document.get("session_work_state", {}).get("instances", {}).get(task_instance_id)
         if data is None:
-            raise ProgressError("task_instance_id 不匹配；旧任务或其他实例的请求已拒绝。")
+            raise ProgressError(
+                "task_instance_id 不匹配；旧任务或其他实例的请求已拒绝。"
+                "请用已确认的 session_id 只读查询 get_progress(view=overview)，省略 task_instance_id 获取当前主实例。"
+                "并行实例可从 view=context 的 session_work.requests 核对。禁止将旧写入改投新实例。"
+            )
     if writable and data.get("request_cancelled"):
         raise ProgressError("请求已取消；迟到更新不能恢复执行。")
     if writable and _parallel_is_archivable(data):
@@ -810,7 +814,7 @@ def review_task_closure(session_id: str, task_instance_id: str, task_id: str, re
 
 
 def update_task_context(session_id: str, task_instance_id: str, goal: str, constraints: list[str],
-                        acceptance_criteria: list[str], resume_note: str, reason: str,
+                        acceptance_criteria: list[str], resume_note: str, reason: str | None = None,
                         request_text: str | None = None) -> dict[str, Any]:
     sid = _normalize_session_id(session_id)
     context = {"goal": _nonempty(goal, "goal"), "constraints": _context_list(constraints, "constraints"),
@@ -2041,9 +2045,21 @@ def _validate_independent_review_check(data: dict[str, Any], owner: dict[str, An
         raise ProgressError("独立核验需要已记录且不同的目标/验证 agent ID；缺失时不能声明独立。")
 
 
+def _requires_independent_review(contract: dict[str, Any] | None) -> bool:
+    return any(item["required"] and item["method"] == "independent_review"
+               for item in (contract or {}).get("criteria", []))
+
+
 def _validate_acceptance_resolution(data: dict[str, Any], node: dict[str, Any],
                                     checks: list[dict[str, Any]]) -> None:
     contract = _attempt_acceptance(node)
+    if not node.get("children") and _requires_independent_review(contract):
+        raise ProgressError(
+            "当前叶任务的冻结契约要求 independent_review，验收必须在同时包含目标和核验任务的分组上。"
+            "已有待验收提交时用 review_task(decision=reject)，仍在运行时以 finished/open 收尾。"
+            "在 acceptance_checks 中记录 not_run 及原因，保留旧结果后重规划。",
+            error_code="independent_review_requires_group",
+        )
     _require_required_acceptance_checks(contract, checks, context="resolved 结果")
     if contract is None:
         return
@@ -2894,8 +2910,8 @@ def _require_fresh_execution(data, node, execution_id, provider):
                     raise ProgressError("execution_id 已属于另一 attempt；重试必须使用真实的新 run ID。")
 
 
-def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcomes, evidence,
-                      task_instance_id=None, valid_for_seconds=600, summary=None):
+def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcomes, evidence=None,
+                      task_instance_id=None, valid_for_seconds=600, summary=None, execution_id=None):
     sid = _normalize_session_id(session_id)
     _nonempty(reason, "reason")
     normalized_summary = _nonempty(summary, "summary") if summary is not None else None
@@ -2909,6 +2925,8 @@ def review_task_split(session_id, task_id, attempt_id, reason, remaining_outcome
         _execution_identity(sid, data, node, attempt_id)
         if node.get("execution_status") != "running" or node.get("children"):
             raise ProgressError("仅当前 running 叶 attempt 可复核拆分。")
+        if execution_id is not None and execution_id != (node.get("execution") or {}).get("execution_id"):
+            raise ProgressError("execution_id 与当前 attempt 已登记的执行不匹配；请核对后再复核。")
         reviewed = datetime.fromisoformat(_now())
         node["decomposition_review"] = {
             "attempt_id": attempt_id, "scope_fingerprint": lifecycle.fingerprint(node),
@@ -2959,8 +2977,8 @@ def record_task_execution(session_id, task_id, attempt_id, execution_id, provide
     evidence = evidence or []
     if not isinstance(evidence, list) or not all(isinstance(x, str) and x.strip() for x in evidence):
         raise ProgressError("evidence 必须为非空字符串的列表。")
-    if status != "running":
-        _require_result_evidence(summary, evidence)
+    if status != "running" and not evidence:
+        raise ProgressError(f"status={status} 的执行回执至少须提供一条非空 evidence，例如运行链接、日志位置或退出回执。")
     with _session_lock(sid):
         data, node = _current_task(sid, task_id, task_instance_id)
         _execution_identity(sid, data, node, attempt_id)
@@ -2996,7 +3014,10 @@ def start_task_execution(session_id, task_id, attempt_id, command, cwd, summary,
                          execution_id=None, task_instance_id=None):
     """Run an authorized argv without a shell; a detached supervisor owns exit capture."""
     sid = _normalize_session_id(session_id)
-    execution_id = _normalize_session_id(execution_id, generate=True)
+    try:
+        execution_id = _normalize_session_id(execution_id, generate=True)
+    except ProgressError as exc:
+        raise ProgressError("托管命令的 execution_id 必须是 UUID；首次启动也可省略，由服务端生成。") from exc
     _nonempty(summary, "summary")
     if (not isinstance(command, list) or not command or len(command) > 256
             or not all(isinstance(x, str) and "\0" not in x for x in command)):
@@ -3142,8 +3163,12 @@ def update_task(
         raise ProgressError(f"outcome 必须是 {OUTCOMES} 之一。")
     if execution_status == "finished" and outcome not in OUTCOMES:
         raise ProgressError("finished 状态必须明确给出 outcome=resolved 或 open。")
-    if execution_status != "finished" and outcome is not None:
-        raise ProgressError("只有 finished 状态才能设置 outcome。")
+    if execution_status != "finished":
+        result_fields = {"outcome": outcome, "acceptance_checks": acceptance_checks,
+                         "artifacts": artifacts, "verified_artifacts": verified_artifacts}
+        provided = [name for name, value in result_fields.items() if value is not None]
+        if provided:
+            raise ProgressError(f"execution_status={execution_status} 时请省略 {', '.join(provided)}；这些字段仅适用于 finished。")
     if execution_status == "pending":
         raise ProgressError("pending 是任务初始状态；如需重试，请使用 running 并设置 retry=true。")
     if retry and execution_status != "running":
@@ -3160,8 +3185,6 @@ def update_task(
         evidence = []
     if not isinstance(evidence, list) or not all(isinstance(item, str) for item in evidence):
         raise ProgressError("evidence 必须是字符串列表。")
-    if execution_status != "finished" and any(value is not None for value in (acceptance_checks, artifacts, verified_artifacts)):
-        raise ProgressError("acceptance_checks、artifacts 和 verified_artifacts 只能在 finished 提交时提供。")
     normalized_assignment = _normalize_assignment(assignment) if assignment is not None else None
     with _session_lock(sid):
         # The sole mutation of a completed parallel instance is an explicit
@@ -3219,6 +3242,13 @@ def update_task(
             if previous_status != "running" and not _dependencies_satisfied(data, node):
                 raise ProgressError("该任务尚未 ready；请先完成依赖，或显式设置 dependency_policy=finished。")
             if previous_status != "running":
+                if _requires_independent_review(node.get("acceptance")):
+                    raise ProgressError(
+                        "叶任务无法完成必填的 independent_review：核验方和目标必须在同一个验收分组中。"
+                        "请在启动前修订计划，把独立核验契约放到包含两者的分组，"
+                        "或在主会话直接检查结果时改用 inspection。",
+                        error_code="independent_review_requires_group",
+                    )
                 _require_execution_metadata(normalized_assignment)
                 planned = node.get("planned_assignment") or {}
                 if not planned.get("execution_mode"):
@@ -3284,7 +3314,13 @@ def update_task(
             failed_checks = [item for item in normalized_checks if item["verdict"] in ("fail", "not_run")
                              and (item.get("note") or item.get("evidence"))]
             if (normalized_assignment or node.get("assignment", {})).get("execution_mode") != "subagent" and not failed_checks:
-                raise ProgressError("有验收契约的主会话 open 结果须记录至少一项 fail/not_run 及原因或证据。")
+                criterion_ids = ", ".join(item["id"] for item in current_acceptance["criteria"])
+                raise ProgressError(
+                    "主会话提交有验收契约的 finished/open 结果时，请在 acceptance_checks 中至少填写一项："
+                    f"criterion_id 取自当前 attempt 的契约（{criterion_ids}），"
+                    "verdict 填 fail 或 not_run，并填写 note 或 evidence。",
+                    error_code="open_finding_required",
+                )
         node["execution_status"] = execution_status
         node["outcome"] = outcome
         if previous_status != "running" and execution_status == "running":
@@ -3447,7 +3483,13 @@ def review_task(session_id: str, task_id: str, attempt_id: str, decision: str, s
                 findings = [item for item in normalized_checks
                             if item["verdict"] in ("fail", "not_run") and (item.get("note") or item.get("evidence"))]
                 if not findings:
-                    raise ProgressError("open 结果的接受或 reject 决定须记录至少一项 fail/not_run 及原因或证据。")
+                    criterion_ids = ", ".join(item["id"] for item in contract["criteria"])
+                    raise ProgressError(
+                        "接受 open 结果或提交 reject 时，请在 acceptance_checks 中至少填写一项："
+                        f"criterion_id 取自当前 attempt 的契约（{criterion_ids}），"
+                        "verdict 填 fail 或 not_run，并填写 note 或 evidence。",
+                        error_code="review_finding_required",
+                    )
         node["review"] = {"attempt_id": attempt_id, "decision": decision, "summary": summary.strip(),
                           "evidence": list(evidence), "reviewer": actor, "reviewed_at": _now(),
                           "acceptance_checks": normalized_checks}
@@ -3474,8 +3516,13 @@ def _inventory_scope(data: dict[str, Any], task_id: str, scope_task_ids: list[st
         return sorted(nodes)
     if (not isinstance(scope_task_ids, list) or not scope_task_ids
             or any(not isinstance(nid, str) or nid not in nodes for nid in scope_task_ids)
-            or len(scope_task_ids) != len(set(scope_task_ids)) or task_id not in scope_task_ids):
-        raise ProgressError("scope_task_ids 须为当前节点的无重复列表，并显式包含阶段自身；跨阶段遗留由调用者加入。")
+            or len(scope_task_ids) != len(set(scope_task_ids))):
+        raise ProgressError("scope_task_ids 须为当前节点 ID 的非空无重复列表。")
+    if task_id not in scope_task_ids:
+        raise ProgressError(
+            f"scope_task_ids 缺少阶段 {task_id}。"
+            "只需要某一阶段的盘点绑定时，用 get_progress(view=tasks) 的 task_ids 单独查询该阶段。"
+        )
     expanded = set(scope_task_ids)
     pending = list(expanded)
     for nid in pending:
@@ -3519,9 +3566,11 @@ def review_stage_inventory(session_id: str, task_id: str, attempt_id: str,
                            reuse_decisions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Append a bound inventory; never change outcomes or release dependencies."""
     sid = _normalize_session_id(session_id)
+    if not attempt_id:
+        raise ProgressError("缺少阶段盘点 attempt_id；请使用对应阶段的 stage_inventory_binding.attempt_id。")
     with _session_lock(sid):
         data, stage = _current_task(sid, task_id, task_instance_id)
-        if (not attempt_id or stage.get("stage_inventory_due_attempt") != attempt_id
+        if (stage.get("stage_inventory_due_attempt") != attempt_id
                 or stage.get("attempt_id") != attempt_id or not _node_is_terminal(stage)):
             raise ProgressError("阶段盘点绑定的 attempt 已过期或无需盘点。")
         binding = _stage_inventory_binding(data, task_id, scope_task_ids)
@@ -5264,7 +5313,7 @@ def _acceptance_checks_schema() -> dict[str, Any]:
 TOOLS = [
     {
         "name": "review_stage_inventory", "title": "记录阶段任务盘点",
-        "description": "记录阶段盘点，默认覆盖全局未解决叶任务。显式scope_task_ids须含阶段自身及调用者明确的跨阶段遗留（分组含后代）。从get_progress的tree/tasks取得stage_inventory_binding.source_fingerprint，避免其他实例或盘点日志使来源失效；旧expected_state_revision仍支持。reuse_decisions仅复用已接受、阶段与目标attempt/结果未变的continue判断；covered/obsolete必须重新review。只追加审计，不改状态、outcome或依赖放行；最终收尾须全局盘点。",
+        "description": "记录阶段盘点。使用当前阶段的 task_id、attempt_id 和 get_progress tree/tasks 返回的 stage_inventory_binding.source_fingerprint；旧 expected_state_revision 仍支持。新决定传 decisions=[{task_id, decision, reason}]，decision 为 continue、obsolete 或 covered；没有新决定时传 decisions=[]。复用已接受且结果未变的 continue 决定时另传 reuse_decisions=[{task_id, inventory_id}]。默认覆盖全局未解决叶任务；显式 scope_task_ids 必须与指纹来源一致，并包含阶段自身及明确的跨阶段遗留。只追加审计，不改状态、outcome 或依赖；最终收尾须全局盘点。",
         "inputSchema": {"type": "object", "properties": {
             "session_id": _session_property(), "task_instance_id": _task_instance_property(),
             "task_id": {"type": "string"}, "attempt_id": {"type": "string"},
@@ -5465,13 +5514,13 @@ TOOLS = [
                 "execution_status": {
                     "type": "string",
                     "enum": ["running", "finished", "failed", "cancelled"],
-                    "description": "pending 是初始状态，不可通过更新工具设置",
+                    "description": "pending 是初始状态，不可通过更新工具设置。running、failed、cancelled 时省略 outcome、acceptance_checks、artifacts 和 verified_artifacts。",
                 },
-                "outcome": {"type": "string", "enum": list(OUTCOMES), "description": "finished 时必填，区分已解决与仍开放"},
+                "outcome": {"type": "string", "enum": list(OUTCOMES), "description": "仅 finished 时必填，区分已解决与仍开放。running、failed、cancelled 时省略。"},
                 "summary": {"type": "string"},
                 "failure_reason": {"type": "string", "description": "叶任务 failed 或 finished/open 时记录明确的失败原因；连续两次未解决后重试会提供最近原因和摘要，提示 agent 判断是否相关。"},
                 "evidence": {"type": "array", "items": {"type": "string"}},
-                "acceptance_checks": _acceptance_checks_schema(),
+                "acceptance_checks": {**_acceptance_checks_schema(), "description": "仅 finished 可传。主会话提交有验收契约的 finished/open 时，至少填一项当前 criterion_id、fail 或 not_run 及 note 或 evidence。"},
                 "artifacts": {"type": "array", "maxItems": 20, "items": _artifact_schema(), "description": "finished 提交的不可变产物引用；独立核验目标必须提供版本。"},
                 "verified_artifacts": {"type": "array", "maxItems": 20, "items": _artifact_ref_schema(), "description": "finished 验证任务提交的被核验产物版本。"},
                 "attempt_id": {"type": "string", "description": "running 任务返回的当前尝试 ID"},
@@ -5582,7 +5631,7 @@ TOOLS = [
                 "include_history": {"type": "boolean", "default": False, "description": "兼容显式full读取；不可与其他view混用。"},
                 "task_id": {"type": "string", "description": "tree子树根或records节点ID；旧线性records用步骤索引字符串。"},
                 "task_ids": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string"}, "description": "tasks视图的节点ID；旧线性任务用步骤索引字符串。"},
-                "scope_task_ids": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string"}, "description": "HTN tree/tasks阶段盘点来源范围；须含所查阶段自身及跨阶段遗留。省略为全局。tree的task_id阶段或tasks所选阶段节点返回stage_inventory_binding。"},
+                "scope_task_ids": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string"}, "description": "HTN tree/tasks 阶段盘点范围。需要一个阶段的专用绑定时，用 task_id 或单元素 task_ids 选中该阶段；范围须包含阶段自身及明确的跨阶段遗留。同一批次生成的绑定共享这个范围。省略为全局。"},
                 "depth": {"type": "integer", "minimum": 0, "maximum": 8, "default": 1},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
@@ -5748,16 +5797,23 @@ for _name, _title, _description, _extra, _required in [
     ("record_task_execution", "登记执行回执并自动收尾", "一轮Dagu/子代理/外部运行绑定精确attempt；同attempt拒绝第二run。failed/blocked/cancelled回执自动收尾，重跑必须retry生成新attempt。外部回执为调用方填报；重复终态幂等，冲突和迟到回执拒绝。", {
         "provider": {"type": "string", "enum": ["dagu", "subagent", "external"]},
         "status": {"type": "string", "enum": ["running", "succeeded", "failed", "blocked", "cancelled"]},
-        "exit_code": {"type": "integer"}, "evidence": {"type": "array", "items": {"type": "string"}},
-        "started_at": {"type": "string", "description": "外部运行真实开始时间，带时区；省略为登记时间。"},
-        "finished_at": {"type": "string", "description": "外部运行真实结束时间，带时区；省略为回执收到时间。"},
+        "summary": {**_EXECUTION_PROPERTIES["summary"], "description": "简述外部执行。failed 或 blocked 时在这里记录具体原因，服务端会把它保存为叶任务的失败原因。"},
+        "exit_code": {"type": "integer"},
+        "evidence": {"type": "array", "items": {"type": "string", "minLength": 1},
+                     "description": "终态必填，至少一条非空的实际执行证据，例如运行链接、日志位置或退出回执。running 时可省略。"},
+        "started_at": {"type": "string", "description": "仅 status=running 可传。补录已开始的外部运行时，首次绑定应传同一运行带时区的实际开始时间。省略时用登记时间，绑定后不可改。"},
+        "finished_at": {"type": "string", "description": "仅 status=succeeded、failed、blocked 或 cancelled 可传。带时区的实际结束时间不得早于已绑定的 started_at。省略时用收到回执的时间。"},
     }, ["session_id", "task_instance_id", "task_id", "attempt_id", "execution_id", "provider", "status", "summary"]),
     ("start_task_execution", "启动有退出回执的托管命令", "仅执行用户已授权的命令，使用argv和绝对cwd。独立监督进程持久化退出码、自动收尾失败，MCP重启可对账。不增加提交/推送权限。成功进程仍须验收任务；同attempt拒绝不同执行，重放同UUID不重复运行。", {
         "command": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "cwd": {"type": "string"},
+        "execution_id": {"type": "string", "description": "托管命令专用 UUID；省略时由服务端生成。需要安全重放时首次传入 UUID，随后沿用同一个值。"},
     }, ["session_id", "task_instance_id", "task_id", "attempt_id", "command", "cwd", "summary"]),
     ("review_task_split", "结构化复核长任务拆分", "仅一个剩余结果可暂时保留原子叶；多个结果须decompose_task。复核绑定attempt/执行ID，最多有效10分钟；换执行立即失效。服务端拒绝摘要豁免；终态收尾始终允许。", {
         "reason": {"type": "string", "minLength": 1}, "remaining_outcomes": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}},
-        "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "valid_for_seconds": {"type": "integer", "minimum": 1, "maximum": 600},
+        "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"},
+                     "description": "至少一条非空证据，说明当前叶任务为何只剩一个不可再分的结果，例如正在等待的运行回执。即使提供 summary，也须填写 evidence。"},
+        "valid_for_seconds": {"type": "integer", "minimum": 1, "maximum": 600},
+        "execution_id": {"type": "string", "description": "可选的执行身份校验；仅填当前 attempt 已登记的 ID。省略时服务端仍绑定当前执行。"},
         "summary": {"type": "string", "minLength": 1, "maxLength": 12000, "description": "可选备注；仅记录在拆分复核，不豁免结构化拆分要求。"},
     }, ["session_id", "task_instance_id", "task_id", "attempt_id", "reason", "remaining_outcomes", "evidence"]),
 ]:
@@ -5766,9 +5822,15 @@ for _name, _title, _description, _extra, _required in [
                   "_meta": _data_tool_meta()})
 
 
+def _handle_record_task_execution(args: dict[str, Any]) -> dict[str, Any]:
+    if "failure_reason" in args:
+        raise ProgressError("record_task_execution 不接受 failure_reason。请将外部执行的失败或阻塞原因写入 summary。")
+    return record_task_execution(**args)
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "select_work_context": lambda args: select_work_context(**args),
-    "record_task_execution": lambda args: record_task_execution(**args),
+    "record_task_execution": _handle_record_task_execution,
     "start_task_execution": lambda args: start_task_execution(**args),
     "review_task_split": lambda args: review_task_split(**args),
     "snapshot_task_network": lambda args: snapshot_task_network(**args),

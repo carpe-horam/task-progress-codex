@@ -99,6 +99,24 @@ class StageInventoryTests(unittest.TestCase):
         self.assertEqual(set(self.record("a")["scope_task_ids"]), set(scope))
         self.assertEqual(self.raw()["nodes"]["later"]["execution_status"], "pending")
 
+    def test_batch_scope_error_names_the_stage_missing_from_scope(self):
+        self.finish("a")
+        self.finish("b")
+        args = {"session_id": self.sid, "task_instance_id": self.iid, "view": "tasks",
+                "scope_task_ids": ["a"]}
+
+        def query(task_ids):
+            return json.loads(server.handle({
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "get_progress", "arguments": {**args, "task_ids": task_ids}},
+            }))["result"]
+
+        rejected = query(["a", "b"])
+        self.assertTrue(rejected["isError"])
+        self.assertIn("scope_task_ids 缺少阶段 b", rejected["content"][0]["text"])
+        selected = query(["a"])["structuredContent"]["progress"]["nodes"][0]
+        self.assertEqual(selected["stage_inventory_binding"]["scope_task_ids"], ["a"])
+
     def test_next_actions_keep_unresolved_tasks_visible_and_refresh_after_retry(self):
         self.finish("a", "open")
         self.review("a", [
@@ -189,17 +207,31 @@ class StageInventoryTests(unittest.TestCase):
 
     def test_wire_routes_scoped_fingerprint_without_legacy_revision(self):
         self.finish("a")
+
         def rpc(name, **args):
             result = json.loads(server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": name, "arguments": {"session_id": self.sid, "task_instance_id": self.iid, **args}}}))
             self.assertNotIn("error", result)
-            self.assertFalse(result["result"].get("isError"), result)
-            return result["result"]["structuredContent"]
+            return result["result"]
+
         scope = ["a", "backlog"]
-        binding = rpc("get_progress", view="tasks", task_ids=["a"], scope_task_ids=scope)["progress"]["nodes"][0]["stage_inventory_binding"]
-        receipt = rpc("review_stage_inventory", task_id="a", attempt_id=binding["attempt_id"],
-                      source_fingerprint=binding["source_fingerprint"], scope_task_ids=scope,
-                      decisions=[decision("backlog")])
+        query = rpc("get_progress", view="tasks", task_ids=["a"], scope_task_ids=scope)
+        binding = query["structuredContent"]["progress"]["nodes"][0]["stage_inventory_binding"]
+        arguments = {"task_id": "a", "source_fingerprint": binding["source_fingerprint"],
+                     "scope_task_ids": scope, "decisions": [decision("backlog")]}
+        before = server._session_file(self.sid).read_bytes()
+        missing = rpc("review_stage_inventory", **arguments)
+        self.assertTrue(missing["isError"])
+        self.assertIn("缺少阶段盘点 attempt_id", missing["content"][0]["text"])
+        self.assertIn("stage_inventory_binding.attempt_id", missing["content"][0]["text"])
+        stale = rpc("review_stage_inventory", attempt_id="stale-attempt", **arguments)
+        self.assertTrue(stale["isError"])
+        self.assertIn("已过期或无需盘点", stale["content"][0]["text"])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+        result = rpc("review_stage_inventory", attempt_id=binding["attempt_id"], **arguments)
+        self.assertFalse(result.get("isError"), result)
+        receipt = result["structuredContent"]
         self.assertTrue(receipt["receipt"])
         self.assertNotIn("progress", receipt)
 

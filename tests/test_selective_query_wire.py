@@ -53,6 +53,44 @@ class SelectiveWireTests(unittest.TestCase):
     def read(self, **args):
         return self.rpc('get_progress', session_id=self.sid, task_instance_id=self.iid, **args)['structuredContent']
 
+    def test_context_update_missing_reason_reports_validation_error(self):
+        args = {'session_id': self.sid, 'task_instance_id': self.iid, 'goal': 'Updated goal',
+                'constraints': [], 'acceptance_criteria': ['Proof'], 'resume_note': 'Next check'}
+        request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                   'params': {'name': 'update_task_context', 'arguments': args}}
+        before = server._session_file(self.sid).read_bytes()
+        response = json.loads(server.handle(request))
+        self.assertNotIn('error', response)
+        self.assertTrue(response['result']['isError'])
+        self.assertIn('reason', response['result']['content'][0]['text'])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
+        args['reason'] = 'User added a verification step'
+        saved = json.loads(server.handle(request))['result']
+        self.assertFalse(saved.get('isError'), saved)
+        self.assertEqual(self.read(view='context')['progress']['task_context']['resume_note'], 'Next check')
+
+    def test_instance_mismatch_points_to_read_only_identity_recovery(self):
+        peer = self.write('route_request', request_id='peer', request_text='Peer original',
+                          task_title='Peer', mode='parallel', reason='Independent',
+                          acceptance_criteria=['Proof'])
+        before = server._session_file(self.sid).read_bytes()
+        args = {'session_id': self.sid, 'task_instance_id': '00000000-0000-0000-0000-000000000001',
+                'task_id': 'work', 'execution_status': 'running', 'assignment': SUB}
+        rejected = json.loads(server.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+            'params': {'name': 'update_task', 'arguments': args}}))['result']
+        self.assertTrue(rejected['isError'])
+        message = rejected['content'][0]['text']
+        self.assertIn('get_progress(view=overview)', message)
+        self.assertIn('session_work.requests', message)
+
+        overview = self.rpc('get_progress', session_id=self.sid, view='overview')['structuredContent']
+        self.assertEqual(overview['task_instance_id'], self.iid)
+        context = self.rpc('get_progress', session_id=self.sid, view='context')['structuredContent']
+        request = next(r for r in context['progress']['session_work']['requests'] if r['request_id'] == 'peer')
+        self.assertEqual(request['task_instance_id'], peer['request_task_instance_id'])
+        self.assertEqual(server._session_file(self.sid).read_bytes(), before)
+
     def test_mutation_receipts_have_routing_identity_and_never_contain_snapshot(self):
         started = self.write('update_task', task_id='work', execution_status='running', assignment=SUB)
         captured = self.write('snapshot_task_network', snapshot_id='wire-snapshot', reason='Capture running task')

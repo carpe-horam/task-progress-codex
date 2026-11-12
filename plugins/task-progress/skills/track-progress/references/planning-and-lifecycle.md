@@ -29,8 +29,24 @@
 - **阶段结束后盘点未闭环任务。**主会话在主要阶段真实结束（子智能体结果经复核后，或主会话阶段结束后）及开始下一阶段前，读取 overview 的 `stage_inventory_due`、`stage_inventory_due_count` 和 `stage_inventory_due_has_more`。overview 最多列出 20 个提醒；若 has_more，读取 root 的 `tree` 全部分页，收集有 `stage_inventory_due_attempt` 的节点，不能只处理前 20 项。无有效提醒时不调用盘点工具。
 - **明确阶段盘点范围。**有有效提醒时，默认仍盘点当前实例全部未解决叶节点；旧调用省略 `scope_task_ids` 的全局语义保持不变。阶段中间盘点可显式传 `scope_task_ids`，必须包含阶段自身以及调用者已明确的跨阶段遗留；传入分组会展开全部后代，不能只盘点阶段的一部分来隐藏遗留。服务端仅要求决定恰好覆盖范围内当前未解决叶节点，不要求重复提交范围外待办。范围和跨阶段关联由主会话负责判断；分页时注意 `depth_limited`，从受限分组继续查询。
 - **使用盘点专用来源绑定。**读取 `get_progress(view="tasks", task_ids=["<阶段ID>"], scope_task_ids=[...])`，或 `view="tree", task_id="<阶段ID>"`，取得该阶段节点的 `stage_inventory_binding`。省略范围则返回全局绑定。检查该范围的任务树、结果和证据后，对有效提醒调用 `review_stage_inventory`，传阶段 `task_id`、`attempt_id`、同一 `scope_task_ids` 和绑定的 `source_fingerprint`。此绑定包含实例、epoch、阶段 attempt、范围结构及目标 attempt/结果；其他实例写入、范围外写入和前一次盘点的日志不会使它失效。真实范围、结果或 attempt 改变会拒绝旧绑定，必须重读重审。分页仍用 `expected_state_revision` 固定读取快照；旧版提交也可仅传该全局版本，但任何写入都会使旧版本过期。
+- **只传盘点工具声明的字段。**从 `stage_inventory_binding` 取 `source_fingerprint` 和阶段身份，并沿用读取时的范围。`source_epoch` 与 `binding_version` 是返回元数据，不是 `review_stage_inventory` 入参。已有专用指纹时省略全局 `expected_state_revision`。
 - **逐项记录或显式复用判断。**新决定的 `decisions` 项填写 `task_id`、`decision`（continue/obsolete/covered）和具体 `reason`（证据或下一步）。可通过 `get_progress(view="records", task_id="<来源阶段ID>", record_kind="stage_inventories")` 读取已接受盘点的 `inventory_id`，再用 `reuse_decisions=[{"inventory_id":"...","task_id":"..."}]` 显式复用未变化的 `continue` 判断。复用须仍匹配原阶段 ID/attempt 及目标 attempt/结果指纹；旧版无绑定记录不可复用，旧 `covered`/`obsolete` 必须重新提交并说明当前证据，不能静默继承。新决定与复用项共同恰好覆盖范围，重复项会拒绝；无未解决叶任务时传空 `decisions`。审计保留原决定、复用来源和新盘点，不自动修改状态、outcome 或依赖放行。
 - **最终收尾重新核对全局覆盖。**中间阶段的小范围盘点不代表全局已闭环。最终收尾检查全部未解决项，并在最后一个有效阶段提醒的盘点中省略 `scope_task_ids`，使用全局来源绑定；可显式复用仍有效的 `continue`，其余全局未解决项仍须逐项复核。无有效提醒时不制造盘点调用，按收尾验收规则如实报告全局剩余事项。并行工作可继续，不应为盘点中断真实运行的工作；恢复后先检查未处理提醒。
+
+全局盘点只剩一个待办时，`review_stage_inventory` 的新决定可按下例填写。若本轮没有新决定，仍传 `decisions: []`。要复用已接受的 `continue` 决定，可另传 `reuse_decisions: [{"task_id":"<待办 ID>","inventory_id":"<已接受盘点 ID>"}]`，同一个待办只出现一次。
+
+```json
+{
+  "session_id": "<已确认的会话 ID>",
+  "task_instance_id": "<当前任务实例 ID>",
+  "task_id": "<待盘点的阶段 ID>",
+  "attempt_id": "<盘点提醒中的 attempt ID>",
+  "source_fingerprint": "<全局 stage_inventory_binding 的指纹>",
+  "decisions": [
+    {"task_id": "<未解决叶任务 ID>", "decision": "continue", "reason": "前置证据已齐，继续复验。"}
+  ]
+}
+```
 
 - **追加任务按真实依赖插入。**`decompose_task` 的每个新增问题节点填写非空 `addition_reason`，并用 `precedes` 指定依赖它的已有后继；同时用 `depends_on` 表示新增节点的前驱。服务端原子校验并更新真实依赖，面板按依赖显示；仅有前后顺序不代表依赖。已开始的后继不能静默插入前置，先协调执行者并使用显式重规划/重试保留历史。仅无依赖关系的任务保持原有相对顺序。旧客户端缺少原因时标为未记录，不补造原因。
 - **尊重正在运行的工作。**若要拆分当前 `running` 叶节点，先协调其执行者停止或移交，再按本 skill 的 attempt 规则分解；不得为更新计划而中断不能安全停止的长命令、Dagu 或 CI。可先把不干扰运行门禁的独立后续阶段加到合适的未完成分组下；没有安全边界时记录具体原因，并在门禁结束后的第一个安全点重新拆分。

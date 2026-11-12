@@ -1,6 +1,6 @@
 {
   "name": "dsh-task-progress-plugin",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "description": "DeepSeekRuntime (dsh) bundle for Task Progress: registers the task_progress MCP server, the track-progress skill, and the interactive progress card.",
   "type": "module",
   "main": "lib/index.js",

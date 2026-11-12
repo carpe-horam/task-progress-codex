@@ -154,6 +154,33 @@ class HookContextTests(unittest.TestCase):
         self.assertIn("ask the parent session to clarify", context)
         self.assertNotIn("Use task_instance_id=instance-1", context)
 
+    def test_resume_query_reuses_only_the_current_observed_actor_binding(self):
+        hook_spec = importlib.util.spec_from_file_location(
+            "task_progress_resume_tests", PLUGIN / "hooks" / "task_progress_hook.py")
+        hook = importlib.util.module_from_spec(hook_spec)
+        hook_spec.loader.exec_module(hook)
+        child = self._observed_child_map()
+        expected_query = '{"session_id": "plugin-session", "task_instance_id": "instance-1", "view": "overview"}'
+
+        def context(actor, source):
+            return hook.context_for({**actor, "hook_event_name": "SessionStart", "source": source})
+
+        with patch.dict(sys.modules, {"hook_state": hook_state}), \
+                patch.object(hook_state, "read_snapshot", return_value={"status": "current"}) as snapshot:
+            for source in ("resume", "compact"):
+                self.assertIn(expected_query, context(self.event, source))
+            snapshot.assert_called_with("plugin-session", "instance-1", 4, None)
+
+            snapshot.reset_mock()
+            for actor in (child, {**self.event, "agent_id": "unbound"}, {"session_id": "codex-session"}):
+                self.assertNotIn(expected_query, context(actor, "resume"))
+            snapshot.assert_not_called()
+
+            snapshot.return_value = {"status": "stale", "reason_code": "epoch_mismatch"}
+            stale = context(self.event, "resume")
+            self.assertNotIn(expected_query, stale)
+            self.assertIn("last successful receipt", stale)
+
     def test_pending_review_is_reminded_at_user_prompt_and_after_wait(self):
         hooks_dir = str(PLUGIN / "hooks")
         sys.path.insert(0, hooks_dir)
