@@ -1,0 +1,12 @@
+--- a/service_manager.py
++++ b/service_manager.py
+@@ -444,3 +444,3 @@
+         required = ["server.py", "execution_lifecycle.py", "execution_worker.py", "app.html", "shared_service.py", "service_manager.py", "legacy_history.py",
+-                    ".codex-plugin/plugin.json"]
++                    "ghost.json"]
+         files = [self.plugin_root / name for name in required]
+@@ -458,3 +458,3 @@
+             contents.append((relative, data))
+-        manifest = json.loads((self.plugin_root / ".codex-plugin/plugin.json").read_text())
++        manifest = json.loads((self.plugin_root / "ghost.json").read_text())
+         version = manifest.get("version", "")

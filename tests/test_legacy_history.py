@@ -1,6 +1,7 @@
 """The retired SQLite store is an independent, read-only archive source."""
 import importlib.util
 import json
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -18,7 +19,7 @@ class LegacyHistoryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="legacy history ? # ")
         self.db = Path(self.temporary.name) / "progress-v3.sqlite3"
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.executescript("""
                 CREATE TABLE sessions(session_id TEXT PRIMARY KEY, current_task_id TEXT, binding_json TEXT);
                 CREATE TABLE task_instances(task_instance_id TEXT PRIMARY KEY, session_id TEXT,
@@ -69,7 +70,7 @@ class LegacyHistoryTests(unittest.TestCase):
 
     def test_summary_does_not_read_node_payloads_or_raw_state(self):
         # Summary remains usable even when optional node storage is missing.
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute("DROP TABLE nodes")
         result = legacy.read_legacy_history(self.db, "session")
         self.assertEqual(result["status"], "available")
@@ -97,7 +98,7 @@ class LegacyHistoryTests(unittest.TestCase):
             self.assertEqual(legacy.read_legacy_history(self.db, "session")["warning"], "legacy_history_unavailable")
 
     def test_unknown_schema_or_view_is_rejected_without_running_it(self):
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute("DROP TABLE sessions")
             connection.execute("CREATE VIEW sessions AS SELECT 'session' AS session_id, 'newer' AS current_task_id")
         result = legacy.read_legacy_history(self.db, "session")
@@ -107,7 +108,7 @@ class LegacyHistoryTests(unittest.TestCase):
     def test_bad_or_oversized_optional_payload_keeps_original_metadata(self):
         for payload in ("{invalid-json", "[[]]", "x" * (legacy.MAX_PAYLOAD + 1)):
             with self.subTest(payload_length=len(payload)):
-                with sqlite3.connect(self.db) as connection:
+                with closing(sqlite3.connect(self.db)) as connection, connection:
                     connection.execute("UPDATE nodes SET payload_json=? WHERE task_instance_id='newer'", (payload,))
                 result = legacy.read_legacy_history(self.db, "session", True)
                 record = result["records"][0]
@@ -119,7 +120,7 @@ class LegacyHistoryTests(unittest.TestCase):
     def test_display_text_is_bounded_and_common_credentials_are_redacted(self):
         payload = json.dumps({"summary": "Bearer top-secret token=token-secret api_key=key-secret "
                               "password:pass-secret https://alice:login-secret@example.org " + "x" * 9000})
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute("UPDATE nodes SET payload_json=? WHERE task_instance_id='newer'", (payload,))
         result = legacy.read_legacy_history(self.db, "session", True)
         summary = result["records"][0]["summary"]
@@ -138,7 +139,7 @@ class LegacyHistoryTests(unittest.TestCase):
         self.assertEqual(result["records"][0]["nodes"], [])
 
     def test_uncheckpointed_wal_contents_remain_visible_to_read_only_reader(self):
-        with sqlite3.connect(self.db) as writer:
+        with closing(sqlite3.connect(self.db)) as writer, writer:
             self.assertEqual(writer.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
             writer.execute("PRAGMA wal_autocheckpoint=0")
             writer.execute("UPDATE task_instances SET title='new WAL title' WHERE task_instance_id='newer'")
@@ -150,7 +151,7 @@ class LegacyHistoryTests(unittest.TestCase):
             self.assertEqual(before, self.db.read_bytes())
 
     def test_unexpected_blob_metadata_cannot_escape_as_raw_bytes(self):
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute("UPDATE task_instances SET title=? WHERE task_instance_id='newer'",
                                (b"private-binary",))
         result = legacy.read_legacy_history(self.db, "session")
@@ -159,7 +160,7 @@ class LegacyHistoryTests(unittest.TestCase):
 
     def test_server_keeps_sources_separate_and_clear_tombstone_prevents_archive_resurrection(self):
         sid = "00000000-0000-4000-8000-000000000001"
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute("UPDATE sessions SET session_id=? WHERE session_id='session'", (sid,))
             connection.execute("UPDATE task_instances SET session_id=? WHERE session_id='session'", (sid,))
         before = self.db.read_bytes()

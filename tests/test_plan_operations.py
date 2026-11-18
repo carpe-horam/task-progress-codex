@@ -28,6 +28,31 @@ class PlanOperationsTests(unittest.TestCase):
     def data(self):
         return server._read(self.sid)
 
+    def test_delete_unstarted_leaf_preserves_audit_and_id(self):
+        before = self.data()
+        server.delete_task(self.sid, self.iid, "c", "No longer needed", 0, before["revision"])
+        after = self.data()
+        self.assertNotIn("c", after["nodes"])
+        record = after["plan_revisions"][-1]
+        self.assertEqual(record["operation"], "delete_task")
+        self.assertEqual(record["before_plan"]["nodes"]["c"], before["nodes"]["c"])
+        self.assertNotIn("c", record["after_plan"]["nodes"])
+        self.assertEqual(record["reason"], "No longer needed")
+        self.assertIn("c", server._historical_ids(after))
+        with self.assertRaises(server.ProgressError):
+            server.decompose_task(self.sid, "root", [{"id": "c", "title": "Reused", "assignment": MAIN}], task_instance_id=self.iid)
+
+    def test_delete_rejects_dependency_started_root_and_stale_revision(self):
+        before = self.data()
+        server.update_task(self.sid, "c", "running", assignment=MAIN, task_instance_id=self.iid)
+        current = self.data()
+        frozen = server._session_file(self.sid).read_bytes()
+        for task_id, revision in (("a", current["revision"]), ("c", current["revision"]),
+                                  ("root", current["revision"]), ("b", before["revision"])):
+            with self.subTest(task_id=task_id), self.assertRaises(server.ProgressError):
+                server.delete_task(self.sid, self.iid, task_id, "Test rejection", 0, revision)
+            self.assertEqual(server._session_file(self.sid).read_bytes(), frozen)
+
     def test_snapshot_running_is_immutable_idempotent_and_survives_replan_and_archive(self):
         server.update_task(self.sid, "a", "running", assignment=MAIN, task_instance_id=self.iid)
         old = self.data()

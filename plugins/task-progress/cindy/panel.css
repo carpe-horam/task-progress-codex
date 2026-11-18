@@ -1,0 +1,7 @@
+:root { width: 100%; height: 100%; background: transparent; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; min-height: 100%; margin: 0; overflow: hidden; }
+body { display: flex; flex-direction: column; }
+#progress-app { display: block; width: 100%; flex: 1 1 auto; min-height: 0; border: 0; background: transparent; }
+#panel-status { padding: 8px 12px; color: var(--text-primary, inherit); font-size: 12px; line-height: 1.4; border-bottom: 1px solid var(--border-default, currentColor); }
+#panel-status[hidden] { display: none; }

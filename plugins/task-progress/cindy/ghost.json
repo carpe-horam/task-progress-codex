@@ -1,0 +1,3551 @@
+{
+  "schemaVersion": 3,
+  "minCindyVersion": "0.1.139",
+  "id": "task-progress",
+  "name": "Task Progress",
+  "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
+  "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
+  "version": "0.2.54",
+  "kind": "chip",
+  "launch": "resident",
+  "sessionContext": true,
+  "subscribe": {
+    "topics": [
+      "session"
+    ]
+  },
+  "entry": "main.js",
+  "tools": [
+    {
+      "name": "review_stage_inventory",
+      "description": "记录阶段盘点。使用当前阶段的 task_id、attempt_id 和 get_progress tree/tasks 返回的 stage_inventory_binding.source_fingerprint；旧 expected_state_revision 仍支持。新决定传 decisions=[{task_id, decision, reason}]，decision 为 continue、obsolete 或 covered；没有新决定时传 decisions=[]。复用已接受且结果未变的 continue 决定时另传 reuse_decisions=[{task_id, inventory_id}]。默认覆盖全局未解决叶任务；显式 scope_task_ids 必须与指纹来源一致，并包含阶段自身及明确的跨阶段遗留。只追加审计，不改状态、outcome 或依赖；最终收尾须全局盘点。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "expected_state_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "旧调用的全局版本绑定；提供source_fingerprint时可省略。"
+          },
+          "source_fingerprint": {
+            "type": "string",
+            "description": "get_progress tree/tasks返回的stage_inventory_binding.source_fingerprint，须使用相同scope_task_ids。"
+          },
+          "scope_task_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "省略则全局；显式范围须含阶段自身及已知跨阶段遗留，分组自动包含后代。"
+          },
+          "reuse_decisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "inventory_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id",
+                "inventory_id"
+              ]
+            },
+            "description": "显式引用已接受盘点中的未变continue判断，审计保留来源阶段/attempt；不能复用covered/obsolete。"
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "continue",
+                    "obsolete",
+                    "covered"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "task_id",
+                "decision",
+                "reason"
+              ]
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "attempt_id",
+          "decisions"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "source_fingerprint"
+            ]
+          },
+          {
+            "required": [
+              "expected_state_revision"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "reassign_task",
+      "description": "仅改派 pending 叶任务，保留 planned_assignment 和改派历史。需主会话 reviewer 与具体 reason；不能转移 running/已结束 attempt，结束后改派须显式重规划。声明未经宿主核验。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "assignment": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewer": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "assignment",
+          "reason",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "name": "bind_task_agent",
+      "description": "将 spawn 返回的 agent_name 单次绑定到当前 running subagent 叶 attempt；相同绑定幂等，不同标识/旧 attempt 拒绝。不改变不可变执行配置；回执为调用方填报，非宿主认证。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "agent_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "attempt_id",
+          "agent_name"
+        ]
+      }
+    },
+    {
+      "name": "review_task",
+      "description": "仅验收当前 pending 的 subagent 叶 submission，需主会话 reviewer、summary 与非空 evidence。accept 保留提交的 resolved/open，reject 为 open；有 acceptance_contract 时需逐项独立核验，resolved 要求全部 required pass 且有证据，open/reject 要记录实际失败项。原上报和独立验收分别留存。旧/重复验收拒绝；父/root 使用 synthesis。角色未经宿主认证。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "reject"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "acceptance_checks": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "criterion_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "not_run"
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "verification_task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "verification_attempt_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "target_task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "target_attempt_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "checked_artifacts": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "source_task_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "source_attempt_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "artifact_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "version": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      }
+                    },
+                    "required": [
+                      "source_task_id",
+                      "source_attempt_id",
+                      "artifact_id",
+                      "version"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "criterion_id",
+                "verdict"
+              ]
+            }
+          },
+          "reviewer": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "attempt_id",
+          "decision",
+          "summary",
+          "evidence",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "name": "consume_display_intent",
+      "description": "仅供 App 消费最新 render 的一次性展示意图；跨挂载去重，现有 fullscreen 租约或待处理请求阻止重复自动打开。只登记请求资格，不证明宿主已创建标签页，不修改任务进度。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "view_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "display_intent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "view_id",
+          "display_intent"
+        ]
+      }
+    },
+    {
+      "name": "register_ui_view",
+      "description": "仅供 App 登记或续租进度视图；每个挂载使用唯一 view_id，注销后不可复用。每次宿主模式切换递增 mode_generation，续租复用当前世代；较旧世代及同世代不同模式会被拒绝，旧版无世代请求不能覆盖已带世代的登记。inline 保留来源高水位与唯一活动 owner，旧结果不能抢占新卡片；fullscreen 续租不提升 inline 来源顺序。不修改任务进度。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "view_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "view_sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "首次工具结果的 view_sequence，刷新后不可替换"
+          },
+          "state_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "首次工具结果的 state_revision"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "display_mode": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "fullscreen"
+            ],
+            "description": "当前宿主展示模式"
+          },
+          "mode_generation": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "挂载内宿主模式世代；初始0，每次模式切换递增，心跳续租保持相同值。旧版可省略，但不可覆盖已带世代的登记。"
+          }
+        },
+        "required": [
+          "session_id",
+          "view_id"
+        ]
+      }
+    },
+    {
+      "name": "check_ui_view",
+      "description": "仅供 App 查询当前视图状态；superseded inline 可继续轻量检查，活动 owner 注销后合格旧卡可恢复为 latest。已注销的 view_id 始终返回 superseded。fullscreen 标签页打开时返回 hidden_by_fullscreen。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "view_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "display_mode": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "fullscreen"
+            ]
+          }
+        },
+        "required": [
+          "session_id",
+          "view_id"
+        ]
+      }
+    },
+    {
+      "name": "unregister_ui_view",
+      "description": "仅供 App 在挂载销毁时注销视图；释放 fullscreen 租约并恢复合格的 inline owner。该 view_id 终身失效，迟到登记或续租返回 superseded；新挂载必须使用新 view_id。不修改任务进度。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "view_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "session_id",
+          "view_id"
+        ]
+      }
+    },
+    {
+      "name": "init_progress",
+      "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。此工具只写入任务数据，不触发展示；首次展示调用一次 render_progress，宿主优先以 fullscreen 展示。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "任务步骤描述列表"
+          },
+          "task_title": {
+            "type": "string",
+            "description": "任务标题"
+          },
+          "new_task_reason": {
+            "type": "string",
+            "description": "用户明确开启新目标时，说明旧未完成任务如何处理；运行或待验收结果必须先收尾。"
+          },
+          "task_relationship": {
+            "type": "string",
+            "enum": [
+              "independent"
+            ],
+            "description": "仅当新目标与当前任务独立时填写 independent；同一目标的新计划使用 rebuild_task_network。"
+          },
+          "legacy_linear": {
+            "type": "boolean",
+            "default": false,
+            "description": "仅用于用户明确要求线性步骤或恢复旧版线性任务；默认 false，多个步骤将要求使用 HTN。"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "可选；同一会话创建新任务时复用，旧任务保留到 task_history。省略时生成新的 UUID。恢复当前任务请用 get_progress。"
+          }
+        },
+        "required": [
+          "steps"
+        ]
+      }
+    },
+    {
+      "name": "init_task_network",
+      "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_title": {
+            "type": "string",
+            "description": "根任务标题"
+          },
+          "main_session": {
+            "type": "object",
+            "description": "主会话设置快照。model/reasoning_effort 可单独省略；未知时不要猜测，任务仍可初始化。当前插件只收到调用方入参，卡片会标明来源未由 Codex 宿主核验。",
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "仅填当前会话明确暴露的模型标识；未知时省略"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "仅填当前会话明确暴露的思维强度；未知时省略"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选，仅在 Codex 宿主明确提供时填写；当前插件不会验证"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选，仅在 Codex 宿主明确提供时填写；当前插件不会验证"
+              }
+            }
+          },
+          "session_id": {
+            "type": "string",
+            "description": "可选；同一会话创建新任务时复用，旧任务保留到 task_history。省略时生成新的 UUID。恢复当前任务请用 get_progress。"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "当前 task_instance_id 生命周期内唯一的节点 ID；重规划时也不可复用"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "任务标题"
+                },
+                "addition_reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "执行中追加任务的具体原因；保留为追加标记与审计信息。"
+                },
+                "precedes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "依赖此新增任务的已有后继 ID；原子加入依赖并排序。后继及其子任务必须尚未开始，且必须提供 addition_reason。"
+                },
+                "depends_on": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "前驱任务 ID 列表"
+                },
+                "dependency_policy": {
+                  "type": "string",
+                  "enum": [
+                    "resolved",
+                    "finished"
+                  ],
+                  "description": "resolved 要求前驱已解决；finished 允许前驱以 open/failed/cancelled 结束后放行，并携带证据。"
+                },
+                "profile": {
+                  "type": "string",
+                  "enum": [
+                    "cheap",
+                    "standard",
+                    "heavy"
+                  ]
+                },
+                "acceptance": {
+                  "type": "object",
+                  "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "criteria": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "inspection",
+                              "command",
+                              "visual",
+                              "independent_review"
+                            ]
+                          },
+                          "required": {
+                            "type": "boolean",
+                            "default": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "method"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "criteria"
+                  ]
+                },
+                "assignment": {
+                  "type": "object",
+                  "description": "必填。计划阶段标记此节点的执行者：execution_mode=main_session 或 subagent。分组节点设 main_session 表示主会话负责协调和综合验收；叶节点按分工指定。它不转移主会话的根任务统筹与集成职责。",
+                  "properties": {
+                    "execution_mode": {
+                      "type": "string",
+                      "enum": [
+                        "main_session",
+                        "subagent"
+                      ],
+                      "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+                    },
+                    "self_execution_reason": {
+                      "type": "string",
+                      "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+                    },
+                    "complexity": {
+                      "type": "string",
+                      "enum": [
+                        "simple",
+                        "complex"
+                      ],
+                      "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+                    },
+                    "tool_identifier": {
+                      "type": "string",
+                      "description": "派发工具标识"
+                    },
+                    "tool_name": {
+                      "type": "string",
+                      "description": "工具中文名称"
+                    },
+                    "dispatch_text": {
+                      "type": "string",
+                      "description": "完整、自包含的派发任务文本"
+                    },
+                    "agent_name": {
+                      "type": "string",
+                      "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+                    },
+                    "fork_turns": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "all"
+                      ],
+                      "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+                    },
+                    "model_source": {
+                      "type": "string",
+                      "enum": [
+                        "explicit",
+                        "inherited",
+                        "unknown"
+                      ],
+                      "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+                    },
+                    "reasoning_effort": {
+                      "type": "string",
+                      "enum": [
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ],
+                      "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+                    },
+                    "reasoning_effort_source": {
+                      "type": "string",
+                      "enum": [
+                        "explicit",
+                        "inherited",
+                        "unknown"
+                      ],
+                      "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+                    },
+                    "codex_thread_id": {
+                      "type": "string",
+                      "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+                    },
+                    "codex_turn_id": {
+                      "type": "string",
+                      "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+                    },
+                    "profile": {
+                      "type": "string",
+                      "enum": [
+                        "cheap",
+                        "standard",
+                        "heavy"
+                      ]
+                    },
+                    "batch": {
+                      "type": "string",
+                      "description": "派发批次"
+                    }
+                  },
+                  "required": [
+                    "execution_mode"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "assignment"
+              ]
+            },
+            "description": "初始粗粒度计划；多阶段任务至少两个有独立结果边界的阶段，每项必须包含 assignment.execution_mode。"
+          },
+          "atomic_reason": {
+            "type": "string",
+            "description": "明确说明为何这是单步任务；与 tasks 互斥。"
+          },
+          "new_task_reason": {
+            "type": "string",
+            "description": "用户明确开启新目标时，说明旧未完成任务如何处理；继续原目标应追加计划或重规划。"
+          },
+          "task_relationship": {
+            "type": "string",
+            "enum": [
+              "independent"
+            ],
+            "description": "已有任务时必填 independent，表示独立新目标；归档、新计划或继续原目标不属于独立目标，应调用 rebuild_task_network。"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选稳定幂等键；重试同一初始化内容时复用。已知session按session隔离；省略session时键须全局唯一（建议UUID），并可随后带返回的session重试。哈希与身份墓碑保留至缓存整体删除，清除任务后旧键仍拒绝重建。"
+          },
+          "root_acceptance": {
+            "type": "object",
+            "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "inspection",
+                        "command",
+                        "visual",
+                        "independent_review"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "text",
+                    "method"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "version",
+              "criteria"
+            ]
+          }
+        },
+        "required": [
+          "task_title"
+        ]
+      }
+    },
+    {
+      "name": "decompose_task",
+      "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "待分解的父任务 ID"
+          },
+          "attempt_id": {
+            "type": "string",
+            "description": "分解运行中任务时必须提供当前尝试 ID，先协调停止旧执行者"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "当前 task_instance_id 生命周期内唯一的节点 ID；重规划时也不可复用"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "任务标题"
+                },
+                "addition_reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "执行中追加任务的具体原因；保留为追加标记与审计信息。"
+                },
+                "precedes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "依赖此新增任务的已有后继 ID；原子加入依赖并排序。后继及其子任务必须尚未开始，且必须提供 addition_reason。"
+                },
+                "depends_on": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "前驱任务 ID 列表"
+                },
+                "dependency_policy": {
+                  "type": "string",
+                  "enum": [
+                    "resolved",
+                    "finished"
+                  ],
+                  "description": "resolved 要求前驱已解决；finished 允许前驱以 open/failed/cancelled 结束后放行，并携带证据。"
+                },
+                "profile": {
+                  "type": "string",
+                  "enum": [
+                    "cheap",
+                    "standard",
+                    "heavy"
+                  ]
+                },
+                "acceptance": {
+                  "type": "object",
+                  "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "criteria": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "inspection",
+                              "command",
+                              "visual",
+                              "independent_review"
+                            ]
+                          },
+                          "required": {
+                            "type": "boolean",
+                            "default": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text",
+                          "method"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "criteria"
+                  ]
+                },
+                "assignment": {
+                  "type": "object",
+                  "description": "必填。计划阶段标记此节点的执行者：execution_mode=main_session 或 subagent。分组节点设 main_session 表示主会话负责协调和综合验收；叶节点按分工指定。它不转移主会话的根任务统筹与集成职责。",
+                  "properties": {
+                    "execution_mode": {
+                      "type": "string",
+                      "enum": [
+                        "main_session",
+                        "subagent"
+                      ],
+                      "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+                    },
+                    "self_execution_reason": {
+                      "type": "string",
+                      "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+                    },
+                    "complexity": {
+                      "type": "string",
+                      "enum": [
+                        "simple",
+                        "complex"
+                      ],
+                      "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+                    },
+                    "tool_identifier": {
+                      "type": "string",
+                      "description": "派发工具标识"
+                    },
+                    "tool_name": {
+                      "type": "string",
+                      "description": "工具中文名称"
+                    },
+                    "dispatch_text": {
+                      "type": "string",
+                      "description": "完整、自包含的派发任务文本"
+                    },
+                    "agent_name": {
+                      "type": "string",
+                      "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+                    },
+                    "fork_turns": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "all"
+                      ],
+                      "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+                    },
+                    "model_source": {
+                      "type": "string",
+                      "enum": [
+                        "explicit",
+                        "inherited",
+                        "unknown"
+                      ],
+                      "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+                    },
+                    "reasoning_effort": {
+                      "type": "string",
+                      "enum": [
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ],
+                      "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+                    },
+                    "reasoning_effort_source": {
+                      "type": "string",
+                      "enum": [
+                        "explicit",
+                        "inherited",
+                        "unknown"
+                      ],
+                      "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+                    },
+                    "codex_thread_id": {
+                      "type": "string",
+                      "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+                    },
+                    "codex_turn_id": {
+                      "type": "string",
+                      "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+                    },
+                    "profile": {
+                      "type": "string",
+                      "enum": [
+                        "cheap",
+                        "standard",
+                        "heavy"
+                      ]
+                    },
+                    "batch": {
+                      "type": "string",
+                      "description": "派发批次"
+                    }
+                  },
+                  "required": [
+                    "execution_mode"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "assignment"
+              ]
+            },
+            "description": "该父任务的子任务列表"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "tasks"
+        ]
+      }
+    },
+    {
+      "name": "update_task",
+      "description": "开始/执行更新须匹配 planned_assignment.execution_mode；改派用 reassign_task。同一任务实例最多一个主会话叶运行；切换前如实收束当前 attempt，子智能体可并行。主会话叶执行记录 self_execution_reason；复杂工作默认委派，同一紧密结果链可由原 owner 连续完成调查、实现和局部核验。子智能体启动记录完整派发文本及工具，模型/强度来源按 overview protocol_capabilities 选择；支持时 unknown/inherited 不需猜值。spawn后 bind_task_agent；send_message只投递上下文，不等于唤醒/开始新执行。finished 仅生成 submission/review_status=pending，默认与 finished 依赖均不放行，必须主会话 review_task。父/root synthesis 必须 main_session+非空summary，resolved 还需 evidence 和全部子结果resolved。运行中用当前attempt_id，禁止改快照；重试使后继/祖先旧验收失效并保留历史，有运行中或待验收消费者时拒绝。超过10分钟由review_task_split/decompose_task解除服务端门禁；摘要不能豁免。命令用start_task_execution自动捕获退出，外部run用record_task_execution绑定；每attempt仅一轮执行，失败重跑必须新attempt。等待不得记完成。所有角色和元数据均为调用方填报、未经宿主认证。旧in-flight允许恢复上报但子结果仍须review。会话切换或清空后须task_instance_id。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "当前 epoch 中的任务 ID"
+          },
+          "execution_status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "finished",
+              "failed",
+              "cancelled"
+            ],
+            "description": "pending 是初始状态，不可通过更新工具设置。running、failed、cancelled 时省略 outcome、acceptance_checks、artifacts 和 verified_artifacts。"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "open"
+            ],
+            "description": "仅 finished 时必填，区分已解决与仍开放。running、failed、cancelled 时省略。"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "failure_reason": {
+            "type": "string",
+            "description": "叶任务 failed 或 finished/open 时记录明确的失败原因；连续两次未解决后重试会提供最近原因和摘要，提示 agent 判断是否相关。"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acceptance_checks": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "criterion_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "not_run"
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "verification_task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "verification_attempt_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "target_task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "target_attempt_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "checked_artifacts": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "source_task_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "source_attempt_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "artifact_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "version": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      }
+                    },
+                    "required": [
+                      "source_task_id",
+                      "source_attempt_id",
+                      "artifact_id",
+                      "version"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "criterion_id",
+                "verdict"
+              ]
+            },
+            "description": "仅 finished 可传。主会话提交有验收契约的 finished/open 时，至少填一项当前 criterion_id、fail 或 not_run 及 note 或 evidence。"
+          },
+          "artifacts": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "uri": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                }
+              },
+              "required": [
+                "id",
+                "uri",
+                "version"
+              ]
+            },
+            "description": "finished 提交的不可变产物引用；独立核验目标必须提供版本。"
+          },
+          "verified_artifacts": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "source_attempt_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "artifact_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "source_task_id",
+                "source_attempt_id",
+                "artifact_id",
+                "version"
+              ]
+            },
+            "description": "finished 验证任务提交的被核验产物版本。"
+          },
+          "attempt_id": {
+            "type": "string",
+            "description": "running 任务返回的当前尝试 ID"
+          },
+          "retry": {
+            "type": "boolean",
+            "description": "从终态重新进入 running 时设为 true"
+          },
+          "assignment": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "task_id",
+          "execution_status"
+        ]
+      }
+    },
+    {
+      "name": "get_ready_tasks",
+      "description": "读取当前 epoch 中自身及祖先依赖均已满足的 ready 叶任务；dependencies 包含直接与继承的前驱结果、放行策略和 inherited_from。 可选task_instance_id读取隔离并行实例；省略读取当前主任务。 仅返回分页ready_tasks；dependencies保留依赖ID、状态、dependency_policy和inherited_from，完整summary/evidence在dependency_evidence[依赖ID]去重返回。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "snapshot_task_network",
+      "description": "保存当前计划、节点执行记录、上下文与验收/移交记录的时点快照。允许任务运行中或待验收；不结束尝试、不改变计划、epoch 或任务身份。历史计划和其他实例不重复复制；通过 get_progress 的 plan_snapshots 查询。snapshot_id 对同一实例幂等。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "snapshot_id",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "revise_task_title",
+      "description": "修订当前实例/epoch 任意节点（含运行中、终态及根）的显示标题，绑定 revision 并追加原标题、前后标题和 reason。原标题、attempt 标题及既有快照不改写；仅展示元数据，不改变依赖、scope、状态、证据和根验收。重复相同标题报无变化。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "display_title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "display_title",
+          "reason",
+          "expected_epoch",
+          "expected_revision"
+        ]
+      }
+    },
+    {
+      "name": "delete_task",
+      "description": "删除无后继依赖且未执行的非根叶任务，保留删除前后计划和原因；禁止删除最后子任务或已结束祖先下的任务。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "reason",
+          "expected_epoch",
+          "expected_revision"
+        ]
+      }
+    },
+    {
+      "name": "revise_task_plan",
+      "description": "在同一 epoch 内修订未开始分支的依赖、策略、分组或同级顺序，保留前后差异与原因；重分组还要求受影响分组及其消费者均未开始。拒绝终态祖先、依赖环和过期版本；不得借 finished 策略跳过真实必要的验收。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dependency_policy": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "finished"
+            ]
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "可选已有分组的 ID；保守检查受影响分组及消费者未开始。"
+          },
+          "before_id": {
+            "type": "string",
+            "description": "移动目标节点至此同级节点之前。"
+          },
+          "acceptance": {
+            "type": "object",
+            "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "inspection",
+                        "command",
+                        "visual",
+                        "independent_review"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "text",
+                    "method"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "version",
+              "criteria"
+            ]
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "reason",
+          "expected_epoch",
+          "expected_revision"
+        ]
+      }
+    },
+    {
+      "name": "rebuild_task_network",
+      "description": "将当前计划快照保留到 history 并增加 epoch，建立新根任务以表达同一任务的重规划；保持 task_instance_id 和 task_history 不变，禁止存在运行中的尝试。会话存在 task_history 时必须传当前 task_instance_id。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "重规划原因，写入计划轮次 history"
+          },
+          "task_title": {
+            "type": "string",
+            "description": "可选的新根任务标题"
+          },
+          "root_acceptance": {
+            "type": "object",
+            "description": "可选 version=1 验收契约；标准随 attempt 冻结。",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "criteria": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "inspection",
+                        "command",
+                        "visual",
+                        "independent_review"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "text",
+                    "method"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "version",
+              "criteria"
+            ]
+          }
+        },
+        "required": [
+          "session_id",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "update_step",
+      "description": "更新旧版线性步骤。pending 须先 in_progress 才可 completed；每次启动生成新的 attempt_id，首次启动须提供 execution_mode；随后运行更新、完成、重置和重开都须传当前 attempt_id。重置把运行尝试记为 cancelled，保留 attempts 历史；重新启动取得新ID，旧ID不能完成新尝试。旧存储无ID的现有尝试仅在首次收尾/重置前兼容省略；以后启动均升级到严格ID校验。主会话的 model/reasoning_effort 可未知并省略；子智能体需提供完整派发文本与工具，模型/强度来源按服务端能力记录，未知不得猜测。入参为调用方填报、未经宿主核验。会话存在 task_history 或清空过进度时须传当前 task_instance_id。普通更新只写数据，首次展示调用 render_progress。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "attempt_id": {
+            "type": "string",
+            "description": "当前步骤返回的执行尝试ID；启动pending步骤可省略，其后的运行更新、完成、重置和重开必填，旧尝试ID始终拒绝。"
+          },
+          "step_index": {
+            "type": "integer",
+            "description": "步骤索引（从 0 开始）"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "completed"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "可选备注"
+          },
+          "assignment": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "step_index",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "get_progress",
+      "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。 可选task_instance_id读取隔离并行实例；省略读取当前主任务。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "tree",
+              "tasks",
+              "records",
+              "context",
+              "history",
+              "full"
+            ],
+            "default": "overview"
+          },
+          "include_history": {
+            "type": "boolean",
+            "default": false,
+            "description": "兼容显式full读取；不可与其他view混用。"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "tree子树根或records节点ID；旧线性records用步骤索引字符串。"
+          },
+          "task_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "string"
+            },
+            "description": "tasks视图的节点ID；旧线性任务用步骤索引字符串。"
+          },
+          "scope_task_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "HTN tree/tasks 阶段盘点范围。需要一个阶段的专用绑定时，用 task_id 或单元素 task_ids 选中该阶段；范围须包含阶段自身及明确的跨阶段遗留。同一批次生成的绑定共享这个范围。省略为全局。"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8,
+            "default": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "record_kind": {
+            "type": "string",
+            "enum": [
+              "attempts",
+              "invalidated_results",
+              "reassignment_history",
+              "stage_inventories",
+              "coverage_records",
+              "title_revisions",
+              "write_rejections",
+              "split_reviews"
+            ],
+            "default": "attempts"
+          },
+          "history_kind": {
+            "type": "string",
+            "enum": [
+              "history",
+              "task_history",
+              "plan_snapshots",
+              "plan_revisions",
+              "context_revisions",
+              "legacy_history",
+              "handoffs",
+              "handoff_closures",
+              "closure_reviews",
+              "coverage_records"
+            ],
+            "default": "history"
+          },
+          "expected_state_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "get_progress_view",
+      "description": "仅供App主动读取当前完整面板快照；默认省略追加执行记录，include_history=true加载目标实例完整记录和历史用于展开/导出。并行实例历史分别读取。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "include_history": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "render_progress",
+      "description": "主会话首次粗规划后调用一次，或用户明确重开时调用；仅返回bootstrap身份与一次性展示意图。资源优先fullscreen；App按宿主能力自动请求并独立读取数据。已有标签页复用租约，关闭/拒绝后不自动重试；实际展示由宿主决定。不要用于普通更新、查询、恢复或后台轮询。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "save_export_files",
+      "description": "仅供 Task Progress App 将已生成的 Excel 与可视化 HTML 保存到本机 Downloads/Task Progress Exports；只接受同名的一对 .xlsx 与 .html 文件，不接受路径参数或其他文件类型。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "mime_type": {
+                  "type": "string"
+                },
+                "encoding": {
+                  "type": "string",
+                  "enum": [
+                    "base64",
+                    "utf-8"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "mime_type",
+                "encoding",
+                "content"
+              ]
+            },
+            "description": "Excel 使用 Base64；HTML 使用 UTF-8 文本。"
+          }
+        },
+        "required": [
+          "files"
+        ]
+      }
+    },
+    {
+      "name": "clear_progress",
+      "description": "仅用于清理用户明确确认已归档的 Codex 会话中的全部任务内容。调用前必须按 cleanup-task-progress-history skill 核对归档依据、对应 session_id、保留期限与删除范围；本工具不会读取或验证 Codex 归档状态，不得用于活动会话或归档状态不明的会话。清除指定 session_id 的当前任务、task_history 历史任务和视图登记，不影响其他会话。只保留排序与请求哈希/身份墓碑，防止旧初始化或执行请求重建已清除任务；不保留任务内容。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "select_work_context",
+      "description": "为当前宿主 actor 显式选择一个已存在的 Task Progress 实例/epoch/节点；成功回执由 PostToolUse 观察后建立 actor scoped 关联。仅读取并返回小回执，不改变任务、attempt 或展示状态，也不认证调用者角色。task_id 省略时选择当前 root；attempt_id 可选但若提供必须匹配当前 attempt。purpose 用于记录选择意图，不构成角色/权限声明。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attempt_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "work",
+              "dispatch",
+              "resume"
+            ],
+            "default": "work"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "epoch"
+        ]
+      }
+    },
+    {
+      "name": "record_coverage",
+      "description": "以主会话reviewer追加覆盖标记。source为本实例当前有效accepted_resolved且有证据的精确attempt；target为本会话历史未解决任务的精确instance/epoch/task/attempt。必须写明scope、reason、evidence，extent可partial/full。覆盖从不改变原execution_status/outcome、resolved计数、依赖ready或根验收；来源重试/失效后标记stale，完整链条按records/history coverage_records查询。coverage_id幂等，身份声明未经宿主核验。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "coverage_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_attempt_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_task_instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_attempt_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "extent": {
+            "type": "string",
+            "enum": [
+              "partial",
+              "full"
+            ],
+            "default": "partial"
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reviewer": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "coverage_id",
+          "source_task_id",
+          "source_attempt_id",
+          "target_task_instance_id",
+          "target_epoch",
+          "target_task_id",
+          "target_attempt_id",
+          "scope",
+          "reason",
+          "evidence",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "name": "handoff_request",
+      "description": "以foreground身份，将已如实收尾的parallel全部未解决叶固定绑定到本会话承接叶instance/epoch/task/有效attempt。允许running/待复核承接；后续写入仅在其真实resolved且已验收后自动闭环。支持历史实例/计划补录；保留来源open/cancelled和冻结证据，拒绝漏项、自指、环、旧attempt。handoff_id幂等；身份由调用方声明。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "source_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_fingerprint": {
+            "type": "string",
+            "description": "查询所得closure_review_binding.source_fingerprint；来源变化则拒绝迟到决定。"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reviewer": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "handoff_id": {
+            "type": "string"
+          },
+          "source_task_instance_id": {
+            "type": "string"
+          },
+          "mappings": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_task_id": {
+                  "type": "string"
+                },
+                "source_attempt_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "target_task_instance_id": {
+                  "type": "string"
+                },
+                "target_epoch": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "target_task_id": {
+                  "type": "string"
+                },
+                "target_attempt_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "source_task_id",
+                "source_attempt_id",
+                "target_task_instance_id",
+                "target_epoch",
+                "target_task_id",
+                "target_attempt_id"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "source_epoch",
+          "source_fingerprint",
+          "summary",
+          "evidence",
+          "reviewer",
+          "request_id",
+          "handoff_id",
+          "source_task_instance_id",
+          "mappings"
+        ]
+      }
+    },
+    {
+      "name": "review_task_closure",
+      "description": "全部子项结束且无pending submission后，主会话追加独立收尾验收。continue明确继续retry/重规划；accept允许收尾归档但不改原节点outcome或解除resolved依赖。必须使用查询所得source_epoch/fingerprint，review_id幂等；保留历史与原始取消。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "source_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_fingerprint": {
+            "type": "string",
+            "description": "查询所得closure_review_binding.source_fingerprint；来源变化则拒绝迟到决定。"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reviewer": {
+            "type": "object",
+            "description": "计划保留为 planned_assignment；新执行必须匹配计划角色，改派用 reassign_task。主会话叶执行须 self_execution_reason（原子根有 atomic_reason 可豁免）；复杂工作默认委派。支持能力时，model/model_source 与 reasoning_effort/reasoning_effort_source 分开记录；explicit 要有值，inherited/unknown 不猜值，旧客户端仍可传明确值。fork_turns 可为 none/all/省略；省略不推断上下文策略。子智能体启动须有 tool_identifier/dispatch_text，spawn 后用 bind_task_agent 绑定标识，finished 仅提交待主会话 review_task 的结果。send_message 只投递上下文，不等于唤醒/启动新执行。父/root synthesis 必须主会话。所有角色/模型/回执均为调用方填报，未经 Codex 宿主核验。",
+            "properties": {
+              "execution_mode": {
+                "type": "string",
+                "enum": [
+                  "main_session",
+                  "subagent"
+                ],
+                "description": "本次叶任务/attempt 的实际执行者；主会话仍负责根任务统筹与验收，子智能体仅负责派发范围"
+              },
+              "self_execution_reason": {
+                "type": "string",
+                "description": "主会话亲自执行叶任务的具体原因；复杂工作须记录可检查的例外理由"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": [
+                  "simple",
+                  "complex"
+                ],
+                "description": "规划者填报的复杂度，非自动识别；complex 默认委派，main_session 需具体例外理由"
+              },
+              "tool_identifier": {
+                "type": "string",
+                "description": "派发工具标识"
+              },
+              "tool_name": {
+                "type": "string",
+                "description": "工具中文名称"
+              },
+              "dispatch_text": {
+                "type": "string",
+                "description": "完整、自包含的派发任务文本"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "spawn 配置中的计划别名不构成绑定；spawn 返回后须 bind_task_agent。仅明确 follow-up 工具可填已知实际执行者标识用于立即绑定。"
+              },
+              "fork_turns": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ],
+                "description": "上下文策略；只记录明确值，省略表示未记录，不自动补 none。"
+              },
+              "model": {
+                "type": "string",
+                "description": "可选；仅填当前执行者明确提供的模型标识，不从配置默认值推断"
+              },
+              "model_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "配置选择来源；explicit 需有 model，inherited/unknown 不带具体 model。未提供时由值只读推导：有值为 explicit，无值为 unknown。"
+              },
+              "reasoning_effort": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "ultra"
+                ],
+                "description": "可选；仅填明确提供的思维强度，模型不同支持值可能不同"
+              },
+              "reasoning_effort_source": {
+                "type": "string",
+                "enum": [
+                  "explicit",
+                  "inherited",
+                  "unknown"
+                ],
+                "description": "推理强度来源；explicit 需有 reasoning_effort，inherited/unknown 不带具体值。未提供时由值只读推导。"
+              },
+              "codex_thread_id": {
+                "type": "string",
+                "description": "可选的 Codex thread ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "codex_turn_id": {
+                "type": "string",
+                "description": "可选的 Codex turn ID；仅在宿主明确提供时填写。当前插件无法验证其归属"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cheap",
+                  "standard",
+                  "heavy"
+                ]
+              },
+              "batch": {
+                "type": "string",
+                "description": "派发批次"
+              }
+            }
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "review_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "continue",
+              "accept"
+            ]
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "source_epoch",
+          "source_fingerprint",
+          "summary",
+          "evidence",
+          "reviewer",
+          "task_id",
+          "review_id",
+          "decision"
+        ]
+      }
+    },
+    {
+      "name": "route_request",
+      "description": "显式主会话实例登记新请求，request_id 幂等。queue 不执行；parallel 创建隔离任务实例，叶执行限 subagent 并由主会话验收。必须说明模式理由；不自动派发、不扩大授权，声明不构成宿主认证。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "task_title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "constraints": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "context_brief": {
+            "type": "object",
+            "description": "调用方提供的显式上下文，不能从摘要补造未记录事实。"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "parallel"
+            ]
+          },
+          "request_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "request_id",
+          "request_text",
+          "task_title",
+          "mode",
+          "reason",
+          "acceptance_criteria"
+        ]
+      }
+    },
+    {
+      "name": "activate_request",
+      "description": "仅原主任务完成或如实收尾后，显式将FIFO队首queued请求设为主任务。保留所有并行实例/请求及原任务历史；不会自动启动执行。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "request_id"
+        ]
+      }
+    },
+    {
+      "name": "update_request",
+      "description": "主会话以reason调整queued目标、约束和验收条件；保留请求原文及修订。当前实例用update_task_context或rebuild_task_network。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "task_title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "constraints": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "context_brief": {
+            "type": "object",
+            "description": "调用方提供的显式上下文，不能从摘要补造未记录事实。"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "request_id",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "cancel_request",
+      "description": "有理由取消queued或尚无attempt的parallel请求；不停止或假取消运行中的智能体/进程。已启动请求先协调执行者并如实收尾。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "request_id",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "update_task_context",
+      "description": "更新指定主任务或并行实例的目标、约束、验收和恢复位置，记录reason与旧版本；重规划保留上下文和既有证据。只记录明确提供的信息，不补造用户原文。 仅返回身份与状态回执；详情按需 get_progress。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "constraints": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12000
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "request_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000,
+            "description": "可选，首次显式补录用户原文；已记录原文不能覆盖。"
+          },
+          "resume_note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "goal",
+          "constraints",
+          "acceptance_criteria",
+          "resume_note",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "record_task_execution",
+      "description": "一轮Dagu/子代理/外部运行绑定精确attempt；同attempt拒绝第二run。failed/blocked/cancelled回执自动收尾，重跑必须retry生成新attempt。外部回执为调用方填报；重复终态幂等，冲突和迟到回执拒绝。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": "string",
+            "description": "本轮唯一ID；Dagu使用dagRunId，托管命令使用UUID。"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "简述外部执行。failed 或 blocked 时在这里记录具体原因，服务端会把它保存为叶任务的失败原因。"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "dagu",
+              "subagent",
+              "external"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "blocked",
+              "cancelled"
+            ]
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "终态必填，至少一条非空的实际执行证据，例如运行链接、日志位置或退出回执。running 时可省略。"
+          },
+          "started_at": {
+            "type": "string",
+            "description": "仅 status=running 可传。补录已开始的外部运行时，首次绑定应传同一运行带时区的实际开始时间。省略时用登记时间，绑定后不可改。"
+          },
+          "finished_at": {
+            "type": "string",
+            "description": "仅 status=succeeded、failed、blocked 或 cancelled 可传。带时区的实际结束时间不得早于已绑定的 started_at。省略时用收到回执的时间。"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "attempt_id",
+          "execution_id",
+          "provider",
+          "status",
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "start_task_execution",
+      "description": "仅执行用户已授权的命令，使用argv和绝对cwd。独立监督进程持久化退出码、自动收尾失败，MCP重启可对账。不增加提交/推送权限。成功进程仍须验收任务；同attempt拒绝不同执行，重放同UUID不重复运行。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": "string",
+            "description": "托管命令专用 UUID；省略时由服务端生成。需要安全重放时首次传入 UUID，随后沿用同一个值。"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "attempt_id",
+          "command",
+          "cwd",
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "review_task_split",
+      "description": "仅一个剩余结果可暂时保留原子叶；多个结果须decompose_task。复核绑定attempt/执行ID，最多有效10分钟；换执行立即失效。服务端拒绝摘要豁免；终态收尾始终允许。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "由 init_progress 或 init_task_network 返回，并在本会话的所有调用中复用的会话 ID。"
+          },
+          "task_instance_id": {
+            "type": "string",
+            "description": "目标 progress 返回的 task_instance_id，显式路由到主任务或隔离并行实例。请求管理工具须传当前 foreground ID；同一 session_id 有 task_history、受控请求/上下文或曾 clear_progress 后写操作必填。未受控且未清理过的首个任务兼容省略；旧实例/attempt更新会被拒绝。"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": "string",
+            "description": "可选的执行身份校验；仅填当前 attempt 已登记的 ID。省略时服务端仍绑定当前执行。"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000,
+            "description": "可选备注；仅记录在拆分复核，不豁免结构化拆分要求。"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "remaining_outcomes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "至少一条非空证据，说明当前叶任务为何只剩一个不可再分的结果，例如正在等待的运行回执。即使提供 summary，也须填写 evidence。"
+          },
+          "valid_for_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600
+          }
+        },
+        "required": [
+          "session_id",
+          "task_instance_id",
+          "task_id",
+          "attempt_id",
+          "reason",
+          "remaining_outcomes",
+          "evidence"
+        ]
+      }
+    }
+  ],
+  "node": {
+    "entry": "node/worker.cjs",
+    "protocol": "mcp-stdio",
+    "lifecycle": "resident"
+  },
+  "panel": {
+    "title": "Task Progress",
+    "html": "panel.html",
+    "position": "right"
+  },
+  "mcpApps": {
+    "ui": {
+      "resources": [
+        {
+          "uri": "ui://task-progress/progress-inspector/v13",
+          "file": "core/app.html",
+          "prefersBorder": true,
+          "csp": {
+            "connectDomains": [],
+            "resourceDomains": []
+          }
+        }
+      ],
+      "tools": {
+        "get_progress_view": {
+          "resourceUri": "ui://task-progress/progress-inspector/v13",
+          "visibility": [
+            "app"
+          ]
+        },
+        "render_progress": {
+          "resourceUri": "ui://task-progress/progress-inspector/v13",
+          "visibility": [
+            "model"
+          ]
+        }
+      }
+    }
+  }
+}
