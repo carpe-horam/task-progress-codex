@@ -57,6 +57,7 @@ def main() -> None:
             stage.mkdir(parents=True, exist_ok=False)
             for name in ("ghost.json", "main.js", "panel.html", "panel.css", "panel.js"):
                 shutil.copy2(CINDY / name, stage / name)
+            shutil.copytree(CINDY / "assets", stage / "assets")
             shutil.copytree(CINDY / "node", stage / "node")
             shutil.copytree(generated, stage / "core")
             print(f"Prepared self-contained Cindy Forge source: {stage}")
