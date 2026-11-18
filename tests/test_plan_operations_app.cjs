@@ -99,7 +99,23 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  assert len(groups['long'])>1
 `,workbook,path.join(host.temp,'sessions',sid+'.json')]);
   await exp.report.close(); await exp.hostPage.close();
+  const deletion=(await host.rpc('init_task_network',{task_title:'Deletion export fixture',tasks:[
+    {id:'keep',title:'Still current',assignment:main},{id:'remove',title:'Deleted audit title',assignment:main}]})).structuredContent;
+  await host.rpc('delete_task',{session_id:deletion.session_id,task_instance_id:deletion.task_instance_id,
+    task_id:'remove',reason:'Deletion audit reason',expected_epoch:deletion.epoch,expected_revision:deletion.revision});
+  const deletionView=await host.rpc('get_progress_view',{session_id:deletion.session_id});
+  const deletionExport=await host.exportReport(deletionView);
+  const deletionHTML=await deletionExport.report.locator('#rp-plan-operations').textContent();
+  assert(deletionHTML.includes('Deletion audit reason') && deletionHTML.includes('Deleted audit title'));
+  const deletionSave=await deletionExport.hostPage.evaluate(()=>window.host.calls.findLast(c=>c.name==='save_export_files'));
+  const deletionWorkbook=deletionSave.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path;
+  execFileSync('python3',['-c',`import sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+ data=''.join(z.read(n).decode('utf-8') for n in z.namelist() if n.startswith('xl/worksheets/') and n.endswith('.xml'))
+ assert 'delete_task' in data and 'Deletion audit reason' in data and 'Deleted audit title' in data
+`,deletionWorkbook]);
+  await deletionExport.report.close(); await deletionExport.hostPage.close();
   assert.deepEqual(host.errors,[]);
-  console.log('Snapshot and revision displayed and exported, including archived records, exact JSON and long Unicode chunks.');
+  console.log('Snapshot, revision and deletion audit displayed and exported, including archived records, exact JSON and long Unicode chunks.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>host?.close());

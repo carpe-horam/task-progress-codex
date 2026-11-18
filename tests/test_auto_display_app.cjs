@@ -54,6 +54,7 @@ async function main() {
       }
       if (message.method === 'ui/notifications/initialized' && !c.early) notify('ui/notifications/tool-result',c.bootstrap);
       if (message.method === 'ui/request-display-mode') {
+        if (c.delayDisplayRequestMs) await new Promise(resolve => setTimeout(resolve, c.delayDisplayRequestMs));
         audit.requests.push({id:frame.id,mode:message.params.mode});
         if (c.error) {
           event.source.postMessage({jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'unsupported'}}, '*'); return;
@@ -101,7 +102,13 @@ async function main() {
     await notify('automatic','ui/notifications/tool-result',a.bootstrap);
     await page.waitForTimeout(5500);
     assert.equal(await count('automatic'),1);
+    // Exercise asynchronous host delivery, rather than relying on same-turn timing.
+    await page.evaluate(() => { audit.config.automatic.delayDisplayRequestMs = 150; });
     await frame.locator('#open-progress-panel').click();
+    // The click posts a message from the iframe; the parent observes it on a
+    // later event-loop turn, which can be after Playwright resolves click().
+    await page.waitForFunction(() => audit.requests.filter(r =>
+      r.id === 'automatic' && r.mode === 'fullscreen').length >= 2);
     assert.equal(await count('automatic'),2);
     cases.push('close + replay + real polling does not reopen; explicit click reopens');
     await mount('duplicate',a.bootstrap);

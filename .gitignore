@@ -2,6 +2,14 @@
 __pycache__/
 *.py[cod]
 
+# Cindy build packages and local acceptance evidence are generated artifacts.
+/plugins/task-progress/cindy/*.cindy
+/plugins/task-progress/cindy/core/
+/.cindy-build/
+/tests/cindy-evidence/
+/tests/cindy-acceptance-*.json
+/tests/cindy-host-acceptance.md
+
 # Local audits, runtime snapshots, and generated verification evidence.
 /docs/reviews/
 !/docs/reviews/

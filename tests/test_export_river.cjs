@@ -55,7 +55,9 @@ async function richFixture(){
  const pendingAttempt=p(result).nodes.find(node=>node.id==='deep-peer').attempt_id;
  result=await host.rpc('bind_task_agent',{...binding(result),task_id:'deep-peer',attempt_id:pendingAttempt,agent_name:'river-fixture-pending-agent'});
  result=await host.rpc('update_task',{...binding(result),task_id:'deep-peer',attempt_id:pendingAttempt,execution_status:'finished',outcome:'resolved',summary:'PENDING_REVIEW_SUBMISSION',evidence:['fixture://pending-review']});
- for(const id of ['failed','running','rejected','open','cancelled']){
+ // Keep the one deliberately running main-session leaf last; the real service
+ // correctly serializes main-session execution and rejects a second start.
+ for(const id of ['failed','rejected','open','cancelled','running']){
   const assignment=id==='rejected'?SUB:MAIN;
   if(id==='rejected')await host.rpc('reassign_task',{...binding(result),task_id:id,assignment:SUB,reviewer:MAIN,reason:'Fixture requires an explicitly rejected subagent submission'});
   result=await host.rpc('update_task',{...binding(result),task_id:id,execution_status:'running',assignment});

@@ -92,6 +92,14 @@ class SelectiveWireTests(unittest.TestCase):
         self.assertEqual(server._session_file(self.sid).read_bytes(), before)
 
     def test_mutation_receipts_have_routing_identity_and_never_contain_snapshot(self):
+        delete_fixture = self.rpc('init_task_network', task_title='Delete wire fixture', tasks=[
+            {'id': 'keep', 'title': 'Keep', 'assignment': MAIN},
+            {'id': 'remove', 'title': 'Remove', 'assignment': MAIN}])['structuredContent']
+        deleted = self.rpc('delete_task', session_id=delete_fixture['session_id'],
+                           task_instance_id=delete_fixture['task_instance_id'], task_id='remove',
+                           reason=LONG, expected_epoch=delete_fixture['epoch'],
+                           expected_revision=delete_fixture['revision'])['structuredContent']
+        self.assertEqual(deleted['operation'], 'delete_task')
         started = self.write('update_task', task_id='work', execution_status='running', assignment=SUB)
         captured = self.write('snapshot_task_network', snapshot_id='wire-snapshot', reason='Capture running task')
         self.assertEqual(captured['snapshot_id'], 'wire-snapshot')

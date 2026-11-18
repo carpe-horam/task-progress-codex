@@ -1,0 +1,15 @@
+--- a/mcp_bridge.py
++++ b/mcp_bridge.py
+@@ -73,6 +73,12 @@
+                 result = forward(message, authorization)
+             except (OSError, ValueError, http.client.HTTPException):
+                 # Never retry writes: the daemon may already have applied them.
++                # Restore a stopped or unloaded managed service for the next
++                # request, while returning this request as failed to the caller.
++                try:
++                    manager.install()
++                except (ServiceError, OSError, ValueError) as error:
++                    print(f"Task Progress recovery: {error}", file=sys.stderr, flush=True)
+                 if not isinstance(message, dict) or "id" not in message:
+                     print("Task Progress: notification forwarding failed", file=sys.stderr, flush=True)
+                     continue

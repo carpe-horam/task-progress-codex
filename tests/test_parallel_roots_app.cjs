@@ -43,7 +43,7 @@ async function main(){
  assert.equal(await frame.locator('#steps-title').textContent(),'任务网络');
  assert.equal(await frame.locator('#percent').textContent(),'0');
  assert.match(await frame.locator('#fraction').textContent(),/主任务/);
- assert.match(await frame.locator('#acceptance-status').textContent(),/主任务综合验收：待主会话综合验收/);
+ assert.match(await frame.locator('#acceptance-status').textContent(),/主任务综合验收：执行中，尚未到综合验收/);
  assert.match(await frame.locator('#step-count').textContent(),/3 个根任务 · 6 个节点 · 3 个叶子任务/);
  assert.equal(await frame.locator('#session-work .request-item').count(),1);
  assert.equal(await frame.getByRole('button',{name:'只读查看',exact:true}).count(),0);

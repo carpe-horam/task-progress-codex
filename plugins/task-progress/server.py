@@ -1468,6 +1468,11 @@ def _historical_ids(data: dict[str, Any]) -> set[str]:
         nodes = epoch.get("nodes", {}) if isinstance(epoch, dict) else {}
         if isinstance(nodes, dict):
             found.update(nodes)
+    for revision in data.get("plan_revisions", []):
+        if isinstance(revision, dict) and revision.get("operation") == "delete_task":
+            deleted_id = revision.get("task_id")
+            if isinstance(deleted_id, str):
+                found.add(deleted_id)
     return found
 
 
@@ -3770,6 +3775,56 @@ def _plan_revision_snapshot(data: dict[str, Any], captured_at: str) -> dict[str,
     }
 
 
+def delete_task(session_id: str, task_instance_id: str, task_id: str, reason: str,
+                expected_epoch: int, expected_revision: int) -> dict[str, Any]:
+    """Remove an unstarted leaf while preserving its full plan in the audit trail."""
+    sid = _normalize_session_id(session_id)
+    if not isinstance(reason, str) or not reason.strip():
+        raise ProgressError("删除任务必须记录原因。")
+    _query_integer(expected_epoch, "expected_epoch", 0)
+    _query_integer(expected_revision, "expected_revision", 0)
+    with _session_lock(sid):
+        data = _select_task(sid, task_instance_id)
+        if data is None or data.get("schema_version") != 2:
+            raise ProgressError("删除任务需要当前 HTN 任务。")
+        _validate_task_instance(data, task_instance_id)
+        if expected_epoch != data.get("epoch", 0) or expected_revision != data.get("revision", 0):
+            raise ProgressError("epoch 或 revision 已变化；请重新读取计划后删除。")
+        data = deepcopy(data)
+        nodes = data["nodes"]
+        node = nodes.get(task_id)
+        if node is None or task_id == data.get("root_id"):
+            raise ProgressError("只能删除当前计划的非根节点。")
+        if node.get("children") or node.get("execution_status") != "pending" or node.get("attempt") or node.get("attempts") or node.get("review_status") == "pending":
+            raise ProgressError("只能删除尚未执行且没有子任务的叶节点。")
+        if any(task_id in other.get("depends_on", []) for other in nodes.values()):
+            raise ProgressError("其他任务依赖此节点；请先调整依赖。")
+        parent_id = node.get("parent_id")
+        parent = nodes[parent_id]
+        if len(parent.get("children", [])) <= 1:
+            raise ProgressError("不能删除分组或根任务的最后一个子任务。")
+        while parent_id:
+            ancestor = nodes[parent_id]
+            if ancestor.get("execution_status") in TERMINAL_EXECUTION_STATUSES or ancestor.get("review_status") == "pending":
+                raise ProgressError("祖先已结束或待验收，不能删除任务。")
+            parent_id = ancestor.get("parent_id")
+        revised_at = _now()
+        before_plan = _plan_revision_snapshot(data, revised_at)
+        deleted = deepcopy(nodes.pop(task_id))
+        _validate_network(data)
+        data["revision"] = int(data.get("revision", 0)) + 1
+        data.setdefault("plan_revisions", []).append({
+            "revision_id": str(uuid.uuid4()), "operation": "delete_task", "epoch": data.get("epoch", 0),
+            "task_id": task_id, "reason": reason.strip(), "revised_at": revised_at,
+            "before": {"node": deleted}, "after": {"node": None},
+            "before_plan": before_plan, "after_plan": _plan_revision_snapshot(data, revised_at),
+        })
+        _write(sid, data)
+        response_snapshot = _capture_response_snapshot(sid)
+    return _tool_result("已删除未开始的叶任务，删除前计划保留在修订历史中。", _progress_payload(data), sid,
+                        response_snapshot=response_snapshot)
+
+
 def revise_task_plan(session_id: str, task_instance_id: str, task_id: str, reason: str,
                      expected_epoch: int, expected_revision: int, depends_on: list[str] | None = None,
                      dependency_policy: str | None = None, before_id: str | None = None,
@@ -4449,7 +4504,7 @@ _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_i
                     "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
 _TREE_FIELDS = ("id", "parent_id", "created_at", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "inventory_disposition", "inventory_reason", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
-_MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "update_task", "update_step",
+_MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "delete_task", "update_task", "update_step",
                            "record_task_execution", "start_task_execution", "review_task_split",
                            "bind_task_agent", "review_task", "reassign_task", "snapshot_task_network", "revise_task_title", "revise_task_plan", "rebuild_task_network", "route_request",
                            "activate_request", "update_request", "cancel_request", "update_task_context", "clear_progress",
@@ -5568,6 +5623,17 @@ TOOLS = [
         "_meta": _data_tool_meta(),
     },
     {
+        "name": "delete_task",
+        "title": "删除未开始的叶任务",
+        "description": "删除无后继依赖且未执行的非根叶任务，保留删除前后计划和原因；禁止删除最后子任务或已结束祖先下的任务。",
+        "inputSchema": {"type": "object", "properties": {
+            "session_id": _session_property(), "task_instance_id": _task_instance_property(),
+            "task_id": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1},
+            "expected_epoch": {"type": "integer", "minimum": 0}, "expected_revision": {"type": "integer", "minimum": 0}},
+            "required": ["session_id", "task_instance_id", "task_id", "reason", "expected_epoch", "expected_revision"]},
+        "_meta": _data_tool_meta(),
+    },
+    {
         "name": "revise_task_plan",
         "title": "原位修订未开始的计划",
         "description": "在同一 epoch 内修订未开始分支的依赖、策略、分组或同级顺序，保留前后差异与原因；重分组还要求受影响分组及其消费者均未开始。拒绝终态祖先、依赖环和过期版本；不得借 finished 策略跳过真实必要的验收。",
@@ -5834,6 +5900,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "start_task_execution": lambda args: start_task_execution(**args),
     "review_task_split": lambda args: review_task_split(**args),
     "snapshot_task_network": lambda args: snapshot_task_network(**args),
+    "delete_task": lambda args: delete_task(**args),
     "revise_task_plan": lambda args: revise_task_plan(**args),
     "revise_task_title": lambda args: revise_task_title(**args),
     "handoff_request": lambda args: handoff_request(**args),
