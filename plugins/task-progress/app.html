@@ -52,7 +52,7 @@ h1{font-size:18px;line-height:1.35}
 .track{height:5px;margin-top:6px}
 .meta{gap:5px 14px;margin-top:7px;font-size:10px}
 .network-meta{gap:3px 10px;margin-top:7px;font-size:10px;line-height:1.45}
-.network-help,.step-id{display:none!important}
+.network-help:not(#filter-empty),.step-id{display:none!important}
 .steps-section{padding:10px 16px 2px}
 .sectionline{margin-bottom:4px;font-size:10px}
 .sectionline h2{font-size:11px}
@@ -120,6 +120,7 @@ h1{font-size:18px;line-height:1.35}
 <style>
 .root-role{display:inline-block;margin-right:7px;padding:1px 6px;border:1px solid #465671;border-radius:4px;font-size:10px;line-height:1.7;color:#a9c7f5;vertical-align:1px}.parallel-placeholder .step-title{color:#93a4bb}:root[data-theme="light"] .root-role{color:#365b89;border-color:#c0cede}.progress-context{font-size:11px;line-height:1.6;color:#a9b8ce;margin:8px 0 0}.acceptance-status{margin:6px 0 0;font-size:12px;line-height:1.6;color:#e8c58d}.step.awaiting_review > details > .step-main > .step-icon{color:#f3ce87;background:#3a3020;border-color:#ab8245;font-size:15px}.step-result{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:5px;color:#b6c5da;font-size:11px;line-height:1.55;white-space:pre-wrap}.leaf-result-summary{margin:10px 0 0 34px;padding:10px 12px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65}.leaf-result-summary .detail-value,.leaf-result-summary .detail-preview{font-size:12px;color:#c5d1e4}:root[data-theme="light"] .leaf-result-summary{background:#f5f7fb;border-color:#d4ddeb}:root[data-theme="light"] .leaf-result-summary :is(.detail-value,.detail-preview){color:#354c6c}@media(max-width:480px){.leaf-result-summary{margin-left:30px}}.task-details.execution-review>summary{font-size:11px;color:#94a7c4;cursor:pointer}.task-details.execution-review:not([open]){display:block}.session-work{padding:12px 16px;border-bottom:1px solid #303642;font-size:12px;line-height:1.6}.session-context>summary{cursor:pointer;font-weight:600}.session-context>details{margin-top:7px}.request-list{list-style:none;margin:8px 0 0;padding:0}.request-item{padding:7px 0;border-top:1px solid #303642}.request-line{display:flex;gap:8px;justify-content:space-between;align-items:start}.request-detail{font-size:11px;color:#93a4bb;white-space:pre-wrap;overflow-wrap:anywhere}.request-tag{font-size:10px;color:#e8c58d;white-space:nowrap}.work-guidance{margin:7px 0 0;color:#93a4bb;font-size:10px}:root[data-theme="light"] :is(.progress-context,.step-result){color:#425874}:root[data-theme="light"] .acceptance-status{color:#815b19}:root[data-theme="light"] :is(.request-detail,.work-guidance){color:#596d85}:root[data-theme="light"] :is(.session-work,.request-item){border-color:#dce3ed}
 </style>
+<style>.status-filter-label{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:11px;color:#9aa5b7}.status-filter-label select{color:inherit;background:transparent;border:1px solid #465060;border-radius:6px;padding:4px 6px;font:inherit}.status-filter-label option{background:#222833;color:#d5deed}:root[data-theme="light"] .status-filter-label{color:#526174}:root[data-theme="light"] .status-filter-label option{background:#fff;color:#263447}.status-filter-hidden{display:none!important}</style>
 </head>
 <body>
 <main class="card" aria-label="任务进度">
@@ -148,7 +149,7 @@ h1{font-size:18px;line-height:1.35}
   </header>
   <section id="session-work" class="session-work hidden" aria-label="会话请求"></section>
   <section id="empty" class="empty"><span class="empty-icon" aria-hidden="true">☷</span><h2>当前会话暂无任务</h2><p>任务开始后，进度与步骤会显示在这里。</p></section>
-  <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比仅表示主任务中已解决且通过当前验收协议的叶任务；各根任务综合验收单独记录。</p><ol id="steps" class="steps"></ol></section>
+  <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><label class="status-filter-label" for="status-filter">状态筛选 <select id="status-filter"><option value="all">全部状态</option><option value="running">进行中</option><option value="pending">未开始</option><option value="review">待验收</option><option value="completed">已解决</option><option value="unresolved">未解决</option></select></label><p id="filter-empty" class="network-help hidden" role="status">没有符合条件的任务。</p><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比仅表示主任务中已解决且通过当前验收协议的叶任务；各根任务综合验收单独记录。</p><ol id="steps" class="steps"></ol></section>
   <details id="history-section" class="history-section hidden"><summary id="history-title">历史计划</summary><ol id="history-list" class="history-list"></ol></details>
   <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
   <details id="legacy-history-section" class="history-section hidden"><summary id="legacy-history-title">SQLite 历史 · 只读</summary><div id="legacy-history-list" class="history-meta"></div></details>
@@ -2545,6 +2546,28 @@ h1{font-size:18px;line-height:1.35}
     if (sessionWork.return_to?.task_instance_id) { const anchor=document.createElement('div'); anchor.className='request-detail'; anchor.textContent=anchorDescription(sessionWork.return_to); content.append(anchor); const details=disclosure('return-to'); const heading=document.createElement('summary');heading.textContent='返回位置详情'; const id=document.createElement('div');id.className='request-detail';id.textContent=sessionWork.return_to.task_instance_id + (sessionWork.return_to.task_id ? ' · '+sessionWork.return_to.task_id : '');details.append(heading,id);content.append(details); }
     const fragment=document.createDocumentFragment();fragment.append(content);reconcileChildren(section,fragment);
   }
+  function applyStatusFilter() {
+    const selected = $('status-filter').value;
+    const groups = {running:['running'], pending:['pending','ready','blocked','waiting_main_session','decomposing'], review:['awaiting_review','waiting_synthesis'], completed:['completed'], unresolved:['failed','cancelled','open','finished','inventory_obsolete','inventory_covered']};
+    const nodes = Array.from($('steps').querySelectorAll('li.step'));
+    let matched = 0;
+    for (const li of nodes) {
+      const ownMatch = selected === 'all' || (groups[selected] || []).some(value => li.classList.contains(value));
+      li.dataset.filterMatch = ownMatch ? 'true' : 'false';
+      if (ownMatch) matched++;
+    }
+    for (const li of nodes.reverse()) {
+      const descendants = Array.from(li.querySelectorAll('li.step'));
+      const visible = selected === 'all' || li.classList.contains('parallel-placeholder') || li.dataset.filterMatch === 'true' || descendants.some(child => !child.classList.contains('status-filter-hidden'));
+      li.classList.toggle('status-filter-hidden', !visible);
+      if (visible && selected !== 'all' && descendants.some(child => !child.classList.contains('status-filter-hidden'))) {
+        const details = li.querySelector(':scope > details');
+        if (details) details.open = true;
+      }
+    }
+    $('filter-empty').classList.toggle('hidden', selected === 'all' || matched > 0);
+  }
+  $('status-filter').addEventListener('change', applyStatusFilter);
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
     renderSessionWork(progress);
@@ -2625,9 +2648,10 @@ h1{font-size:18px;line-height:1.35}
       const unavailable=parallels.filter(task=>task.details_unavailable || !nodesFrom(task.nodes).length).length;
       setText('step-count', (1+parallels.length)+' 个根任务 · '+count+' 个节点 · '+leaves+' 个叶子任务'+(unavailable?' · '+unavailable+' 个根待刷新详情':''));
     } else setText('step-count', total + ' 个步骤');
-    if (network) { renderNetwork(progress, nodes, openDetails); syncButton(); return; }
+    if (network) { renderNetwork(progress, nodes, openDetails); applyStatusFilter(); syncButton(); return; }
     $('steps').className = 'steps';
     reconcileChildren($('steps'), linearSteps(steps, taskScope(progress) + ':steps', openDetails, null, progress.updated_at || progress.created_at || ''));
+    applyStatusFilter();
     syncButton();
   }
   $('export-all').addEventListener('click', exportCurrentProgress);
