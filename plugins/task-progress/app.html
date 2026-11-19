@@ -2050,6 +2050,17 @@ h1{font-size:18px;line-height:1.35}
       if (parent && !parent.includes(String(node.id))) parent.push(String(node.id));
     }
     orderNetworkChildren(nodes, byId, children);
+    const activeBranches = new Set();
+    if (defaultOpen && rootContext) {
+      for (const node of nodes) {
+        if (node.execution_status !== 'running' && node.review_status !== 'pending') continue;
+        let parent = byId.get(String(node.parent_id));
+        while (parent && !activeBranches.has(String(parent.id))) {
+          activeBranches.add(String(parent.id));
+          parent = byId.get(String(parent.parent_id));
+        }
+      }
+    }
     const referenced = new Set([...children.values()].flat());
     const seen = new Set();
     const derivedStatuses = new Map();
@@ -2088,7 +2099,13 @@ h1{font-size:18px;line-height:1.35}
       const info = statusInfo(nodeStatus(id));
       const li = document.createElement('li'); li.className = 'step ' + info.key;
       const details = document.createElement('details'); details.dataset.key = prefix + ':' + id;
-      details.open = openDetails.has(details.dataset.key) ? openDetails.get(details.dataset.key) : defaultOpen && childIds.length > 0;
+      const initiallyOpen = defaultOpen && childIds.length > 0
+        && (!rootContext || id === String(rootId) || activeBranches.has(id));
+      details.open = openDetails.has(details.dataset.key) ? openDetails.get(details.dataset.key) : initiallyOpen;
+      if (rootContext && id !== String(rootId)) {
+        details.dataset.autoOpen = String(initiallyOpen);
+        if (openDetails.has(details.dataset.key)) details.dataset.openOverride = '';
+      }
       const row = document.createElement('summary'); row.className = 'step-main';
       const icon = document.createElement('span'); icon.className = 'step-icon'; icon.setAttribute('aria-hidden', 'true');
       if (info.key === 'awaiting_review') {
@@ -2578,7 +2595,12 @@ h1{font-size:18px;line-height:1.35}
     const network = progress?.schema_version === 2;
     const legacyOnly = progress?.mode === 'legacy_archive';
     const nodes = network ? nodesFrom(progress.nodes) : [];
-    const openDetails = new Map(Array.from(document.querySelectorAll('details[data-key]')).map(el => [el.dataset.key, el.open]));
+    const openDetails = new Map();
+    for (const el of document.querySelectorAll('details[data-key]')) {
+      // Follow the active branch on refresh until the user changes its disclosure.
+      if (el.dataset.autoOpen === String(el.open) && !el.hasAttribute('data-open-override')) continue;
+      openDetails.set(el.dataset.key, el.open);
+    }
     renderTaskHistory(progress, openDetails);
     renderLegacyHistory(progress);
     hasCurrentProgress = hasProgress;

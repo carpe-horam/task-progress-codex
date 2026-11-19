@@ -28,6 +28,61 @@ class PlanOperationsTests(unittest.TestCase):
     def data(self):
         return server._read(self.sid)
 
+    def test_batch_groups_then_reuses_parent_for_additions(self):
+        server.decompose_task(self.sid, "root", [
+            {"id": "check-html", "title": "HTML", "parent_id": "export", "assignment": MAIN},
+            {"id": "export", "title": "Export checks", "depends_on": ["a"], "assignment": MAIN},
+            {"id": "check-xlsx", "title": "XLSX", "parent_id": "export", "assignment": MAIN},
+        ], task_instance_id=self.iid)
+        server.decompose_task(self.sid, "export", [
+            {"id": "check-data", "title": "Data", "assignment": MAIN,
+             "precedes": ["check-xlsx"], "addition_reason": "Validate data before workbook"},
+        ], task_instance_id=self.iid)
+        nodes = self.data()["nodes"]
+        self.assertEqual(nodes["root"]["children"], ["a", "b", "c", "export"])
+        self.assertEqual(nodes["export"]["children"], ["check-html", "check-data", "check-xlsx"])
+        self.assertEqual(nodes["check-xlsx"]["depends_on"], ["check-data"])
+        self.assertTrue(all(nodes[key]["is_added"] for key in
+                            ("export", "check-html", "check-xlsx", "check-data")))
+        ready = server.get_ready_tasks(self.sid, task_instance_id=self.iid)["structuredContent"]["ready_tasks"]
+        self.assertEqual({node["id"] for node in ready}, {"a", "c"})
+
+        server.update_task(self.sid, "a", "running", assignment=MAIN, task_instance_id=self.iid)
+        attempt = self.data()["nodes"]["a"]["attempt_id"]
+        server.update_task(self.sid, "a", "finished", "resolved", "Inspected", evidence=["Fixture"],
+                           attempt_id=attempt, task_instance_id=self.iid)
+        ready = server.get_ready_tasks(self.sid, task_instance_id=self.iid)["structuredContent"]["ready_tasks"]
+        self.assertEqual({node["id"] for node in ready}, {"b", "c", "check-html", "check-data"})
+
+    def test_batch_init_and_legacy_single_parent_payload(self):
+        initialized = server.init_task_network("Grouped plan", tasks=[
+            {"id": "checks", "title": "Checks", "assignment": MAIN},
+            {"id": "html", "title": "HTML", "parent_id": "checks", "assignment": MAIN},
+            {"id": "xlsx", "title": "XLSX", "parent_id": "checks", "assignment": MAIN},
+            {"id": "delivery", "title": "Delivery", "assignment": MAIN},
+        ])["structuredContent"]
+        nodes = server._read(initialized["session_id"])["nodes"]
+        self.assertEqual(nodes["root"]["children"], ["checks", "delivery"])
+        self.assertEqual(nodes["checks"]["children"], ["html", "xlsx"])
+        self.assertFalse(any(node.get("is_added") for node in nodes.values()))
+        legacy_nodes = self.data()["nodes"]
+        self.assertEqual(legacy_nodes["root"]["children"], ["a", "b", "c"])
+
+    def test_invalid_batch_does_not_change_saved_plan(self):
+        group = {"id": "group", "title": "Checks", "assignment": MAIN}
+        child = {"id": "child", "title": "Check", "parent_id": "group", "assignment": MAIN}
+        saved = server._session_file(self.sid).read_bytes()
+        for tasks, error in (
+            ([group, dict(child, parent_id="missing")], "本批新增"),
+            ([group, dict(child, parent_id="a")], "本批新增"),
+            ([dict(group, parent_id="child"), child], "循环依赖"),
+            ([dict(group, depends_on=["child"]), child], "循环依赖"),
+            ([dict(group, assignment={"execution_mode": "subagent"}), child], "main_session"),
+        ):
+            with self.subTest(error=error), self.assertRaisesRegex(server.ProgressError, error):
+                server.decompose_task(self.sid, "root", tasks, task_instance_id=self.iid)
+            self.assertEqual(server._session_file(self.sid).read_bytes(), saved)
+
     def test_delete_unstarted_leaf_preserves_audit_and_id(self):
         before = self.data()
         server.delete_task(self.sid, self.iid, "c", "No longer needed", 0, before["revision"])

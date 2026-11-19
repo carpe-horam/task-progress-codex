@@ -67,7 +67,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 - **主要阶段结束，准备开始下一阶段** → 检查 `stage_inventory_due` 和 `stage_inventory_due_has_more`。无有效提醒时不调用盘点工具；有提醒时按 [生命周期](references/planning-and-lifecycle.md) 找全提醒和未解决叶节点，并用 `review_stage_inventory` 逐项记录理由。没有未解决叶节点时提交空 `decisions`；盘点不改变任务状态。
 - **HTN 叶节点超过 10 分钟，或收到拆分复核门禁** → 多个独立结果使用 `decompose_task`；唯一剩余结果用 `review_task_split` 提交理由和证据，最多有效 10 分钟且绑定当前执行。摘要文字不能豁免。不要为拆分中断实际运行。旧线性步骤仍按 [生命周期](references/planning-and-lifecycle.md) 复核。
 - **启动命令或外部运行** → 已授权的本地命令优先通过 `start_task_execution` 获得自动退出回执；项目要求走 Dagu 时仍走 Dagu，并用 `record_task_execution` 将实际 run ID 和终态绑定当前 attempt。每 attempt 仅一轮执行；失败或阻塞后必须收尾并用 `retry=true` 取得新 attempt，不能在 running 上覆盖 run ID。成功命令仍须验收任务，外部回执缺失保持未知。
-- **范围或依赖变化** → 先调整计划，再启动新增工作。追加、重试、结果失效和重规划的规则见 [生命周期](references/planning-and-lifecycle.md) 和 [HTN 重试与重规划](references/htn-retry.md)。
+- **范围或依赖变化** → 先读任务树，为新增工作找最具体的未结束父任务。同一阶段的追加放在同一个分组下，根的直属子项留给不同阶段或独立结果。选择父节点及批量建树方法见 [HTN 初始化与分解](references/htn-planning.md)，真实依赖与结果失效规则见 [生命周期](references/planning-and-lifecycle.md) 和 [HTN 重试与重规划](references/htn-retry.md)。
 
 ## 5. 恢复、分流和收尾
 
