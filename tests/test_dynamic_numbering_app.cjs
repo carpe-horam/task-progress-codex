@@ -44,6 +44,9 @@ async function main() {
   assert.equal(await row('early',pid).locator(':scope > summary .waiting-clock').evaluate(e=>getComputedStyle(e).width),'20px');
   cases.push('Multi-level numbering, reverse sibling dependencies, independent peer IDs and waiting SVG');
 
+  assert.equal(await row('group').getAttribute('open'),null);
+  assert.equal(await row('g2').isVisible(),false);
+  await row('group').locator(':scope > summary').click();
   await row('g2').locator(':scope > summary').click();
   await row('g2').locator(':scope > summary').focus();
   await row('g2').locator(':scope > summary .task-title-text').evaluate(e=>{
@@ -145,6 +148,40 @@ async function main() {
   assert.equal(await addedRow.locator(':scope > summary .added-badge').getAttribute('title'),'追加原因：Discovered prerequisite');
   cases.push('Real backend insertion changes dependency and displays added badge and reason');
   await livePage.close();
+
+  await host.rpc('decompose_task',{...liveBinding,task_id:'root',tasks:[
+    task('export'), {...task('html'),parent_id:'export'}, {...task('xlsx'),parent_id:'export'}
+  ]});
+  await host.rpc('decompose_task',{...liveBinding,task_id:'export',tasks:[task('data')]});
+  const groupedPage=await host.page();
+  const groupedFrame=await host.mount(groupedPage,'main',await host.rawRpc('get_progress_view',liveBinding));
+  const groupedRow=id=>groupedFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:'+id+'"]');
+  assert.equal(await groupedRow('export').getAttribute('open'),null);
+  assert.equal(await groupedRow('export').locator(':scope > summary .child-count').textContent(),'3 个子任务');
+  assert.equal(await groupedRow('data').isVisible(),false);
+  await groupedRow('export').locator(':scope > summary').click();
+  assert.equal(await groupedRow('data').isVisible(),true);
+  assert.equal(await groupedRow('data').locator(':scope > summary .task-number').textContent(),'1-4-3');
+  await groupedFrame.locator('#refresh').click();
+  await groupedFrame.locator('#refresh:not([disabled])').waitFor();
+  assert.equal(await groupedRow('data').isVisible(),true);
+  await groupedPage.close();
+
+  const activePage=await host.page();
+  const activeFrame=await host.mount(activePage,'main',await host.rawRpc('get_progress_view',liveBinding));
+  const activeLeaf=activeFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:html"]');
+  const activeSummary=activeLeaf.locator(':scope > summary');
+  assert.equal(await activeSummary.isVisible(),false);
+  const running=await host.rpc('update_task',{...liveBinding,task_id:'html',execution_status:'running',assignment});
+  await activeFrame.locator('#refresh').click();
+  await activeSummary.waitFor({state:'visible'});
+  await host.rpc('update_task',{...liveBinding,task_id:'html',execution_status:'finished',outcome:'resolved',
+    attempt_id:running.structuredContent.progress.nodes.find(n=>n.id==='html').attempt_id,
+    summary:'HTML checked',evidence:['Isolated numbering fixture']});
+  await activeFrame.locator('#refresh').click();
+  await activeSummary.waitFor({state:'hidden'});
+  await activePage.close();
+  cases.push('Grouped and repeated additions remain under one parent, with automatic collapse following execution on refresh');
   assert.deepEqual(host.errors,[]);
   if(artifacts){
     fs.mkdirSync(artifacts,{recursive:true});

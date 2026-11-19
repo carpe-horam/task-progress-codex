@@ -27,7 +27,7 @@
 
 `update_task_context` 记录明确的 `goal`、`constraints`、`acceptance_criteria`、`resume_note` 和修改 `reason`；`request_text` 仅在真实原文可用且尚未记录时填写。恢复位置应指出下一可执行阶段、关键未解决问题和所需证据路径，不写泛泛的“继续之前工作”。已经执行的事实仍放在节点、attempt、submission 和 review 中，避免复制后产生两套矛盾状态。
 
-收到当前范围变更后更新上下文，再按需要用 `decompose_task` 追加阶段、`reassign_task` 调整未执行节点的执行者，或 `rebuild_task_network` 重规划。重规划前协调运行中工作；既有结果留在历史，明确哪些继续有效、哪些必须重做。不得把修改上下文当作旧结果自动满足新验收条件的证明。
+收到当前范围变更后更新上下文，再按需要用 `decompose_task` 向对应的父任务追加（见 [追加到合适的父任务](htn-planning.md#追加到合适的父任务)）、`reassign_task` 调整未执行节点的执行者，或 `rebuild_task_network` 重规划。重规划前协调运行中工作；既有结果留在历史，明确哪些继续有效、哪些必须重做。不得把修改上下文当作旧结果自动满足新验收条件的证明。
 
 压缩恢复或插入请求结束时：
 

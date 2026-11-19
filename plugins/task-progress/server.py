@@ -1575,7 +1575,8 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         profile = item.get("profile")
         if profile is not None and profile not in PROFILES:
             raise ProgressError(f"任务 {node_id} 的 profile 必须是 {PROFILES} 之一。")
-        node = _new_node(node_id, title.strip(), parent_id)
+        item_parent = _validate_node_id(item["parent_id"]) if "parent_id" in item else parent_id
+        node = _new_node(node_id, title.strip(), item_parent)
         reason = item.get("addition_reason")
         precedes = item.get("precedes", [])
         if reason is not None and (not isinstance(reason, str) or not reason.strip()):
@@ -1600,12 +1601,19 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         if assignment.get("complexity") == "complex":
             _require_self_execution_reason(assignment)
         new_nodes.append((node_id, node))
+    batch = dict(new_nodes)
     for node_id, node in new_nodes:
-        nodes[node_id] = node
+        item_parent = node["parent_id"]
+        if item_parent != parent_id:
+            if item_parent not in batch:
+                raise ProgressError(f"任务 {node_id} 的 parent_id 必须是本批新增的分组；向已有分组追加时直接以它为 task_id。")
+            if batch[item_parent]["planned_assignment"]["execution_mode"] != "main_session":
+                raise ProgressError(f"分组 {item_parent} 的 assignment.execution_mode 必须为 main_session。")
+    nodes.update(batch)
     for item, (node_id, node) in zip(tasks, new_nodes):
         for successor_id in item.get("precedes", []):
             successor = nodes.get(successor_id)
-            if successor is None or successor_id in {key for key, _ in new_nodes}:
+            if successor is None or successor_id in batch:
                 raise ProgressError(f"后继 {successor_id} 必须是已有任务。")
             # Changing an already started branch would falsify its execution history.
             stack = [successor_id]
@@ -1617,7 +1625,7 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
             successor.setdefault("depends_on", []).append(node_id)
         # Persist a useful stable order for same-parent consumers as well as
         # the dependency edge used by scheduling and the UI's topological sort.
-        sibling_targets = [v for v in item.get("precedes", []) if nodes[v].get("parent_id") == parent_id]
+        sibling_targets = [v for v in item.get("precedes", []) if nodes[v].get("parent_id") == node["parent_id"]]
         if sibling_targets:
             order = list(nodes)
             order.remove(node_id)
@@ -4579,7 +4587,7 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
     if view == "overview":
         # Server support does not certify that a host adapter or skill has
         # adopted the protocol yet.
-        metadata["protocol_capabilities"] = ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1"]
+        metadata["protocol_capabilities"] = ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1", "task_batch_parent_v1"]
     p = source.get("progress")
     if p is None:
         return {"content": [{"type": "text", "text": "当前会话没有进度数据。"}],
@@ -5297,6 +5305,7 @@ def _task_schema() -> dict[str, Any]:
         "properties": {
             "id": {"type": "string", "description": "当前 task_instance_id 生命周期内唯一的节点 ID；重规划时也不可复用"},
             "title": {"type": "string", "description": "任务标题"},
+            "parent_id": {"type": "string", "description": "可选，本批新增父任务的 ID，需由主会话统筹；省略则直接挂到本次分解目标或初始化的根。向已有分组追加时，以分组 ID 为 decompose_task 的 task_id。"},
             "addition_reason": {"type": "string", "minLength": 1, "description": "执行中追加任务的具体原因；保留为追加标记与审计信息。"},
             "precedes": {"type": "array", "items": {"type": "string"}, "description": "依赖此新增任务的已有后继 ID；原子加入依赖并排序。后继及其子任务必须尚未开始，且必须提供 addition_reason。"},
             "depends_on": {
@@ -5509,7 +5518,7 @@ TOOLS = [
     {
         "name": "init_task_network",
         "title": "初始化任务网络",
-        "description": "新任务的默认入口。多阶段任务一次传入至少两个粗粒度 tasks，或初始化后调用 decompose_task；未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
+        "description": "新任务的默认入口。多阶段任务一次传入至少两个有独立结果的 tasks，或初始化后调用 decompose_task。已有明确阶段时可用同批 parent_id 组织子任务。未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -5542,7 +5551,7 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。同阶段追加优先以已有未结束的分组 ID 为 task_id；新建分组可在同批子任务填写 parent_id 指向新父任务。根的直属子项用于不同阶段或独立结果。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
