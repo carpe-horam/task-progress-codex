@@ -9,6 +9,8 @@ let latestUpdate = null;
 let sessionSyncTimer = null;
 let sessionSyncBusy = false;
 let sessionLoadFailed = false;
+let taskStateRefreshTimer = null;
+let pendingRefreshReceipts = [];
 let toolRequestSequence = 0;
 const pendingToolCalls = new Map();
 setPanelStatus('正在连接任务界面…');
@@ -18,6 +20,17 @@ window.setTimeout(() => {
 
 function postToApp(message) {
   if (!disposed && appFrame.contentWindow) appFrame.contentWindow.postMessage(message, '*');
+}
+
+function acknowledgeRefresh(receipts, status, result) {
+  const structured = result?.structuredContent || result?.result?.structuredContent || {};
+  for (const receipt of receipts) {
+    if (!receipt?.receipt_id || !receipt?.host_session_id || !receipt?.trigger) continue;
+    panelBus.postMessage({ type: 'panel-refresh-result', receipt_id: receipt.receipt_id,
+      host_session_id: receipt.host_session_id, trigger: receipt.trigger,
+      session_id: receipt.session_id, status,
+      ...(Number.isSafeInteger(structured.state_revision) ? { state_revision: structured.state_revision } : {}) });
+  }
 }
 
 function setPanelStatus(text) {
@@ -87,8 +100,8 @@ async function callTool(name, args) {
   });
 }
 
-async function syncSessionFromKV() {
-  if (sessionSyncBusy) return;
+async function syncSessionFromKV(receipt) {
+  if (sessionSyncBusy) { acknowledgeRefresh([receipt], 'skipped_sync_busy'); return; }
   sessionSyncBusy = true;
   try {
     const response = await fetch('/kv');
@@ -109,12 +122,13 @@ async function syncSessionFromKV() {
       applyPanelDiagnostic(diagnostic);
       if (nextSession && sessionLoadFailed) {
         sessionId = null;
-        bindSession(nextSession, diagnostic);
-      }
+        bindSession(nextSession, diagnostic, receipt);
+      } else acknowledgeRefresh([receipt], 'skipped_same_session');
       return;
     }
-    bindSession(nextSession, diagnostic);
+    bindSession(nextSession, diagnostic, receipt);
   } catch (error) {
+    acknowledgeRefresh([receipt], 'read_failed');
     setPanelStatus(`读取任务会话失败：${String(error.message || error)}`);
     applyPanelDiagnostic({ kind: 'panel-error', message: String(error.message || error) });
   } finally {
@@ -122,10 +136,11 @@ async function syncSessionFromKV() {
   }
 }
 
-function bindSession(value, diagnostic) {
+function bindSession(value, diagnostic, receipt) {
   const nextSession = typeof value === 'string' ? value : '';
   if (nextSession === sessionId) {
     applyPanelDiagnostic(diagnostic);
+    acknowledgeRefresh([receipt], 'skipped_same_session');
     return;
   }
   sessionId = nextSession;
@@ -142,7 +157,8 @@ function bindSession(value, diagnostic) {
     const requestedSession = sessionId;
     void callTool('get_progress_view', { session_id: requestedSession, include_history: false })
       .then(result => {
-        if (sessionId !== requestedSession) return;
+        if (sessionId !== requestedSession) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
+        acknowledgeRefresh([receipt], 'read_ok', result);
         sessionLoadFailed = false;
         const structured = result?.structuredContent || {};
         setPanelStatus(structured.progress ? '任务数据已读取，正在显示…' : '已连接当前会话，但任务数据为空。');
@@ -150,13 +166,14 @@ function bindSession(value, diagnostic) {
         applyUpdate(latestUpdate);
       })
       .catch(error => {
-        if (sessionId !== requestedSession) return;
+        if (sessionId !== requestedSession) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
+        acknowledgeRefresh([receipt], 'read_failed');
         sessionLoadFailed = true;
         setPanelStatus(`读取任务失败：${String(error.message || error)}`);
         applyPanelDiagnostic({ kind: 'panel-error', message: String(error.message || error) });
         postToApp({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text: error.message || '无法读取当前任务进度。' }] } });
       });
-  }
+  } else acknowledgeRefresh([receipt], 'skipped_unmapped');
 }
 
 async function bootstrapSession() {
@@ -235,7 +252,28 @@ panelBus.onmessage = event => {
   } else if (message.type === 'bind-session') {
     // Inline cards and delayed host events may refer to another conversation.
     // The active host-session mapping is the authority for the global panel.
-    void syncSessionFromKV();
+    void syncSessionFromKV(message);
+  } else if (message.type === 'refresh-mapped-session') {
+    if (message.session_id !== sessionId || !sessionId) {
+      acknowledgeRefresh([message], 'skipped_session_changed');
+      return;
+    }
+    pendingRefreshReceipts.push(message);
+    if (taskStateRefreshTimer !== null) return;
+    taskStateRefreshTimer = window.setTimeout(() => {
+      taskStateRefreshTimer = null;
+      const receipts = pendingRefreshReceipts;
+      pendingRefreshReceipts = [];
+      const requestedSession = sessionId;
+      if (!requestedSession || disposed) { acknowledgeRefresh(receipts, 'skipped_session_changed'); return; }
+      void callTool('get_progress_view', { session_id: requestedSession, include_history: false })
+        .then(result => {
+          if (sessionId !== requestedSession || disposed) { acknowledgeRefresh(receipts, 'skipped_session_changed'); return; }
+          acknowledgeRefresh(receipts, 'read_ok', result);
+          latestUpdate = { type: 'update', session_id: requestedSession, result };
+          if (appInitialized) applyUpdate(latestUpdate);
+        }).catch(() => { acknowledgeRefresh(receipts, 'read_failed'); });
+    }, 250);
   } else if (message.type === 'update' && message.result) {
     if (message.session_id && message.session_id !== sessionId) {
       void syncSessionFromKV();
