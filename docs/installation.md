@@ -1,6 +1,6 @@
 # 安装与服务管理
 
-[返回 README](../README.md) · [0.2.29 发布说明](releases/0.2.29.md)
+[返回 README](../README.md) · [0.2.30 发布说明](releases/0.2.30.md)
 
 本文描述 Task Progress 的跨平台自动服务启动与管理。需要固定版本时，可在首次添加 Marketplace 时使用 `--ref <release-tag>`。
 
@@ -31,7 +31,7 @@ codex plugin add task-progress@task-progress-codex
 
 ```sh
 codex plugin marketplace remove task-progress-codex
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.29
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.2.30
 codex plugin add task-progress@task-progress-codex
 ```
 

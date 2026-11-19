@@ -1,18 +1,23 @@
 {
   "schemaVersion": 3,
-  "minCindyVersion": "0.1.139",
+  "minCindyVersion": "0.1.140",
   "id": "task-progress",
   "name": "Task Progress",
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.2.56",
+  "version": "0.2.57",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
   "subscribe": {
     "topics": [
-      "session"
+      "session",
+      "task-state",
+      "message"
+    ],
+    "hooks": [
+      "will-compose-context"
     ]
   },
   "entry": "main.js",
@@ -3516,6 +3521,15 @@
           "evidence"
         ]
       }
+    },
+    {
+      "name": "get_hook_diagnostics",
+      "description": "只读查看当前 Cindy 会话四类 Task Progress Hook 的触发计数、最后事件序号、侧栏重读请求与完成回执；不返回消息正文或其它会话诊断。仅用于验证 Hook 投递和侧栏读取，不代表任务完成。",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
     }
   ],
   "node": {
@@ -3556,5 +3570,6 @@
         }
       }
     }
-  }
+  },
+  "releaseNotes": "新增按当前 Cindy 会话读取的四类 Hook 触发与侧栏重读诊断回执；只记录事件类别、序号、计数和读取状态，不保存消息正文。"
 }
