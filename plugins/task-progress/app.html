@@ -146,9 +146,29 @@ h1{font-size:18px;line-height:1.35}
 #leaf-progress{order:0;margin-top:14px;color:var(--workspace-muted);font-size:12px;font-variant-numeric:tabular-nums}
 #leaf-progress .progressline{margin:0;align-items:baseline}
 #leaf-progress .fraction{font-size:12px;color:inherit}
-#leaf-progress .track{height:5px;margin-top:6px;background:var(--workspace-line)}
-#leaf-progress .fill{background:var(--workspace-accent)}
-#leaf-progress .progress-percent{font-size:12px}
+#leaf-progress .track{position:relative;height:14px;margin-top:10px;padding:2px;border:1px solid color-mix(in srgb,var(--workspace-accent) 30%,var(--workspace-line));background:color-mix(in srgb,var(--workspace-line) 45%,transparent);box-shadow:inset 0 1px 3px #00000018;border-radius:20px;isolation:isolate}
+#leaf-progress .track::after{content:"";position:absolute;inset:2px;pointer-events:none;border-radius:inherit;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 1px),color-mix(in srgb,var(--workspace-ink) 20%,transparent) calc(10% - 1px),color-mix(in srgb,var(--workspace-ink) 20%,transparent) 10%)}
+#leaf-progress .fill{position:relative;overflow:hidden;border-radius:20px;background:linear-gradient(105deg,#22cdbd 0%,#3aafff 27%,#8274ff 56%,#cd7aee 78%,#64dbef 100%);background-size:180% 100%;background-position:25% 50%;box-shadow:0 0 12px color-mix(in srgb,var(--workspace-accent) 45%,transparent);transition:none}
+#leaf-progress .fill::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,#ffffff35,transparent 70%)}
+#leaf-progress .fill::after{content:"";position:absolute;right:0;top:0;bottom:0;width:4px;border-radius:inherit;background:#e5edff;box-shadow:-3px 0 12px 3px #a6a2ff80}
+#leaf-progress .fill.progress-advancing{animation:progress-spectrum 1.25s ease-out}
+#leaf-progress .fill.progress-advancing::after{animation:progress-ignition 1.25s ease-out}
+#leaf-progress .progress-sheen{position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(110deg,transparent 25%,#ffffff12 38%,#ffffffa0 48%,#ffffff35 54%,transparent 70%);transform:translateX(-110%)}
+@keyframes progress-spectrum{0%{background-position:100% 50%;filter:saturate(1.35);box-shadow:0 0 16px #8274ff70}100%{background-position:25% 50%;filter:saturate(1);box-shadow:0 0 12px color-mix(in srgb,var(--workspace-accent) 45%,transparent)}}
+@keyframes progress-ignition{0%,100%{opacity:.8}35%{opacity:1;box-shadow:-5px 0 20px 6px #9fe8ffc0}}
+:root[data-theme=light] #leaf-progress .fill{background-image:linear-gradient(105deg,#079b97 0%,#267bdd 27%,#7252db 56%,#af4dc5 78%,#159cb7 100%)}
+:root:not([data-theme=light]) #leaf-progress .track{background:#252d40;border-color:#566482;box-shadow:inset 0 1px 3px #080d1980}
+:root:not([data-theme=light]) #leaf-progress .track::after{background:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 1px),#69779566 calc(10% - 1px),#69779566 10%)}
+:root:not([data-theme=light]) #leaf-progress .fill{background-image:linear-gradient(105deg,#39dfce 0%,#62bcff 27%,#a595ff 56%,#e59df5 78%,#7de4ed 100%);box-shadow:0 0 8px #82a9ff33}
+:root:not([data-theme=light]) #leaf-progress .fill::before{background:linear-gradient(180deg,#ffffff20,transparent 70%)}
+:root:not([data-theme=light]) #leaf-progress .fill::after{background:#e7f3ff;box-shadow:-2px 0 8px 1px #a6caff70}
+:root:not([data-theme=light]) #leaf-progress .progress-sheen{background:linear-gradient(110deg,transparent 25%,#ffffff10 38%,#ffffff80 48%,#ffffff25 54%,transparent 70%)}
+:root:not([data-theme=light]) #leaf-progress .fill.progress-advancing{animation-name:progress-spectrum-dark}
+:root:not([data-theme=light]) #leaf-progress .fill.progress-advancing::after{animation-name:progress-ignition-dark}
+@keyframes progress-spectrum-dark{0%{background-position:100% 50%;box-shadow:0 0 10px #9aa8ff50}100%{background-position:25% 50%;box-shadow:0 0 8px #82a9ff33}}
+@keyframes progress-ignition-dark{0%,100%{opacity:.9}35%{opacity:1;box-shadow:-3px 0 12px 2px #b7dfff90}}
+@media(prefers-reduced-motion:reduce){#leaf-progress .fill,#leaf-progress .fill::after{animation:none!important}}
+#leaf-progress .progress-percent{font-size:24px;font-weight:700;line-height:1.15;letter-spacing:-.03em;color:var(--workspace-ink);white-space:nowrap;flex-shrink:0}
 #leaf-progress[hidden]{display:none}
 #steps>.main-root-flat{border:0;padding:0}
 #steps>.main-root-flat>details>.step-main{display:none}
@@ -532,7 +552,7 @@ h1{font-size:18px;line-height:1.35}
       <div class="titleline"><h1 id="task-title"></h1><span id="task-status" class="badge"><span class="dot" aria-hidden="true"></span><span id="task-status-label"></span></span></div>
       <div id="leaf-progress">
         <div class="progressline"><span id="fraction" class="fraction"></span><span class="progress-percent"><span id="percent">0</span>%</span></div>
-        <div id="progressbar" class="track" role="progressbar" aria-label="叶任务验收进度" aria-valuemin="0" aria-valuemax="100"><div id="fill" class="fill"></div></div>
+        <div id="progressbar" class="track" role="progressbar" aria-label="叶任务验收进度" aria-valuemin="0" aria-valuemax="100"><div id="fill" class="fill"><span class="progress-sheen" aria-hidden="true"></span></div></div>
       </div>
       <section id="package-overview" class="hidden" aria-label="当前主任务概况">
         <div id="package-chart"><div class="package-heading"><strong>工作包分布</strong></div><div id="package-grid" role="group" aria-label="按工作包筛选，再点一次取消"></div><div id="package-tooltip" aria-hidden="true" hidden></div><div id="package-legend"></div><button type="button" id="package-selection" hidden></button></div>
@@ -4499,8 +4519,46 @@ h1{font-size:18px;line-height:1.35}
     $('filter-empty').classList.toggle('hidden', (!query && !selectedTones.size && selectedPackage === null) || matched > 0);
     scheduleDependencyTrace();
   }
+  const progressMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let progressFrame = 0, progressScope = '', progressValue = 0, progressTarget = 0, progressSheen = null;
+  function stopProgressMotion() {
+    cancelAnimationFrame(progressFrame); progressFrame = 0;
+    progressSheen?.cancel(); progressSheen = null;
+    $('fill').classList.remove('progress-advancing');
+  }
+  function paintProgress(value) {
+    progressValue = value;
+    setText('percent', String(Math.round(value)));
+    $('fill').style.width = value + '%';
+  }
+  function animateProgress(value, scope) {
+    if (scope !== progressScope || progressMotion.matches || document.hidden) {
+      stopProgressMotion(); progressScope = scope; progressTarget = value; paintProgress(value); return;
+    }
+    if (value === progressTarget) return;
+    stopProgressMotion();
+    const from = progressValue, started = performance.now(), duration = 720;
+    progressTarget = value;
+    progressSheen = $('fill').querySelector('.progress-sheen').animate([
+      {transform:'translateX(-110%)',opacity:0},
+      {transform:'translateX(-50%)',opacity:.7,offset:.25},
+      {transform:'translateX(110%)',opacity:0}
+    ], {duration:1250,easing:'cubic-bezier(.2,.65,.3,1)'});
+    $('fill').classList.add('progress-advancing');
+    progressSheen.onfinish = () => $('fill').classList.remove('progress-advancing');
+    const tick = now => {
+      const t = Math.min(1, (now - started) / duration), eased = 1 - Math.pow(1 - t, 3);
+      paintProgress(from + (value - from) * eased);
+      progressFrame = t < 1 ? requestAnimationFrame(tick) : 0;
+    };
+    progressFrame = requestAnimationFrame(tick);
+  }
+  progressMotion.addEventListener('change', () => {
+    if (progressMotion.matches) { stopProgressMotion(); paintProgress(progressTarget); }
+  });
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
+    if (!hasProgress || progress.mode === 'legacy_archive') { stopProgressMotion(); progressScope = ''; }
     renderSessionWork(progress);
     latestProgress = hasProgress ? progress : null;
     $('export-all').classList.toggle('hidden', !hasProgress || isInlineStale() || disposed);
@@ -4563,7 +4621,6 @@ h1{font-size:18px;line-height:1.35}
     setText('task-title', taskDisplayTitle(progress));
     $('task-status').className = 'badge ' + state.key;
     setText('task-status-label', unplanned ? '待规划' : uiStatusLabel(state.label));
-    setText('percent', String(Math.round(percent)));
     const hasParallel = network && shownParallelTasks(progress).length > 0;
     if (!total && !hasParallel && !flat) $('steps-section').classList.add('hidden');
     const scope = hasParallel ? '当前任务 ' : '';
@@ -4572,8 +4629,8 @@ h1{font-size:18px;line-height:1.35}
     $('progressbar').setAttribute('aria-label', network ? '叶任务验收进度' : '步骤完成进度');
     $('progressbar').setAttribute('aria-valuenow', String(percent));
     $('progressbar').setAttribute('aria-valuetext', fraction);
-    $('fill').className = 'fill ' + state.key;
-    $('fill').style.width = percent + '%';
+    $('fill').className = 'fill ' + state.key + ($('fill').classList.contains('progress-advancing') ? ' progress-advancing' : '');
+    animateProgress(percent, newSearchScope);
     if (network) {
       const root = nodes.find(node=>String(node.id)===String(progress.root_id));
       const accepted = root && acceptedResolved(root);
@@ -4746,7 +4803,7 @@ h1{font-size:18px;line-height:1.35}
     if (message.method === 'ui/notifications/host-context-changed') applyHostContext(message.params || {});
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      disposed = true; viewGeneration++; clearDependencyTrace();
+      disposed = true; viewGeneration++; clearDependencyTrace(); stopProgressMotion();
       viewRegistered = false;
       stopPolling(); stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
       // Unregister also tombstones registrations still in flight. Waiting for
