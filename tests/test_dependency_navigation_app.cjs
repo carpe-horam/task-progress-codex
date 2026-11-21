@@ -9,7 +9,7 @@ let host;
 async function main() {
   host=await createHost();
   const init=await host.rpc('init_task_network',{task_title:'Dependency navigation',tasks:[
-    task('group'),task('a',{parent_id:'group'}),task('b',{parent_id:'group'}),task('consumer',{depends_on:['a','b']})]});
+    task('first'),task('group'),task('a',{parent_id:'group'}),task('b',{parent_id:'group'}),task('consumer',{depends_on:['a','b']}),task('serial')]});
   const binding={session_id:init.structuredContent.session_id,task_instance_id:init.structuredContent.progress.task_instance_id};
   const view=()=>host.rawRpc('get_progress_view',{session_id:binding.session_id,include_history:true});
   const page=await host.page({hasTouch:true});
@@ -49,7 +49,7 @@ async function main() {
     const count=await page.evaluate(()=>window.host.calls.length);
     await frame.locator('#refresh').click();await waitForRead(count);
   }
-  assert.deepEqual(await buttons.allTextContents(),['1-1','1-2']);
+  assert.deepEqual(await buttons.allTextContents(),['2-1','2-2']);
   assert.match(await buttons.first().getAttribute('aria-label'),/Task a/);
   await group.locator('.branch-toggle').click();
   assert.equal(await a.isVisible(),false,'collapsed branch hides target');
@@ -124,11 +124,53 @@ async function main() {
   await host.rpc('revise_task_title',{...binding,task_id:'a',display_title:'Task a · '+ '刷新后的长任务标题与换行定位验证 '.repeat(18),reason:'Exercise wrapped trace text after real backend refresh',expected_epoch:beforeTitle.epoch,expected_revision:beforeTitle.revision});
   await manualRefresh();await assertEdge('a','changed title and wrapped trace after backend refresh');
   const started=await host.rpc('update_task',{...binding,task_id:'a',execution_status:'running',assignment});
+  // Main-session serialization is not a graph dependency. Use real running
+  // attempts to verify its separate caption, references and line identity.
+  await push(await view());
+  const serial=rows('serial'), serialButton=serial.locator('.dependency-link');
+  const serialState=(await view()).structuredContent.progress.nodes.find(n=>n.id==='serial');
+  assert.equal(serialState.graph_ready,true);
+  assert.deepEqual(serialState.depends_on,[]);
+  assert.deepEqual(serialState.blocked_by,[]);
+  assert.deepEqual(serialState.main_session_waiting_on,['a']);
+  assert.equal(await serialButton.textContent(),'2-1');
+  assert.equal(await serialButton.getAttribute('data-wait-kind'),'main_session');
+  assert.match(await serial.locator('.dependency-wait').innerText(),/^等待主会话先完成：/);
+  assert.doesNotMatch(await serial.locator('.dependency-wait').innerText(),/Task a/);
+  await page.keyboard.press('Escape');
+  await group.locator('.branch-toggle').click();
+  assert.equal(await a.isVisible(),false);
+  const first=rows('first'), firstButton=first.locator('.dependency-link');
+  await firstButton.click();await assertEdge('a','serial source before its occupant');
+  assert((await first.boundingBox()).y < (await a.boundingBox()).y,'serial line also points downward to a later row');
+  await serialButton.click();await assertEdge('a','serial wait reveals running task');
+  assert.match(await frame.locator('.dependency-trace').innerText(),/主会话当前任务 2-1/);
+  await manualRefresh();await assertEdge('a','serial wait refresh retains selection');
+  for(const width of [320,430]) {
+    await page.setViewportSize({width,height:1000});
+    const expectedWidth=await page.locator('#main').evaluate(el=>el.clientWidth);
+    await page.waitForFunction(w=>document.getElementById('main').contentWindow.innerWidth===w,expectedWidth);
+    await assertEdge('a',width+'px serial wait geometry');
+    await serialButton.tap();assert.equal(await frame.locator('.dependency-connections').isVisible(),false);
+    await serialButton.tap();await assertEdge('a',width+'px serial wait touch');
+  }
+  await page.setViewportSize({width:1000,height:1100});
   await host.rpc('update_task',{...binding,task_id:'a',attempt_id:started.structuredContent.attempt_id,execution_status:'finished',outcome:'resolved',summary:'fixture',evidence:['fixture://a']});
   await push(await view());
-  assert.deepEqual(await buttons.allTextContents(),['1-2']);
+  assert.deepEqual(await buttons.allTextContents(),['2-2']);
   assert.equal(await frame.locator('.dependency-target').count(),0,'resolved edge clears selection');
   assert.equal(await frame.locator('.dependency-connections').isVisible(),false);
+  assert.equal(await serial.locator('.dependency-wait').count(),0,'serialization releases when the main attempt ends');
+  const next=await host.rpc('update_task',{...binding,task_id:'b',execution_status:'running',assignment});
+  await push(await view());
+  assert.equal(await serialButton.textContent(),'2-2','new running task updates the displayed number');
+  await serialButton.click();await assertEdge('b','serial wait follows next main-session attempt');
+  assert.match(await frame.locator('.dependency-trace').innerText(),/主会话当前任务 2-2/);
+  assert.equal(await buttons.first().getAttribute('data-wait-kind'),'dependency','true graph blocking keeps its separate type');
+  await host.rpc('update_task',{...binding,task_id:'b',attempt_id:next.structuredContent.attempt_id,execution_status:'finished',outcome:'open',summary:'Fixture prerequisite remains unresolved',failure_reason:'Isolated test keeps the graph prerequisite open',evidence:['fixture://serial-release']});
+  await push(await view());
+  assert.equal(await serial.locator('.dependency-wait').count(),0);
+  assert.equal(await frame.locator('.dependency-connections').isVisible(),false,'ended occupant clears serial trace without resolving its result');
   // Snapshot and current tree reuse task IDs; references must stay in their own scope.
   await host.rawRpc('snapshot_task_network',{...binding,snapshot_id:'dependency-snapshot',reason:'Isolated history navigation fixture'});
   await push(await view());
@@ -144,7 +186,7 @@ async function main() {
   // Open only the peer group; clicking a descendant's inherited prerequisite
   // must resolve to peer a, despite a matching main-session task ID.
   const peerButton=rows('consumer',peerId).locator('.dependency-link');
-  assert.equal(await peerButton.textContent(),'3-1');
+  assert.equal(await peerButton.textContent(),'5-1');
   await peerButton.click();
   assert.equal(await rows('a',peerId).evaluate(el=>el.classList.contains('dependency-target')),true);
   assert.equal(await a.evaluate(el=>el.classList.contains('dependency-target')),false);
@@ -156,15 +198,19 @@ async function main() {
   const partial=await view();
   const node=partial.structuredContent.progress.nodes.find(n=>n.id==='consumer');
   node.depends_on=['not-loaded'];node.blocked_by=['not-loaded'];
+  const missingOccupant=partial.structuredContent.progress.nodes.find(n=>n.id==='first');
+  missingOccupant.main_session_waiting_on=['not-loaded'];missingOccupant.graph_ready=true;missingOccupant.ready=false;
   await push(partial);
   assert.deepEqual(await buttons.allTextContents(),['前置任务未载入']);
   assert.equal(await buttons.first().isDisabled(),true);
+  assert.equal(await firstButton.textContent(),'执行任务未载入');
+  assert.equal(await firstButton.isDisabled(),true);
   assert.equal(await frame.locator('.dependency-connections').isVisible(),false);
   await push(await view());
   await buttons.first().click();
   await page.evaluate(()=>document.getElementById('main').contentWindow.postMessage({jsonrpc:'2.0',id:'navigation-teardown',method:'ui/resource-teardown'},'*'));
   await frame.locator('.dependency-connections').waitFor({state:'hidden'});
   assert.deepEqual(host.errors,[]);
-  console.log(JSON.stringify({pass:true,adapter:process.env.TASK_PROGRESS_DEPENDENCY_CINDY?'cindy':'shared',checks:['visible tree numbers','collapsed target reveal','summary does not toggle','multiple dependencies','keyboard and Escape','no RPC navigation','notification/manual/actual timer refresh and changed long title preserve selected edge and geometry','filter clears hidden edge','320/360/430px touch switching, repeat tap, refresh and endpoint geometry','light/dark and reduced motion','resolved edge clears trace','history scope isolation','parallel instance isolation and inherited prerequisites','missing target disabled','teardown clears trace']}));
+  console.log(JSON.stringify({pass:true,adapter:process.env.TASK_PROGRESS_DEPENDENCY_CINDY?'cindy':'shared',checks:['visible tree numbers','collapsed target reveal','summary does not toggle','multiple dependencies','keyboard and Escape','no RPC navigation','notification/manual/actual timer refresh and changed long title preserve selected edge and geometry','filter clears hidden edge','320/360/430px touch switching, repeat tap, refresh and endpoint geometry','light/dark and reduced motion','resolved edge clears trace','history scope isolation','parallel instance isolation and inherited prerequisites','main-session serial wait, branch reveal, touch, refresh and occupant switch','graph readiness unchanged by serial navigation','missing target disabled','teardown clears trace']}));
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{if(host)await host.close()});
