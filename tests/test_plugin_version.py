@@ -12,6 +12,12 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "task-progress"
 
 
 class PluginVersionTests(unittest.TestCase):
+    def test_all_platform_manifests_share_one_release_version(self):
+        manifests = (".codex-plugin/plugin.json", "cindy/ghost.json", "dsh/package.json")
+        versions = {name: json.loads((PLUGIN / name).read_text())["version"]
+                    for name in manifests}
+        self.assertEqual(len(set(versions.values())), 1, versions)
+
     def test_packaged_manifest_controls_mcp_and_app_versions(self):
         with tempfile.TemporaryDirectory(prefix="task-progress-package-version-") as temporary:
             root = Path(temporary)

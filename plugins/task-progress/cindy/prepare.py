@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse
 import filecmp
+import json
 import shutil
 import subprocess
 import tempfile
@@ -17,7 +18,18 @@ CORE_FILES = (
 PATCHED_FILES = ("app.html", "server.py", "mcp_bridge.py", "service_manager.py")
 
 
+def validate_versions() -> None:
+    manifests = (SHARED / ".codex-plugin/plugin.json", CINDY / "ghost.json",
+                 SHARED / "dsh/package.json")
+    versions = {str(path): json.loads(path.read_text(encoding="utf-8"))["version"]
+                for path in manifests}
+    if len(set(versions.values())) != 1:
+        raise ValueError("Task Progress platform versions must match: " +
+                         ", ".join(f"{path}={version}" for path, version in versions.items()))
+
+
 def generate(destination: Path) -> None:
+    validate_versions()
     destination.mkdir()
     for name in CORE_FILES:
         shutil.copy2(SHARED / name, destination / name)

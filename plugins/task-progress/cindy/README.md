@@ -2,6 +2,8 @@
 
 `core/` 是本地生成目录，不提交。公共服务端、界面及技能源码位于上一级目录；`patches/` 只保存 Cindy 特有的差异。
 
+从 0.2.61 起，Cindy、Codex 和 DeepSeekRuntime 使用同一个 release 版本号。发版时同步更新 `ghost.json`、`../.codex-plugin/plugin.json`、`../dsh/package.json`；`prepare.py` 在生成、检查和打包前校验三者一致，版本不同会拒绝构建。
+
 本地运行和测试前生成目录：
 
 ```sh
