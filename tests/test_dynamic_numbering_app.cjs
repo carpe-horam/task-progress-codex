@@ -32,25 +32,24 @@ async function main() {
     window.hostRpc=(name,args)=>name==='get_progress_view'?Promise.resolve(structuredClone(window.numberingSnapshot)):real(name,args);
   },snapshot);
   const frame=await host.mount(page,'main',snapshot);
-  const rows=frame.locator('#steps details[data-key]');
+  const flatRow=(id,instance=iid)=>frame.locator('#step-list [data-step-id="'+id+'"][data-instance="'+instance+'"]');
   const row=(id,instance=iid)=>frame.locator('#steps details[data-key="task:'+instance+':epoch:0:'+id+'"]');
   const number=async(id,instance=iid)=>row(id,instance).locator(':scope > summary > .step-title > .task-number').textContent();
   const cases=[];
-  assert.equal(await number('root'),'1');assert.equal(await number('group'),'1-1');
-  assert.equal(await number('g1'),'1-1-1');assert.equal(await number('deep'),'1-1-1-1');assert.equal(await number('g2'),'1-1-2');
-  assert.equal(await number('early'),'1-2');assert.equal(await number('late'),'1-3');
-  assert.equal(await number('root',pid),'2');assert.equal(await number('early',pid),'2-1');assert.equal(await number('group',pid),'2-2');
+  assert.equal(await number('root'),'1');assert.equal(await number('group'),'1');
+  assert.equal(await number('g1'),'1-1');assert.equal(await number('deep'),'1-1-1');assert.equal(await number('g2'),'1-2');
+  assert.equal(await number('early'),'2');assert.equal(await number('late'),'3');
+  assert.equal(await number('root',pid),'4');assert.equal(await number('early',pid),'4-1');assert.equal(await number('group',pid),'4-2');
   assert.equal(await row('early',pid).locator(':scope > summary .waiting-clock').count(),1);
   assert.equal(await row('early',pid).locator(':scope > summary .waiting-clock').evaluate(e=>getComputedStyle(e).width),'20px');
   cases.push('Multi-level numbering, reverse sibling dependencies, independent peer IDs and waiting SVG');
 
   assert.equal(await row('group').getAttribute('open'),null);
   assert.equal(await row('g2').isVisible(),false);
-  await row('group').locator(':scope > summary').click();
-  await row('g2').locator(':scope > summary').click();
-  await row('g2').locator(':scope > summary').focus();
-  await row('g2').locator(':scope > summary .task-title-text').evaluate(e=>{
-    window.keptTitle=e;window.keptDetails=e.closest('details');
+  await flatRow('g2').locator('.plan-title').click();
+  await row('g2').locator(':scope > summary .task-title-text').evaluate(e=>{window.keptTitle=e;window.keptDetails=e.closest('details');});
+  await frame.locator('#detail-tab-result').focus();
+  await frame.locator('#detail-tab-result').evaluate(e=>{
     const r=document.createRange();r.selectNodeContents(e);getSelection().removeAllRanges();getSelection().addRange(r);
   });
   const selected=await row('g2').evaluate(()=>getSelection().toString());
@@ -71,27 +70,29 @@ async function main() {
   let next=revise(), nodes=next.structuredContent.progress.nodes;
   nodes.find(n=>n.id==='group').children=['g2','g1'];nodes.find(n=>n.id==='g2').depends_on=[];
   await show(next);
-  assert.equal(await number('g2'),'1-1-1');assert.equal(await number('deep'),'1-1-2-1');
+  assert.equal(await number('g2'),await flatRow('g2').locator('.plan-number').textContent(),'selected record uses its current result ordinal');
+  assert.equal(await row('group').locator(':scope > .children > li > details > summary .step-id').first().textContent(),'g2');
+  assert.equal(await number('deep'),'1-2-1');
   assert.equal(await row('g2').getAttribute('open'),'');
   assert.equal(await row('g2').evaluate(e=>e===window.keptDetails),true);
   assert.equal(await row('g2').locator(':scope > summary .task-title-text').evaluate(e=>e===window.keptTitle),true);
   assert.equal(await row('g2').evaluate(()=>getSelection().toString()),selected);
-  assert.equal(await row('g2').evaluate(e=>e.querySelector('summary')===document.activeElement),true);
-  assert.equal(await number('early',pid),'2-1');
+  assert.equal(await frame.locator('#detail-tab-result').evaluate(e=>e===document.activeElement),true);
+  assert.equal(await number('early',pid),'4-1');
   cases.push('Changed child plan/dependencies renumber without changing task IDs, DOM, expansion, selection or focus');
 
   await frame.locator('body').evaluate(()=>{window.savedMoveBefore=Element.prototype.moveBefore;Element.prototype.moveBefore=undefined;});
   next=revise();next.structuredContent.progress.nodes.find(n=>n.id==='g2').depends_on=['g1'];await show(next);
   next=revise();next.structuredContent.progress.nodes.find(n=>n.id==='g2').depends_on=[];await show(next);
   assert.equal(await row('g2').evaluate(()=>getSelection().toString()),selected);
-  assert.equal(await row('g2').evaluate(e=>e.querySelector('summary')===document.activeElement),true);
+  assert.equal(await frame.locator('#detail-tab-result').evaluate(e=>e===document.activeElement),true);
   await frame.locator('body').evaluate(()=>{Element.prototype.moveBefore=window.savedMoveBefore;});
   next=revise();nodes=next.structuredContent.progress.nodes;
   nodes.find(n=>n.id==='g1').children=[];nodes.find(n=>n.id==='deep').parent_id='group';nodes.find(n=>n.id==='group').children.push('deep');
-  await show(next);assert.equal(await number('deep'),'1-1-3');
+  await show(next);assert.equal(await number('deep'),'1-3');
   next=revise();nodes=next.structuredContent.progress.nodes;
   nodes.find(n=>n.id==='g1').children=['deep'];nodes.find(n=>n.id==='deep').parent_id='g1';nodes.find(n=>n.id==='group').children=['g2','g1'];
-  await show(next);assert.equal(await number('deep'),'1-1-2-1');
+  await show(next);assert.equal(await number('deep'),'1-2-1');
   cases.push('Older-browser move fallback retains focus/selection; hierarchy changes recompute depth');
 
   // A newly appended prerequisite can move an earlier consumer. These are
@@ -101,20 +102,21 @@ async function main() {
   nodes.find(n=>n.id==='root').children.push('inserted');
   nodes.find(n=>n.id==='group').depends_on=['inserted'];
   await show(next);
-  assert.equal(await number('inserted'),'1-3');assert.equal(await number('group'),'1-4');assert.equal(await number('deep'),'1-4-2-1');
+  assert.equal(await number('inserted'),'3');assert.equal(await number('group'),'4');assert.equal(await number('deep'),'4-2-1');
+  assert.equal(await number('root',pid),'5');assert.equal(await number('early',pid),'5-1','parallel numbering follows all visible foreground packages');
   cases.push('Appended prerequisite and inherited group constraint reorder the whole branch');
 
   next=revise();nodes=next.structuredContent.progress.nodes;
   nodes.find(n=>n.id==='group').depends_on=[];
   nodes.find(n=>n.id==='g2').depends_on=['early'];
   await show(next);
-  assert.equal(await number('early'),'1-1');assert.equal(await number('group'),'1-3');
+  assert.equal(await number('early'),'1');assert.equal(await number('group'),'3');
   cases.push('Cross-branch prerequisite moves the nearest sibling branches');
   next=revise();nodes=next.structuredContent.progress.nodes;
   nodes.find(n=>n.id==='early').depends_on=['g1'];
   // g2 depends early, early depends g1: valid interleaving, projected group/early cycle.
   await show(next);
-  assert.equal(await number('group'),'1-1');assert.equal(await number('early'),'1-2');
+  assert.equal(await number('group'),'1');assert.equal(await number('early'),'2');
   cases.push('Interleaving branches retain stable plan order without changing execution state');
 
   // Actual backend rebuild provides a historical snapshot; old numbering must
@@ -126,14 +128,14 @@ async function main() {
   await host.rpc('decompose_task',{...binding,task_id:rootId,tasks:[task('new-second',['new-first']),task('new-first')]});
   current=await host.rawRpc('get_progress_view',{session_id:sid,include_history:true});
   const historyPage=await host.page(),historyFrame=await host.mount(historyPage,'main',current);
-  await historyFrame.locator('#history-section > summary').click();
+  await historyFrame.locator('#workspace-tab-revisions').click();
   await historyFrame.locator('#history-list > li > details > summary').click();
   const historyRows=historyFrame.locator('#history-list .task-title-text');
   assert.equal(await historyRows.count(),7);
   const historical=await historyFrame.locator('#history-list .step-title').evaluateAll(es=>Object.fromEntries(es.map(e=>[e.querySelector('.step-id')?.textContent,e.querySelector('.task-number')?.textContent])));
   assert.equal(historical.group,'1-1');assert.equal(historical.deep,'1-1-1-1');assert.equal(historical.late,'1-3');
   const currentNumbers=await historyFrame.locator('#steps > .step[data-root-role="main"] .step-title').evaluateAll(es=>Object.fromEntries(es.map(e=>[e.querySelector('.step-id')?.textContent,e.querySelector('.task-number')?.textContent])));
-  assert.equal(currentNumbers['new-first'],'1-1');assert.equal(currentNumbers['new-second'],'1-2');
+  assert.equal(currentNumbers['new-first'],'1');assert.equal(currentNumbers['new-second'],'2');
   cases.push('Actual replan recomputes current numbering while historical snapshot keeps its own order');
   const live = await host.rpc('init_task_network',{task_title:'Real insertion fixture',tasks:[task('first'),task('later',['first'])]});
   const liveBinding={session_id:live.structuredContent.session_id,task_instance_id:live.structuredContent.progress.task_instance_id};
@@ -142,10 +144,10 @@ async function main() {
   const livePage=await host.page(),liveFrame=await host.mount(livePage,'main',liveSnapshot);
   const addedRow=liveFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:added"]');
   const laterRow=liveFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:later"]');
-  assert.equal(await addedRow.locator(':scope > summary .task-number').textContent(),'1-2');
-  assert.equal(await laterRow.locator(':scope > summary .task-number').textContent(),'1-3');
+  assert.equal(await addedRow.locator(':scope > summary .task-number').textContent(),'2');
+  assert.equal(await laterRow.locator(':scope > summary .task-number').textContent(),'3');
   assert.equal(await addedRow.locator(':scope > summary .added-badge').textContent(),'追加');
-  assert.equal(await addedRow.locator(':scope > summary .added-badge').getAttribute('title'),'追加原因：Discovered prerequisite');
+  assert.equal(await addedRow.locator(':scope > summary .added-badge').getAttribute('data-tip'),'追加任务 · 原因：Discovered prerequisite');
   cases.push('Real backend insertion changes dependency and displays added badge and reason');
   await livePage.close();
 
@@ -159,27 +161,33 @@ async function main() {
   assert.equal(await groupedRow('export').getAttribute('open'),null);
   assert.equal(await groupedRow('export').locator(':scope > summary .child-count').textContent(),'3 个子任务');
   assert.equal(await groupedRow('data').isVisible(),false);
-  await groupedRow('export').locator(':scope > summary').click();
-  assert.equal(await groupedRow('data').isVisible(),true);
-  assert.equal(await groupedRow('data').locator(':scope > summary .task-number').textContent(),'1-4-3');
-  await groupedFrame.locator('#refresh').click();
-  await groupedFrame.locator('#refresh:not([disabled])').waitFor();
-  assert.equal(await groupedRow('data').isVisible(),true);
+  const flatData=groupedFrame.locator('#step-list [data-step-id="data"]');
+  assert(await flatData.locator('.plan-title').isVisible());
+  const ordinal=await flatData.locator('.plan-number').innerText();
+  await flatData.locator('.plan-title').click();
+  assert(await groupedFrame.locator('#step-dialog').isVisible());
+  assert.match(await groupedFrame.locator('#detail-name').innerText(),new RegExp('^'+ordinal+'\\s'));
+  assert.match(await groupedFrame.locator('#step-detail-path').innerText(),/Task export/);
+  const groupedSnapshot=await host.rawRpc('get_progress_view',liveBinding);
+  await groupedPage.evaluate(next=>document.getElementById('main').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:next},'*'),groupedSnapshot);
+  assert(await groupedFrame.locator('#step-dialog').isVisible());
   await groupedPage.close();
 
   const activePage=await host.page();
   const activeFrame=await host.mount(activePage,'main',await host.rawRpc('get_progress_view',liveBinding));
   const activeLeaf=activeFrame.locator('#steps details[data-key="task:'+liveBinding.task_instance_id+':epoch:0:html"]');
-  const activeSummary=activeLeaf.locator(':scope > summary');
-  assert.equal(await activeSummary.isVisible(),false);
+  const activeSummary=activeFrame.locator('#step-list [data-step-id="html"]');
+  assert.equal(await activeSummary.isVisible(),true);
+  assert.equal(await activeLeaf.locator(':scope > summary').isVisible(),false);
   const running=await host.rpc('update_task',{...liveBinding,task_id:'html',execution_status:'running',assignment});
   await activeFrame.locator('#refresh').click();
-  await activeSummary.waitFor({state:'visible'});
+  await activeSummary.locator('.plan-status').filter({hasText:/进行中|执行中/}).waitFor();
   await host.rpc('update_task',{...liveBinding,task_id:'html',execution_status:'finished',outcome:'resolved',
     attempt_id:running.structuredContent.progress.nodes.find(n=>n.id==='html').attempt_id,
     summary:'HTML checked',evidence:['Isolated numbering fixture']});
   await activeFrame.locator('#refresh').click();
-  await activeSummary.waitFor({state:'hidden'});
+  await activeSummary.locator('.plan-status').filter({hasText:'已验收'}).waitFor();
+  assert.equal(await activeLeaf.locator(':scope > summary').isVisible(),false);
   await activePage.close();
   cases.push('Grouped and repeated additions remain under one parent, with automatic collapse following execution on refresh');
   assert.deepEqual(host.errors,[]);

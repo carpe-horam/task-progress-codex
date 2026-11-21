@@ -137,7 +137,7 @@ async function main(){
     r=await host.rpc('get_progress_view',{session_id:r.structuredContent.session_id,include_history:true});
     assert.equal(linearMode?archivedTask.steps[0].status:archivedTask.nodes[0].execution_status,linearMode?'in_progress':'running');
     const page=await host.page(),frame=await host.mount(page,'main',r);
-    await frame.locator('#task-history-section > summary').click();
+    await frame.locator('#workspace-tab-archives').click();
     await frame.locator('#task-history-list > li > details > summary').click();
     const elapsed=frame.locator('#task-history-list .step-elapsed');
     const first=await elapsed.textContent();assert.match(first,/截至归档已用/);assert.doesNotMatch(first,/已用 0秒/);
@@ -179,7 +179,7 @@ async function main(){
   const sid=r.structuredContent.session_id;
   page=await host.page();await host.mount(page,'tab',r,'fullscreen');
   await page.waitForFunction(()=>window.host.calls.some(c=>c.frame==='tab'&&c.name==='register_ui_view'&&c.result));
-  const main=await host.mount(page,'main',await host.rpc('get_progress_view',{session_id:sid}));
+  const main=await host.mount(page,'main',await host.rpc('get_progress_view',{session_id:sid}),'inline','attached');
   await main.locator('.card.tab-hidden').waitFor({state:'attached'});
   await page.evaluate(()=>window.host.holdExecution={frame:'tab',name:'register_ui_view',mode:'fullscreen'});
   await page.waitForFunction(()=>window.host.heldExecution.length>0,null,{timeout:12000});

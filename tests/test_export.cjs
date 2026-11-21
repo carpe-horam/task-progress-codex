@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'progress-export-audit-'));
 // Direct-source fixture only; the served resource injects the manifest version.
 const html=fs.readFileSync(path.join(root,'plugins/task-progress/app.html'),'utf8').replaceAll('__TASK_PROGRESS_VERSION__','test-source');
-const pending=new Map();let seq=0,browser;const results=[];
+const pending=new Map();let seq=0,browser,feedbackCaptured=false;const results=[];
 const python=spawn('python3',['-c',`import importlib.util,pathlib,sys
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('audit',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
@@ -28,6 +28,12 @@ async function exportSnapshot(snapshot){
    document.getElementById('app').srcdoc=html;
  },{snapshot,html});
  const f=page.frameLocator('#app');await f.locator('#export-all:not(.hidden)').waitFor();await f.locator('#export-all').click();await f.locator('#export-all:not([disabled])').waitFor();
+ if(!feedbackCaptured){
+  const geometry=await f.locator('#export-feedback').evaluate(e=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));
+  assert(geometry.top>=0 && geometry.bottom<=geometry.height,'export result stays visible beside the initiating action');
+  if(process.env.TASK_PROGRESS_EXPORT_SHOT) await page.screenshot({path:process.env.TASK_PROGRESS_EXPORT_SHOT});
+  feedbackCaptured=true;
+ }
  const feedback=await f.locator('#export-feedback').textContent();await page.close();return feedback;
 }
 async function main(){
@@ -41,7 +47,7 @@ async function main(){
  const feedback=await exportSnapshot(r),exportDir=path.join(temp,'Downloads','Task Progress Exports');
  const report=await browser.newPage();await report.goto('file://'+path.join(exportDir,fs.readdirSync(exportDir).find(n=>n.endsWith('.html'))));
  results.push({case:'export_attempt_titles',feedback,rows:await report.evaluate(()=>[...document.querySelectorAll('#rp-current .rp-leaf')].map(node=>({
-  taskId:node.dataset.nodeId,title:node.querySelector(':scope > [data-task]').textContent,
+  taskId:node.dataset.nodeId,title:node.querySelector(':scope > .r-node-head > [data-task]').textContent,
   attemptCount:node.querySelectorAll(':scope > .r-detail > .rp-task-detail > .rp-node-body .rp-attempt').length
  }))) });
  const workbook=path.join(exportDir,fs.readdirSync(exportDir).find(n=>n.endsWith('.xlsx')));

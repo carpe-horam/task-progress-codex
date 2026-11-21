@@ -1,0 +1,17 @@
+/* Review and synthesis are both waiting states; neither is a completed check. */
+'use strict';
+const assert=require('node:assert/strict'),{createHost}=require('./browser_host.cjs');
+(async()=>{const h=await createHost();try{
+ const main={execution_mode:'main_session',self_execution_reason:'隔离验收图标测试'};
+ const sub={execution_mode:'subagent',tool_identifier:'collaboration.spawn_agent',dispatch_text:'独立核对结果。'};
+ const init=await h.rawRpc('init_task_network',{task_title:'验收状态',tasks:[{id:'group',title:'待整体验收工作包',assignment:main},{id:'review',title:'待复核任务',assignment:sub},{id:'dependency',title:'等待前置任务',depends_on:['review'],assignment:main}]});
+ const b={session_id:init.structuredContent.session_id,task_instance_id:init.structuredContent.task_instance_id};
+ await h.rawRpc('decompose_task',{...b,task_id:'group',tasks:[{id:'child',title:'已验收的子任务',assignment:main}]});
+ let start=await h.rawRpc('update_task',{...b,task_id:'child',execution_status:'running',assignment:main});await h.rawRpc('update_task',{...b,task_id:'child',attempt_id:start.structuredContent.attempt_id,execution_status:'finished',outcome:'resolved',summary:'已完成',evidence:['fixture']});
+ start=await h.rawRpc('update_task',{...b,task_id:'review',execution_status:'running',assignment:sub});await h.rawRpc('bind_task_agent',{...b,task_id:'review',attempt_id:start.structuredContent.attempt_id,agent_name:'review-fixture'});await h.rawRpc('update_task',{...b,task_id:'review',attempt_id:start.structuredContent.attempt_id,execution_status:'finished',outcome:'resolved',summary:'待复核',evidence:['fixture']});
+ for(const width of [320,390,960])for(const theme of ['light','dark']){const page=await h.page();await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await page.addStyleTag({content:'html,body{margin:0}iframe{width:100%!important;height:100vh!important;border:0}'});const f=await h.mount(page,'main',await h.rawRpc('get_progress_view',b),'fullscreen');
+ const group=f.locator('#step-list .plan-branch[data-step-id="group"] > .plan-branch-head');const review=f.locator('#step-list .plan-row[data-step-id="review"]');const done=f.locator('#step-list .plan-row[data-step-id="child"]');const blocked=f.locator('#step-list .plan-row[data-step-id="dependency"]');
+ assert.match(await group.innerText(),/待整体验收/);assert.equal(await group.locator('.waiting-clock path').count(),1,'synthesis shows a clock hand');assert.match(await review.innerText(),/待复核/);assert.equal(await review.locator('.waiting-clock path').count(),1,'review shows a clock hand');assert.equal(await done.locator('.waiting-clock').count(),0);assert.equal(await blocked.locator('.waiting-clock').count(),0);
+ assert.equal(await f.locator('html').evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);if(width===390&&theme==='dark'){await group.scrollIntoViewIfNeeded();await page.waitForTimeout(250);await page.screenshot({path:'/tmp/task-waiting-synthesis-icon.png'});}const views=await page.evaluate(()=>window.host.calls.filter(c=>c.name==='register_ui_view').map(c=>c.args));for(const v of views)await h.rawRpc('unregister_ui_view',{session_id:v.session_id,view_id:v.view_id});await page.close();}
+ assert.deepEqual(h.errors,[]);console.log('Pending synthesis and pending review show clock icons; accepted and blocked remain distinct, 3 widths x 2 themes.');
+ }finally{await h.close()}})().catch(e=>{console.error(e);process.exitCode=1});

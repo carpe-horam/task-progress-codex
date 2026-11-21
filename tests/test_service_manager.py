@@ -22,7 +22,7 @@ spec.loader.exec_module(manager)
 
 
 class LocalService:
-    def __init__(self, port, headers, runtime, version="fixture", service="task-progress"):
+    def __init__(self, port, headers, runtime, version="0.2.0", service="task-progress"):
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 if self.headers.get("Authorization") != headers["Authorization"]:
@@ -182,6 +182,30 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertFalse(any(call[1] in ("bootstrap", "bootout") for call in self.runner.calls[count:]))
         self.assertEqual(self.service.plist.stat().st_mode & 0o777, 0o600)
         self.assertTrue(self.service.status()["healthy"])
+
+    def test_same_version_new_digest_is_installed_by_explicit_install(self):
+        first=self.service.install()
+        old_bytes=self.service.plist.read_bytes()
+        (self.source / "app.html").write_text("same version, new contents")
+        result=self.service.install()
+        self.assertTrue(result["changed"])
+        self.assertNotEqual(result["release"],first["release"])
+        self.assertEqual(self.service.plist.read_bytes()!=old_bytes,True)
+        self.assertEqual(self.service.status()["health"]["runtime_path"],result["release"]+"/shared_service.py")
+
+    def test_install_refuses_to_downgrade_a_newer_healthy_service_before_stopping(self):
+        first=self.service.install()
+        original=self.service.plist.read_bytes()
+        headers=json.loads(self.service.credentials.read_text())
+        self.runner.close()
+        self.runner.service=LocalService(manager.PORT,headers,"/fixture/0.2.57/shared_service.py",version="0.2.57")
+        before=len(self.runner.calls)
+        with self.assertRaisesRegex(manager.ServiceError,"Refusing to downgrade"):
+            self.service.install()
+        self.assertEqual(self.service.plist.read_bytes(),original)
+        self.assertIsNotNone(self.runner.service,"newer daemon remains active")
+        self.assertFalse(any(call[1] in ("bootstrap","bootout") for call in self.runner.calls[before:]))
+        self.assertIn("0.2.0-",first["release"])
 
     def test_port_conflict_never_stops_unknown_process(self):
         self.service.prepare()

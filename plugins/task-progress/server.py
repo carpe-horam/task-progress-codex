@@ -1553,6 +1553,11 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
         raise ProgressError(f"父任务 {parent_id} 不存在。")
     if parent.get("execution_status") in TERMINAL_EXECUTION_STATUSES:
         raise ProgressError("已结束的任务不能继续分解。")
+    ancestor = parent
+    while ancestor.get("parent_id"):
+        ancestor = nodes[ancestor["parent_id"]]
+        if ancestor.get("execution_status") in TERMINAL_EXECUTION_STATUSES:
+            raise ProgressError("已结束的祖先任务下不能追加；请新建补充工作包或重规划，保留原验收记录。")
     is_addition = bool(parent.get("children"))
     ids = set(nodes) | _historical_ids(data)
     new_nodes: list[tuple[str, dict[str, Any]]] = []
@@ -1605,10 +1610,35 @@ def _add_tasks(data: dict[str, Any], parent_id: str, tasks: Any) -> None:
     for node_id, node in new_nodes:
         item_parent = node["parent_id"]
         if item_parent != parent_id:
-            if item_parent not in batch:
-                raise ProgressError(f"任务 {node_id} 的 parent_id 必须是本批新增的分组；向已有分组追加时直接以它为 task_id。")
-            if batch[item_parent]["planned_assignment"]["execution_mode"] != "main_session":
+            destination = batch.get(item_parent) or nodes.get(item_parent)
+            if destination is None or (item_parent in nodes and not destination.get("children")):
+                raise ProgressError(f"任务 {node_id} 的 parent_id 必须是本批新增的分组或当前 task_id 范围内已有的工作包；已有叶任务须先显式分解。")
+            if item_parent in nodes:
+                # Existing groups may be addressed in one atomic batch, but a
+                # scoped call must not escape to a sibling/ancestor or reopen
+                # an accepted group. Executing groups require their own
+                # coordinated decomposition call with the exact attempt ID.
+                current = destination
+                while current["id"] != parent_id:
+                    if current.get("execution_status") != "pending" or current.get("review_status") == "pending":
+                        raise ProgressError(f"工作包 {item_parent} 或其祖先正在执行或已结束；请直接处理该工作包的当前尝试，或建立补充工作包。")
+                    current = nodes.get(current.get("parent_id"))
+                    if current is None:
+                        raise ProgressError(f"工作包 {item_parent} 不在 task_id={parent_id} 的范围内；请按工作包分别追加或以共同上级提交。")
+            if destination.get("planned_assignment", {}).get("execution_mode") != "main_session":
                 raise ProgressError(f"分组 {item_parent} 的 assignment.execution_mode 必须为 main_session。")
+    if is_addition and parent_id == data.get("root_id"):
+        existing_packages = [nodes[key] for key in parent.get("children", []) if nodes[key].get("children")]
+        if existing_packages:
+            new_parents = {node["parent_id"] for node in batch.values()}
+            ungrouped = [key for key, node in new_nodes if node["parent_id"] == parent_id and key not in new_parents]
+            if ungrouped:
+                candidates = [f'{node["id"]}（{_display_title(node)}）' for node in existing_packages
+                              if node.get("execution_status") == "pending"][:20]
+                raise ProgressError(
+                    "新增任务须先自动归类到工作包，不能平铺在根节点：" + "、".join(ungrouped[:20]) + "。"
+                    "请根据交付目标选择 parent_id，或以该工作包为 task_id 追加；新方向请同批新建分组和子任务。"
+                    "可用工作包：" + ("、".join(candidates) or "无未结束工作包，请新建补充工作包") + "。")
     nodes.update(batch)
     for item, (node_id, node) in zip(tasks, new_nodes):
         for successor_id in item.get("precedes", []):
@@ -2198,6 +2228,9 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
     ready_nodes = [node for node in leaves if _node_is_ready(data, node, inventory_decisions)]
     terminal_leaves = [node for node in leaves if _node_is_terminal(node) or node.get("review_status") == "pending"]
     pending_reviews = [node for node in leaves if node.get("review_status") == "pending"]
+    synthesis_ready = [node["id"] for node in nodes.values()
+                       if _node_synthesis_ready(data, node, inventory_decisions)]
+    synthesis_ready_set = set(synthesis_ready)
     resolved_leaves = [node for node in leaves if node.get("outcome") == "resolved"]
     open_leaves = [node for node in leaves if node.get("outcome") == "open"]
     failed_leaves = [node for node in leaves if node.get("execution_status") == "failed"]
@@ -2267,6 +2300,7 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
             "latest_write_rejection": deepcopy((node.get("write_rejections") or [None])[-1]),
             "display_title": _display_title(node),
             "title_revision_count": len(node.get("title_revisions", [])),
+            "synthesis_ready": node_id in synthesis_ready_set,
             "accepted_resolved": _accepted_resolved(node),
             "planned_assignment": node.get("planned_assignment"),
             "responsibility_legacy": node.get("responsibility_version") != 1,
@@ -2312,6 +2346,9 @@ def _network_progress_payload(data: dict[str, Any]) -> dict[str, Any]:
         "ready_count": len(ready_nodes),
         "executing_count": len(running_leaves),
         "pending_review_count": len(pending_reviews),
+        "synthesis_ready_count": len(synthesis_ready),
+        "synthesis_ready_ids": synthesis_ready[:20],
+        "synthesis_ready_has_more": len(synthesis_ready) > 20,
         "split_review_due": split_review_due,
         "blocked_count": len(blocked_leaves),
         "epoch": data.get("epoch", 0),
@@ -3939,10 +3976,23 @@ def rebuild_task_network(
         raise ProgressError("重建任务网络时必须记录 reason。")
     with _session_lock(sid):
         data = _select_task(sid, task_instance_id)
-        if data is None or data.get("schema_version") != 2:
-            raise ProgressError("该会话没有 HTN 任务网络；请先调用 init_task_network。")
+        if data is None:
+            raise ProgressError("该会话没有任务；请先调用 init_task_network。")
         _validate_task_instance(data, task_instance_id)
         _assert_no_pending_reviews(data, "重规划")
+        if data.get("schema_version") != 2:
+            if any(step.get("status") == "in_progress" for step in data.get("steps", [])):
+                raise ProgressError("仍有线性步骤处于执行中，请先结束当前尝试再重建网络。")
+            if data.get("session_work_state", {}).get("managed") and not _session_work(data)["can_finish_session"]:
+                raise ProgressError("会话仍有排队/并行/待验收请求，不能通过重规划绕过。")
+            new_title = task_title.strip() if isinstance(task_title, str) and task_title.strip() else data.get("task_title", "")
+            replacement = _new_network(sid, new_title, root_acceptance=_normalize_acceptance(root_acceptance, field="root_acceptance"))
+            replacement["task_history"] = _archive_current_task(data, "线性任务转为任务网络：" + reason.strip())
+            _inherit_work_state(data, replacement)
+            _write(sid, replacement)
+            response_snapshot = _capture_response_snapshot(sid)
+            progress = _progress_payload(replacement)
+            return _tool_result(_format_detail(progress), progress, sid, response_snapshot=response_snapshot)
         if any(node.get("execution_status") == "running" for node in data["nodes"].values()):
             raise ProgressError("仍有任务处于 running，核实或结束这些尝试后再重建网络。")
         closed_at = _now()
@@ -4502,14 +4552,14 @@ def consume_display_intent(session_id: str, view_id: str, display_intent: str) -
 
 # Public query responses are selective. The app-only reader above retains its
 # complete current snapshot so UI/export traffic never enters model tool results.
-_QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "full")
+_QUERY_VIEWS = ("overview", "tree", "tasks", "records", "context", "history", "review_queue", "full")
 _RECORD_KINDS = ("attempts", "invalidated_results", "reassignment_history", "stage_inventories", "coverage_records", "title_revisions", "write_rejections", "split_reviews")
 _HISTORY_KINDS = ("history", "task_history", "plan_snapshots", "plan_revisions", "context_revisions", "legacy_history", "handoffs", "handoff_closures", "closure_reviews", "coverage_records")
 _OVERVIEW_FIELDS = ("schema_version", "mode", "read_only", "session_id", "task_instance_id", "state_revision",
                     "epoch", "revision", "root_id", "status", "root_status", "planning_status", "completed", "total",
                     "percent", "ended_leaf_count", "ended_percent", "accepted_resolved_leaf_count",
                     "accepted_resolved_percent", "resolved_leaf_count", "open_leaf_count", "failed_leaf_count", "ready_count",
-                    "executing_count", "pending_review_count", "blocked_count", "history_summary", "history_included",
+                    "executing_count", "pending_review_count", "synthesis_ready_count", "synthesis_ready_ids", "synthesis_ready_has_more", "blocked_count", "history_summary", "history_included",
                     "closure_review_binding", "closure_review_due", "handoff_summary", "plan_snapshot_count", "plan_revision_count", "coverage_summary", "display_title")
 _TREE_FIELDS = ("id", "parent_id", "created_at", "status", "execution_status", "outcome", "review_status", "ready", "graph_ready", "main_session_waiting_on", "inventory_disposition", "inventory_reason", "attempt_id", "is_added", "addition_reason", "stage_inventory_due_attempt", "coverage_count")
 _MUTATION_TOOLS = frozenset(("init_progress", "init_task_network", "decompose_task", "delete_task", "update_task", "update_step",
@@ -4562,7 +4612,7 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
         raise ProgressError("include_history=true 仅兼容 view=full；请勿与分层视图混用。")
     view = "full" if include_history else (view or "overview")
     if view not in _QUERY_VIEWS:
-        raise ProgressError("view 必须是 overview/tree/tasks/records/context/history/full。")
+        raise ProgressError("view 必须是 overview/tree/tasks/records/context/history/review_queue/full。")
     _query_integer(offset, "offset", 0)
     _query_integer(limit, "limit", 1, 200)
     _query_integer(depth, "depth", 0, 8)
@@ -4587,7 +4637,7 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
     if view == "overview":
         # Server support does not certify that a host adapter or skill has
         # adopted the protocol yet.
-        metadata["protocol_capabilities"] = ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1", "task_batch_parent_v1"]
+        metadata["protocol_capabilities"] = ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1", "task_batch_parent_v1", "task_existing_parent_v1", "review_queue_v1"]
     p = source.get("progress")
     if p is None:
         return {"content": [{"type": "text", "text": "当前会话没有进度数据。"}],
@@ -4631,7 +4681,23 @@ def get_progress(session_id: str, include_history: bool = False, task_instance_i
         "request_count": len(requests), "queued_count": sum(r.get("status") == "queued" for r in requests),
         "pending_review_count": sum(r.get("status") == "pending_review" for r in requests),
         "can_finish_session": work.get("can_finish_session", p.get("status") in ("completed", "open", "failed", "cancelled"))}
-    if view == "tree":
+    if view == "review_queue":
+        if p.get("schema_version") != 2 or p.get("read_only"):
+            raise ProgressError("验收队列仅适用于当前可写的任务网络。")
+        records = []
+        for n in sorted(nodes, key=lambda item: str(item.get("id", ""))):
+            if n.get("review_status") == "pending":
+                attempt = n.get("attempt_id")
+                records.append({"kind": "submission_review", "task_id": n["id"],
+                                "attempt_id": attempt, "actionable": bool(attempt)})
+            if n.get("synthesis_ready"):
+                binding = n.get("closure_review_binding") or {}
+                fingerprint = binding.get("source_fingerprint")
+                records.append({"kind": "synthesis", "task_id": n["id"],
+                                "source_fingerprint": fingerprint, "actionable": bool(fingerprint)})
+        output.update(records=records[offset:offset + limit], pagination=_page(records, offset, limit),
+                      verification="task_progress_state_only")
+    elif view == "tree":
         selected_id = task_id or p.get("root_id")
         if p.get("schema_version") == 2:
             if selected_id not in indexed:
@@ -5305,7 +5371,7 @@ def _task_schema() -> dict[str, Any]:
         "properties": {
             "id": {"type": "string", "description": "当前 task_instance_id 生命周期内唯一的节点 ID；重规划时也不可复用"},
             "title": {"type": "string", "description": "任务标题"},
-            "parent_id": {"type": "string", "description": "可选，本批新增父任务的 ID，需由主会话统筹；省略则直接挂到本次分解目标或初始化的根。向已有分组追加时，以分组 ID 为 decompose_task 的 task_id。"},
+            "parent_id": {"type": "string", "description": "可选，本批新增分组 ID，或 decompose_task.task_id 范围内已有未结束工作包的 ID（task_existing_parent_v1）。追加前由 Agent 按交付与验收目标自动归类；已有工作包后不允许把新叶任务平铺到根。初始化仍只引用同批父任务。"},
             "addition_reason": {"type": "string", "minLength": 1, "description": "执行中追加任务的具体原因；保留为追加标记与审计信息。"},
             "precedes": {"type": "array", "items": {"type": "string"}, "description": "依赖此新增任务的已有后继 ID；原子加入依赖并排序。后继及其子任务必须尚未开始，且必须提供 addition_reason。"},
             "depends_on": {
@@ -5551,7 +5617,7 @@ TOOLS = [
     {
         "name": "decompose_task",
         "title": "分解任务",
-        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。同阶段追加优先以已有未结束的分组 ID 为 task_id；新建分组可在同批子任务填写 parent_id 指向新父任务。根的直属子项用于不同阶段或独立结果。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。",
+        "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。追加前先读当前树，由 Agent 按交付目标自动归类到工作包；同包用 task_id，不同包可在同批任务中用 parent_id 引用范围内已有未结束包（task_existing_parent_v1）。新方向同批新建分组和子任务。根已有工作包后拒绝裸叶平铺并返回候选包，不按标题关键词猜测或改写旧节点。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -5697,7 +5763,7 @@ TOOLS = [
     {
         "name": "get_progress",
         "title": "按需读取任务进度",
-        "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。",
+        "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；支持 review_queue_v1 时可用 review_queue 按页读取待复核尝试及综合验收结果指纹，队列不代表验证通过；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。",
         "inputSchema": {
             "type": "object",
             "properties": {

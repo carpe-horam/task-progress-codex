@@ -6,10 +6,13 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.2.57",
+  "version": "0.2.58",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
+  "taskView": { "title": "Task Progress", "html": "panel.html" },
+  "card": {},
+  "agent": { "background": true },
   "subscribe": {
     "topics": [
       "session",
@@ -22,6 +25,31 @@
   },
   "entry": "main.js",
   "tools": [
+    {
+      "name": "configure_auto_review",
+      "description": "为当前 Cindy 会话显示自动验收跟进开关；仅用户在卡片点击启用后才会自动安排验收回合，可能产生模型调用。",
+      "parameters": {"type":"object","properties":{},"additionalProperties":false}
+    },
+    {
+      "name": "get_auto_review_status",
+      "description": "只读查看当前会话自动验收的启用、派发和待核实状态；不代表验收已通过。",
+      "parameters": {"type":"object","properties":{},"additionalProperties":false}
+    },
+    {
+      "name": "repair_session_binding",
+      "description": "仅在用户明确要求修复指定 Cindy 会话的任务绑定时使用；对旧绑定做比较后原子切换到已核验的任务实例，不修改任务内容。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host_session_id": {"type":"string"},
+          "expected_session_id": {"type":"string"},
+          "session_id": {"type":"string"},
+          "task_instance_id": {"type":"string"}
+        },
+        "required": ["host_session_id","expected_session_id","session_id","task_instance_id"],
+        "additionalProperties": false
+      }
+    },
     {
       "name": "review_stage_inventory",
       "description": "记录阶段盘点。使用当前阶段的 task_id、attempt_id 和 get_progress tree/tasks 返回的 stage_inventory_binding.source_fingerprint；旧 expected_state_revision 仍支持。新决定传 decisions=[{task_id, decision, reason}]，decision 为 continue、obsolete 或 covered；没有新决定时传 decisions=[]。复用已接受且结果未变的 continue 决定时另传 reuse_decisions=[{task_id, inventory_id}]。默认覆盖全局未解决叶任务；显式 scope_task_ids 必须与指纹来源一致，并包含阶段自身及明确的跨阶段遗留。只追加审计，不改状态、outcome 或依赖；最终收尾须全局盘点。 仅返回身份与状态回执；详情按需 get_progress。",
@@ -779,7 +807,7 @@
     },
     {
       "name": "init_progress",
-      "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。此工具只写入任务数据，不触发展示；首次展示调用一次 render_progress，宿主优先以 fullscreen 展示。复用同一 Codex 会话的 session_id 会把旧任务归档到 task_history。 仅返回身份与状态回执；详情按需 get_progress。",
+      "description": "旧版线性任务 API。多步骤新任务必须使用 init_task_network；本工具默认拒绝两个及以上步骤。只有用户明确要求线性步骤或恢复旧版线性任务时，才设置 legacy_linear=true。Cindy 会自动复用当前会话已有的任务会话：有旧任务且用户明确开启独立新目标时，即使省略 session_id，也必须同时填写 task_relationship=independent 和 new_task_reason；运行中或待验收事项先处理。此工具只写入任务数据，首次展示调用 render_progress。仅返回身份与状态回执；详情按需 get_progress。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -822,7 +850,7 @@
     },
     {
       "name": "init_task_network",
-      "description": "新任务的默认入口。多阶段任务一次传入至少两个有独立结果的 tasks，或初始化后调用 decompose_task。已有明确阶段时可用同批 parent_id 组织子任务。未规划的空 root 不可执行。确为单步工作时填写 atomic_reason。可选 request_id 使用持久化账本安全重试：首次省略 session 也复用已分配身份，同实例重规划后返回当前计划；绑定任务已归档或清除时明确拒绝，不回滚当前任务。仅返回 task_instance_id、root_id、planning_status 等身份与状态小回执。此工具只写任务数据，不展示；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。新任务复用本 Codex 会话的 session_id，恢复用 get_progress，重规划用 rebuild_task_network。 仅返回身份与状态回执；详情按需 get_progress。",
+      "description": "新任务的默认入口。Cindy 会自动复用当前会话已有的任务会话：有旧任务且用户明确开启独立新目标时，即使省略 session_id，也必须同时填写 task_relationship=independent 和 new_task_reason，否则初始化被拒绝、新任务不会显示。运行中或待验收事项先处理；继续同一目标请使用 rebuild_task_network。多阶段任务一次传入至少两个有独立结果的 tasks，或初始化后调用 decompose_task；单步工作填写 atomic_reason。可选 request_id 支持持久化安全重试。此工具只写任务数据；主会话完成首次粗规划后调用一次 render_progress 自动请求展示。仅返回身份与状态回执；详情按需 get_progress。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -880,7 +908,7 @@
                 },
                 "parent_id": {
                   "type": "string",
-                  "description": "可选，本批新增父任务的 ID，需由主会话统筹；省略则直接挂到本次分解目标或初始化的根。向已有分组追加时，以分组 ID 为 decompose_task 的 task_id。"
+                  "description": "可选，本批新增分组 ID，或 decompose_task.task_id 范围内已有未结束工作包的 ID（task_existing_parent_v1）。追加前由 Agent 按交付与验收目标自动归类；已有工作包后不允许把新叶任务平铺到根。初始化仍只引用同批父任务。"
                 },
                 "addition_reason": {
                   "type": "string",
@@ -1169,7 +1197,7 @@
     },
     {
       "name": "decompose_task",
-      "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。同阶段追加优先以已有未结束的分组 ID 为 task_id；新建分组可在同批子任务填写 parent_id 指向新父任务。根的直属子项用于不同阶段或独立结果。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。 仅返回身份与状态回执；详情按需 get_progress。",
+      "description": "分解或追加子任务，继承祖先依赖并检查执行死锁。追加前先读当前树，由 Agent 按交付目标自动归类到工作包；同包用 task_id，不同包可在同批任务中用 parent_id 引用范围内已有未结束包（task_existing_parent_v1）。新方向同批新建分组和子任务。根已有工作包后拒绝裸叶平铺并返回候选包，不按标题关键词猜测或改写旧节点。追加问题填写 addition_reason，并用 precedes 原子指定尚未开始的已有后继；后继将真实依赖新增任务，界面按依赖排序。已经开始的后继须先协调并重规划，不能改写历史。每个阶段结束后主会话盘点未闭环任务是否继续、过期或被覆盖，记录理由与证据。拆分应形成至少两个独立结果；已有分组可追加单项。每个子任务必须提供 assignment.execution_mode。分解运行中的任务前须协调停止旧执行者并传当前 attempt_id。会话存在 task_history 时必须传当前 task_instance_id。 仅返回身份与状态回执；详情按需 get_progress。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -1204,7 +1232,7 @@
                 },
                 "parent_id": {
                   "type": "string",
-                  "description": "可选，本批新增父任务的 ID，需由主会话统筹；省略则直接挂到本次分解目标或初始化的根。向已有分组追加时，以分组 ID 为 decompose_task 的 task_id。"
+                  "description": "可选，本批新增分组 ID，或 decompose_task.task_id 范围内已有未结束工作包的 ID（task_existing_parent_v1）。追加前由 Agent 按交付与验收目标自动归类；已有工作包后不允许把新叶任务平铺到根。初始化仍只引用同批父任务。"
                 },
                 "addition_reason": {
                   "type": "string",
@@ -2247,7 +2275,7 @@
     },
     {
       "name": "get_progress",
-      "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。 可选task_instance_id读取隔离并行实例；省略读取当前主任务。",
+      "description": "显式读取目标实例。默认overview仅概览，并在顶层protocol_capabilities声明服务端支持的可选协议字段；该标记不代表宿主适配器或技能已升级。优先tree按层分页、tasks读取指定当前节点、records读取指定节点执行记录、context读取上下文及分页请求、history分页历史；支持 review_queue_v1 时可用 review_queue 按页读取待复核尝试及综合验收结果指纹，队列不代表验证通过；仅明确需要时full。full与兼容include_history=true返回目标实例完整记录/历史，peer仅当前快照，其历史须指定peer实例另读。分页用expected_state_revision固定版本，版本变化须重读第一页。此工具不展示面板。 可选task_instance_id读取隔离并行实例；省略读取当前主任务。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -2268,6 +2296,7 @@
               "records",
               "context",
               "history",
+              "review_queue",
               "full"
             ],
             "default": "overview"

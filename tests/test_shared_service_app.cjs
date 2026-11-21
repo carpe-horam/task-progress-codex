@@ -52,9 +52,8 @@ async function main() {
   const running=await host.rpc('update_task',{...args,execution_status:'running',assignment:{execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation'}});
   await host.rpc('update_task',{...args,execution_status:'finished',outcome:'resolved',attempt_id:running.structuredContent.progress.nodes[0].attempt_id,summary:'SESSION_B_ONLY_RESULT'});
   await frameB.getByText('SESSION_B_ONLY_RESULT',{exact:true}).first().waitFor({state:'attached',timeout:12000});
-  await frameB.locator('#steps details > summary.step-main').first().click();
-  await frameB.locator('#steps .execution-review > summary').first().click();
-  await frameB.getByText('SESSION_B_ONLY_RESULT',{exact:true}).first().waitFor();
+  await frameB.locator('#step-list .plan-row[data-step-id="root"] .plan-title').click();
+  await frameB.locator('#detail-panel-result').getByText('SESSION_B_ONLY_RESULT',{exact:true}).waitFor();
   assert(!(await frameA.locator('body').textContent()).includes('SESSION_B_ONLY_RESULT'));
   // A closed chat does not own the backend. The surviving chat can still read.
   await pageA.close();

@@ -15,6 +15,9 @@ with zipfile.ZipFile(Path(sys.argv[1])) as archive:
     for i in range(1, 6):
         xml = ET.fromstring(archive.read(f"xl/worksheets/sheet{i}.xml"))
         rows = [["".join(c.itertext()) for c in r.findall("s:c", ns)] for r in xml.findall(".//s:row", ns)]
+        if rows and {"任务 ID", "任务名称", "完整路径"}.issubset(rows[0]):
+            assert all(row.get("ht") == "48" and row.get("customHeight") == "1"
+                       for row in xml.findall(".//s:row", ns)[1:])
         sheets.append(rows)
     task_sheet = next(rows for rows in sheets if {"任务 ID", "任务名称", "完整路径"}.issubset(rows[0]))
     attempt_sheet = next(rows for rows in sheets if {"任务 ID", "尝试次数", "模型", "类型", "有效性"}.issubset(rows[0]))

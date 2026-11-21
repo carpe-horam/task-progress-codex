@@ -8,10 +8,46 @@ from __future__ import annotations
 
 import http.client
 import json
+from pathlib import Path
+import re
 import sys
 
 from service_manager import PORT, ServiceError, ServiceManager
 from shared_service import MAX_REQUEST_BYTES, read_authorization
+
+
+_PLUGIN_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[-+][A-Za-z0-9.-]+)?\Z")
+
+
+def _version_family(value):
+    match = _PLUGIN_VERSION.fullmatch(str(value or ""))
+    return tuple(map(int, match.groups())) if match else None
+
+
+def _package_version():
+    root = Path(__file__).resolve().parent
+    for manifest in (root / "ghost.json", root / ".codex-plugin/plugin.json"):
+        try:
+            version = json.loads(manifest.read_text()).get("version")
+        except (OSError, ValueError, TypeError):
+            continue
+        if _version_family(version) is not None:
+            return version
+    return None
+
+
+def _healthy_newer_compatible_service(manager):
+    """Keep only a newer authenticated daemon from this HTTP protocol family."""
+    try:
+        health = manager.health()
+    except (ServiceError, OSError, ValueError):
+        return False
+    if not isinstance(health, dict):
+        return False
+    client_version = _version_family(_package_version())
+    running_version = _version_family(health.get("version"))
+    return bool(client_version and running_version and running_version[:2] == client_version[:2]
+                and running_version > client_version)
 
 
 def forward(message, authorization):
@@ -39,9 +75,11 @@ def forward(message, authorization):
 def main():
     manager = ServiceManager()
     try:
-        # install() is locked and idempotent; it also verifies authenticated health.
+        # Keep a strictly newer daemon in the same protocol family. Otherwise
+        # install reconciles this package, including same-version new digests.
         # Native launchd/systemd/Task Scheduler owns the daemon, never this bridge.
-        manager.install()
+        if not _healthy_newer_compatible_service(manager):
+            manager.install()
         authorization = read_authorization(manager.state_dir)
     except (ServiceError, OSError, ValueError) as error:
         print(f"Task Progress startup: {error}", file=sys.stderr, flush=True)

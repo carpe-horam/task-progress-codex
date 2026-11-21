@@ -141,7 +141,8 @@ async function main() {
       const item = await fixture();
       const f = await mount(id,item.bootstrap,config);
       assert.equal(await count(id),id==='unsupported'?0:1);
-      await f.locator('#open-progress-panel:not(.hidden)').waitFor();
+      if (id === 'unsupported') await f.locator('#open-progress-panel.hidden').waitFor({state:'attached'});
+      else await f.locator('#open-progress-panel:not(.hidden)').waitFor();
       await notify(id,'ui/notifications/tool-result',item.bootstrap);
       assert.equal(await count(id),id==='unsupported'?0:1);
     }

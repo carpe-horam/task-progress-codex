@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'../plugins/task-progress/app.html'),'utf8');
 const context=vm.createContext({});
-const stamp=source.slice(source.indexOf('  const timestamp ='),source.indexOf('  function appendElapsed('));
+const stamp=source.slice(source.indexOf('  const timestamp ='),source.indexOf('  function appendRowStatus('));
 const model=source.slice(source.indexOf('  function executionTiming('),source.indexOf('  function dependencyConstraints('));
 vm.runInContext(stamp+'\nconst list=value=>Array.isArray(value)?value:[];\n'+model+'\nglobalThis.timing=executionTiming;',context);
 const timing=context.timing;
