@@ -8,15 +8,7 @@
  .error{padding:7px 16px;font-size:11px}
  .export-feedback{padding:6px 16px}
  @media(max-width:480px){body{padding:4px}.header{padding:10px 12px 8px}.titleline{margin-top:7px}h1{font-size:16px}.steps-section{padding:8px 12px 1px}.step{padding:6px 0}.task-tree .children{margin-top:4px;margin-left:4px;padding-left:8px}.history-section{padding:7px 12px}.empty{padding:18px 12px 20px}}
-@@ -121,6 +122,7 @@
- .root-role{display:inline-block;margin-right:7px;padding:1px 6px;border:1px solid #465671;border-radius:4px;font-size:10px;line-height:1.7;color:#a9c7f5;vertical-align:1px}.parallel-placeholder .step-title{color:#93a4bb}:root[data-theme="light"] .root-role{color:#365b89;border-color:#c0cede}.progress-context{font-size:11px;line-height:1.6;color:#a9b8ce;margin:8px 0 0}.acceptance-status{margin:6px 0 0;font-size:12px;line-height:1.6;color:#e8c58d}.step.awaiting_review > details > .step-main > .step-icon{color:#f3ce87;background:#3a3020;border-color:#ab8245;font-size:15px}.step-result{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:5px;color:#b6c5da;font-size:11px;line-height:1.55;white-space:pre-wrap}.leaf-result-summary{margin:10px 0 0 34px;padding:10px 12px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65}.leaf-result-summary .detail-value,.leaf-result-summary .detail-preview{font-size:12px;color:#c5d1e4}:root[data-theme="light"] .leaf-result-summary{background:#f5f7fb;border-color:#d4ddeb}:root[data-theme="light"] .leaf-result-summary :is(.detail-value,.detail-preview){color:#354c6c}@media(max-width:480px){.leaf-result-summary{margin-left:30px}}.task-details.execution-review>summary{font-size:11px;color:#94a7c4;cursor:pointer}.task-details.execution-review:not([open]){display:block}.session-work{padding:12px 16px;border-bottom:1px solid #303642;font-size:12px;line-height:1.6}.session-context>summary{cursor:pointer;font-weight:600}.session-context>details{margin-top:7px}.request-list{list-style:none;margin:8px 0 0;padding:0}.request-item{padding:7px 0;border-top:1px solid #303642}.request-line{display:flex;gap:8px;justify-content:space-between;align-items:start}.request-detail{font-size:11px;color:#93a4bb;white-space:pre-wrap;overflow-wrap:anywhere}.request-tag{font-size:10px;color:#e8c58d;white-space:nowrap}.work-guidance{margin:7px 0 0;color:#93a4bb;font-size:10px}:root[data-theme="light"] :is(.progress-context,.step-result){color:#425874}:root[data-theme="light"] .acceptance-status{color:#815b19}:root[data-theme="light"] :is(.request-detail,.work-guidance){color:#596d85}:root[data-theme="light"] :is(.session-work,.request-item){border-color:#dce3ed}
- </style>
- <style>.status-filter-label{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:11px;color:#9aa5b7}.status-filter-label select{color:inherit;background:transparent;border:1px solid #465060;border-radius:6px;padding:4px 6px;font:inherit}.status-filter-label option{background:#222833;color:#d5deed}:root[data-theme="light"] .status-filter-label{color:#526174}:root[data-theme="light"] .status-filter-label option{background:#fff;color:#263447}.status-filter-hidden{display:none!important}</style>
-+<style>.task-title-editor form{display:grid;gap:7px;padding:8px}.task-title-editor label{display:grid;gap:4px}.task-title-editor input{min-width:0;padding:6px;border:1px solid #465060;border-radius:5px;background:transparent;color:inherit}.task-title-editor button{justify-self:start;padding:5px 9px;border:1px solid #465060;border-radius:5px;background:transparent;color:inherit;cursor:pointer}.title-edit-feedback{margin:0}</style>
- </head>
- <body>
- <main class="card" aria-label="任务进度">
-@@ -148,7 +150,7 @@
+@@ -154,7 +155,7 @@
      </div>
    </header>
    <section id="session-work" class="session-work hidden" aria-label="会话请求"></section>
@@ -25,7 +17,7 @@
    <section id="steps-section" class="steps-section hidden" aria-label="任务步骤"><div class="sectionline"><h2 id="steps-title">执行步骤</h2><span id="step-count"></span></div><label class="status-filter-label" for="status-filter">状态筛选 <select id="status-filter"><option value="all">全部状态</option><option value="running">进行中</option><option value="pending">未开始</option><option value="review">待验收</option><option value="completed">已解决</option><option value="unresolved">未解决</option></select></label><p id="filter-empty" class="network-help hidden" role="status">没有符合条件的任务。</p><p id="network-help" class="network-help hidden">任务可展开查看依赖、结果与派发信息；百分比仅表示主任务中已解决且通过当前验收协议的叶任务；各根任务综合验收单独记录。</p><ol id="steps" class="steps"></ol></section>
    <details id="history-section" class="history-section hidden"><summary id="history-title">历史计划</summary><ol id="history-list" class="history-list"></ol></details>
    <details id="task-history-section" class="history-section hidden"><summary id="task-history-title">历史任务</summary><ol id="task-history-list" class="history-list"></ol></details>
-@@ -163,6 +165,11 @@
+@@ -169,6 +170,11 @@
    const $ = id => document.getElementById(id);
    const setText = (id, value) => { const element = $(id); const text = String(value); if (element.textContent !== text) element.textContent = text; };
    let sessionId = null;
@@ -37,7 +29,7 @@
    // A host may pin the view identity (the DeepSeekRuntime right-sidebar tab does):
    // a remount then renews its own lease instead of colliding with the lease its
    // previous frame left behind as a second fullscreen view of the same session.
-@@ -342,6 +349,7 @@
+@@ -348,6 +354,7 @@
      if ((wasStale || wasHidden) && !hidden) void refreshProgress(true);
    }
    async function checkLatestView() {
@@ -45,7 +37,7 @@
      if (displayMode !== 'inline' || !viewRegistered || !bridgeReady || !sessionId || disposed || viewCheckBusy || !documentVisible) return;
      const generation = viewGeneration;
      viewCheckBusy = true;
-@@ -362,6 +370,8 @@
+@@ -368,6 +375,8 @@
      finally { viewCheckBusy = false; }
    }
    async function registerView(force = false) {
@@ -54,7 +46,7 @@
      const source = displayMode === 'inline' ? inlineViewSource || viewSource : viewSource;
      if (!displayIntentSettled || (displayMode === 'fullscreen' && autoFullscreenBlocked)) return;
      if (!['inline', 'fullscreen'].includes(displayMode) || !bridgeReady || !sessionId || !source || viewRegistrationStarted || viewRetryTimer !== null || disposed) return;
-@@ -2142,6 +2152,27 @@
+@@ -2248,6 +2257,27 @@
        const body = document.createElement('details'); body.className = 'task-details execution-review' + (isRoot ? ' root-metadata' : '');
        body.dataset.key = prefix + ':' + id + (isRoot ? ':root-metadata' : ':execution-review'); body.open = openDetails.get(body.dataset.key) || false;
        const heading=document.createElement('summary'); heading.textContent=isRoot ? '统筹与综合验收详情' : '执行与验收详情'; body.append(heading);
@@ -82,7 +74,7 @@
        if (id === String(rootId) && rootContext) {
          const p=rootContext.progress, stats={...leafProgress(nodes),resolved:metric(p,'accepted_resolved_leaf_count')};
          body.append(field('本任务进度', stats.resolved + ' / ' + stats.total + ' 项已解决 / 已验收完成；' + stats.pending + ' 待验收 · ' + stats.running + ' 执行中'));
-@@ -2654,6 +2685,34 @@
+@@ -2774,6 +2804,34 @@
      applyStatusFilter();
      syncButton();
    }
@@ -117,7 +109,7 @@
    $('export-all').addEventListener('click', exportCurrentProgress);
    function receiveResult(result, fromRefresh = false) {
      if ((isInlineStale() && fromRefresh) || disposed) return;
-@@ -2665,6 +2724,7 @@
+@@ -2785,6 +2843,7 @@
      if (typeof incomingSession === 'string' && incomingSession) sessionId = incomingSession;
      // A model-facing selective query is not a panel snapshot.
      if (structured.view && structured.view !== 'full') return;
@@ -125,7 +117,7 @@
      if (!Object.prototype.hasOwnProperty.call(structured, 'progress')) {
        // Tool receipts carry identity only. The panel reads its own snapshot;
        // neither an acknowledgement nor a render bootstrap is an empty tree.
-@@ -2749,6 +2809,7 @@
+@@ -2869,6 +2928,7 @@
        lastCheckedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
        refreshFailed = false;
        setError(''); render(incoming); syncPresentation();loadOpenRecordHistories();
@@ -133,11 +125,10 @@
        if (historyIsOpen() && !hasFullHistory(incoming)) void ensureFullHistory().catch(() => {});
        void registerView(displayMode === 'fullscreen' && fromRefresh);
      }
-@@ -2787,6 +2848,25 @@
-       syncPolling();
+@@ -2908,6 +2968,25 @@
        reportHeight();
      }
-+  }
+   }
 +  function bindSession(value) {
 +    if ((typeof value !== 'string' || !value) && !sessionId) return;
 +    if (typeof value === 'string' && value === sessionId) {
@@ -156,10 +147,11 @@
 +    const diagnostic = $('empty-session-diagnostic');
 +    diagnostic.classList.toggle('hidden', !diagnostic.textContent || hasCurrentProgress);
 +    if (sessionId) { void registerView(); if (bridgeReady) void refreshProgress(true); }
-   }
++  }
    window.addEventListener('message', event => {
      if (event.source !== window.parent || !event.data || event.data.jsonrpc !== '2.0') return;
-@@ -2796,10 +2876,16 @@
+     const message = event.data;
+@@ -2916,9 +2995,15 @@
        if (message.error) item.reject(new Error(message.error.message || '宿主请求失败。')); else item.resolve(message.result);
        return;
      }
@@ -168,13 +160,12 @@
        const value = message.params?.arguments?.session_id;
 -      if (typeof value === 'string' && value) { sessionId = value; syncButton(); void registerView(); }
 +      bindSession(value);
-     }
++    }
 +    if (message.method === 'ui/notifications/panel-diagnostic') {
 +      const status = $('empty-session-diagnostic');
 +      const text = typeof message.params?.text === 'string' ? message.params.text : '';
 +      setText('empty-session-diagnostic', text);
 +      status.classList.toggle('hidden', !text || !!hasCurrentProgress);
-+    }
+     }
      if (message.method === 'ui/notifications/host-context-changed') applyHostContext(message.params || {});
      if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
-     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {

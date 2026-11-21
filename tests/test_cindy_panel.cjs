@@ -116,6 +116,9 @@ async function main() {
   assert.equal(await page.locator('#progress-app').evaluate(el => getComputedStyle(el).visibility), 'visible', 'the task is shown after loading completes');
   await page.waitForFunction(() => window.__bridgeStats.wakes > 0 && window.__bridgeStats.requests > window.__bridgeStats.executions);
   assert.equal(await app.locator('#task-title').textContent(), 'Cindy 端到端验证');
+  // Pending branches are collapsed until explicitly opened; exercise that real path.
+  const stageDisclosure = app.locator('#steps details[data-key$=":stage"]');
+  if (await stageDisclosure.getAttribute('open') === null) await stageDisclosure.locator(':scope > summary').click();
   assert.match(await app.locator('#steps').innerText(), /工具桥接与实时刷新/);
   assert.match(await app.locator('#steps').innerText(), /暗色主题与任务列表显示/);
   const editLeaf = app.locator('li.step').filter({has: app.locator('.task-title-text', {hasText:'暗色主题与任务列表显示'})}).last();

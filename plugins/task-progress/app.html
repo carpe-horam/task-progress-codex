@@ -121,6 +121,12 @@ h1{font-size:18px;line-height:1.35}
 .root-role{display:inline-block;margin-right:7px;padding:1px 6px;border:1px solid #465671;border-radius:4px;font-size:10px;line-height:1.7;color:#a9c7f5;vertical-align:1px}.parallel-placeholder .step-title{color:#93a4bb}:root[data-theme="light"] .root-role{color:#365b89;border-color:#c0cede}.progress-context{font-size:11px;line-height:1.6;color:#a9b8ce;margin:8px 0 0}.acceptance-status{margin:6px 0 0;font-size:12px;line-height:1.6;color:#e8c58d}.step.awaiting_review > details > .step-main > .step-icon{color:#f3ce87;background:#3a3020;border-color:#ab8245;font-size:15px}.step-result{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:5px;color:#b6c5da;font-size:11px;line-height:1.55;white-space:pre-wrap}.leaf-result-summary{margin:10px 0 0 34px;padding:10px 12px;border:1px solid #303b4c;border-radius:6px;background:#1a212c;font-size:12px;line-height:1.65}.leaf-result-summary .detail-value,.leaf-result-summary .detail-preview{font-size:12px;color:#c5d1e4}:root[data-theme="light"] .leaf-result-summary{background:#f5f7fb;border-color:#d4ddeb}:root[data-theme="light"] .leaf-result-summary :is(.detail-value,.detail-preview){color:#354c6c}@media(max-width:480px){.leaf-result-summary{margin-left:30px}}.task-details.execution-review>summary{font-size:11px;color:#94a7c4;cursor:pointer}.task-details.execution-review:not([open]){display:block}.session-work{padding:12px 16px;border-bottom:1px solid #303642;font-size:12px;line-height:1.6}.session-context>summary{cursor:pointer;font-weight:600}.session-context>details{margin-top:7px}.request-list{list-style:none;margin:8px 0 0;padding:0}.request-item{padding:7px 0;border-top:1px solid #303642}.request-line{display:flex;gap:8px;justify-content:space-between;align-items:start}.request-detail{font-size:11px;color:#93a4bb;white-space:pre-wrap;overflow-wrap:anywhere}.request-tag{font-size:10px;color:#e8c58d;white-space:nowrap}.work-guidance{margin:7px 0 0;color:#93a4bb;font-size:10px}:root[data-theme="light"] :is(.progress-context,.step-result){color:#425874}:root[data-theme="light"] .acceptance-status{color:#815b19}:root[data-theme="light"] :is(.request-detail,.work-guidance){color:#596d85}:root[data-theme="light"] :is(.session-work,.request-item){border-color:#dce3ed}
 </style>
 <style>.status-filter-label{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:11px;color:#9aa5b7}.status-filter-label select{color:inherit;background:transparent;border:1px solid #465060;border-radius:6px;padding:4px 6px;font:inherit}.status-filter-label option{background:#222833;color:#d5deed}:root[data-theme="light"] .status-filter-label{color:#526174}:root[data-theme="light"] .status-filter-label option{background:#fff;color:#263447}.status-filter-hidden{display:none!important}</style>
+<style>
+/* Dependency navigation shares task-tree numbering and never changes readiness. */
+.card{position:relative}.dependency-wait{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;padding-bottom:8px;font-size:11px;font-weight:400;color:#9aa5b7}.dependency-link{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:2px 7px;border:1px solid #46546b;border-radius:5px;background:transparent;color:#a4c2ff;font-size:11px;cursor:pointer;font-variant-numeric:tabular-nums}.dependency-link:after{content:'↗';font-size:10px;opacity:.65}.dependency-link:hover,.dependency-link[aria-pressed=true]{background:#22334e;border-color:#a4c2ff}.dependency-link:disabled{color:#9aa5b7;border-style:dashed;cursor:default}.dependency-link:disabled:after{content:none}.dependency-target>details>.step-main{outline:1px solid #89aaff;outline-offset:3px;border-radius:4px;background:#1a2537}.dependency-source>details>.step-main>.step-title>.task-title-text{color:#a4c2ff}.dependency-connections{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;color:#a4c2ff}.dependency-connections[hidden],.dependency-trace[hidden]{display:none}.dependency-wire-base{fill:none;stroke:currentColor;stroke-width:1.4;opacity:.25}.dependency-wire-flow{fill:none;stroke:currentColor;stroke-width:1.7;stroke-dasharray:5 9;stroke-linecap:round;animation:dependency-flow .8s linear infinite}.dependency-origin{fill:currentColor}.dependency-trace{display:flex;align-items:center;gap:9px;border-top:1px solid #303642;padding:9px 0;margin-top:8px;font-size:11px;color:#a4c2ff;overflow-wrap:anywhere}.dependency-trace>span{min-width:0;flex:1}.dependency-trace>button{background:none;border:0;color:inherit;font-size:18px;padding:2px 7px;cursor:pointer}@keyframes dependency-flow{to{stroke-dashoffset:-28}}
+:root[data-theme="light"] .dependency-wait{color:#596b84}:root[data-theme="light"] .dependency-link{color:#3862b1;border-color:#c5cfdf}:root[data-theme="light"] .dependency-link:hover,:root[data-theme="light"] .dependency-link[aria-pressed=true]{background:#edf3ff;border-color:#3862b1}:root[data-theme="light"] .dependency-target>details>.step-main{background:#f3f7ff;outline-color:#3862b1}:root[data-theme="light"] .dependency-source>details>.step-main>.step-title>.task-title-text,:root[data-theme="light"] .dependency-trace,:root[data-theme="light"] .dependency-connections{color:#3862b1}:root[data-theme="light"] .dependency-trace{border-color:#dce3ed}
+@media(prefers-reduced-motion:reduce){.dependency-wire-flow{animation:none;stroke-dasharray:none}}
+</style>
 </head>
 <body>
 <main class="card" aria-label="任务进度">
@@ -2037,6 +2043,79 @@ h1{font-size:18px;line-height:1.35}
     badge.title = '累计执行 ' + attempt + ' 轮（含首次执行）；此数字不表示失败次数。';
     title.append(badge);
   }
+  // A selected edge is a local viewing state, never a task-state mutation.
+  let selectedDependency = null, dependencyFrame = 0;
+  const dependencyCard = document.querySelector('.card');
+  const dependencySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  dependencySvg.classList.add('dependency-connections'); dependencySvg.setAttribute('aria-hidden', 'true');
+  dependencySvg.innerHTML = '<defs><marker id="dependency-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0L6 3L0 6" fill="none" stroke="currentColor" stroke-width="1.2"/></marker></defs><path class="dependency-wire-base"/><path class="dependency-wire-flow" marker-end="url(#dependency-arrow)"/><circle class="dependency-origin" r="2.5"/>';
+  dependencySvg.setAttribute('hidden', ''); dependencyCard.append(dependencySvg);
+  const dependencyTrace = document.createElement('div'); dependencyTrace.className = 'dependency-trace'; dependencyTrace.hidden = true;
+  const dependencyTraceText = document.createElement('span'); dependencyTraceText.setAttribute('role', 'status'); dependencyTraceText.setAttribute('aria-live', 'polite');
+  const dependencyClose = document.createElement('button'); dependencyClose.type = 'button'; dependencyClose.textContent = '×'; dependencyClose.setAttribute('aria-label', '收起依赖连线');
+  dependencyTrace.append(dependencyTraceText, dependencyClose); $('steps').after(dependencyTrace);
+  function clearDependencyTrace() {
+    selectedDependency = null; dependencySvg.setAttribute('hidden', ''); dependencyTrace.hidden = true;
+    document.querySelectorAll('.dependency-source,.dependency-target').forEach(el => el.classList.remove('dependency-source', 'dependency-target'));
+    document.querySelectorAll('.dependency-link[aria-pressed="true"]').forEach(el => el.setAttribute('aria-pressed', 'false'));
+  }
+  function dependencyElements() {
+    if (!selectedDependency) return {};
+    const source = Array.from(document.querySelectorAll('li[data-dependency-key]')).find(el => el.dataset.dependencyKey === selectedDependency.source);
+    const button = source && Array.from(source.querySelectorAll(':scope > details > summary .dependency-link')).find(el => el.dataset.dependencyTarget === selectedDependency.target);
+    const target = Array.from(document.querySelectorAll('li[data-dependency-key]')).find(el => el.dataset.dependencyKey === selectedDependency.target);
+    return {source, button, target};
+  }
+  function drawDependencyTrace() {
+    dependencyFrame = 0;
+    if (!selectedDependency) return;
+    const {source, button, target} = dependencyElements();
+    const icon = target?.querySelector(':scope > details > .step-main > .step-icon');
+    if (!source || !button || button.disabled || !icon || !button.getClientRects().length || !icon.getClientRects().length) { clearDependencyTrace(); return; }
+    // The trace can wrap and change the card height. Settle that layout before
+    // measuring the SVG; otherwise its old viewBox centers the line off target.
+    source.classList.add('dependency-source'); target.classList.add('dependency-target'); button.setAttribute('aria-pressed', 'true');
+    dependencyTrace.hidden = false;
+    dependencyTraceText.textContent = '任务 ' + source.dataset.taskNumber + ' → 前置任务 ' + target.dataset.taskNumber + ' · ' + target.querySelector(':scope > details > summary .task-title-text').textContent;
+    dependencySvg.removeAttribute('hidden');
+    const overlay = dependencySvg.getBoundingClientRect(), b = button.getBoundingClientRect(), t = icon.getBoundingClientRect();
+    const sx = b.left + b.width / 2 - overlay.left, sy = b.bottom - overlay.top;
+    const tx = t.left - overlay.left - 3, ty = t.top + t.height / 2 - overlay.top;
+    const gutter = Math.max(5, Math.min(tx, source.getBoundingClientRect().left - overlay.left) - 10), bottom = sy + 6;
+    const d = `M ${sx} ${sy} L ${sx} ${bottom} L ${gutter + 5} ${bottom} Q ${gutter} ${bottom} ${gutter} ${bottom - 5} L ${gutter} ${ty + 5} Q ${gutter} ${ty} ${gutter + 5} ${ty} L ${tx} ${ty}`;
+    dependencySvg.setAttribute('viewBox', `0 0 ${overlay.width} ${overlay.height}`);
+    dependencySvg.querySelectorAll('.dependency-wire-base,.dependency-wire-flow').forEach(path => path.setAttribute('d', d));
+    const origin = dependencySvg.querySelector('.dependency-origin'); origin.setAttribute('cx', sx); origin.setAttribute('cy', sy);
+  }
+  function scheduleDependencyTrace() {
+    if (selectedDependency && !dependencyFrame) dependencyFrame = requestAnimationFrame(drawDependencyTrace);
+  }
+  function selectDependency(button) {
+    const source = button.closest('li[data-dependency-key]');
+    const edge = { source: source.dataset.dependencyKey, target: button.dataset.dependencyTarget };
+    const same = selectedDependency?.source === edge.source && selectedDependency?.target === edge.target;
+    clearDependencyTrace(); if (same) return;
+    selectedDependency = edge;
+    const {target} = dependencyElements(); if (!target) { clearDependencyTrace(); return; }
+    // Filters and disclosure are viewing state; reveal the real target without
+    // selecting an identically named node from another instance or round.
+    if (target.closest('.status-filter-hidden')) { $('status-filter').value = 'all'; applyStatusFilter(); }
+    for (let parent = target.parentElement; parent && parent !== dependencyCard; parent = parent.parentElement) if (parent.tagName === 'DETAILS') { parent.open = true; parent.dataset.openOverride = ''; }
+    drawDependencyTrace();
+    const bounds = target.querySelector(':scope > details > summary').getBoundingClientRect();
+    if (bounds.top < 0 || bounds.bottom > window.innerHeight) target.querySelector(':scope > details > summary').scrollIntoView({block:'center',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('.dependency-link');
+    if (!button) return;
+    event.preventDefault(); event.stopPropagation(); if (!button.disabled) selectDependency(button);
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') clearDependencyTrace(); });
+  document.addEventListener('toggle', scheduleDependencyTrace, true);
+  window.addEventListener('resize', scheduleDependencyTrace);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(scheduleDependencyTrace).observe(dependencyCard);
+  dependencyClose.addEventListener('click', clearDependencyTrace);
+
   function networkTree(nodes, rootId, prefix, openDetails, defaultOpen = false, timeContext = null, rootContext = null, rootStart = 1) {
     const fragment = document.createDocumentFragment();
     const byId = new Map(nodes.map(node => [String(node.id), node]));
@@ -2062,7 +2141,7 @@ h1{font-size:18px;line-height:1.35}
       }
     }
     const referenced = new Set([...children.values()].flat());
-    const seen = new Set();
+    const seen = new Set(), taskNumbers = new Map(), dependencyButtons = [];
     const derivedStatuses = new Map();
     function nodeStatus(id, path = new Set()) {
       if (derivedStatuses.has(id)) return derivedStatuses.get(id);
@@ -2098,6 +2177,7 @@ h1{font-size:18px;line-height:1.35}
       const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
       const info = statusInfo(nodeStatus(id));
       const li = document.createElement('li'); li.className = 'step ' + info.key;
+      li.dataset.dependencyKey = prefix + ':' + id; li.dataset.taskNumber = number; taskNumbers.set(id, number);
       const details = document.createElement('details'); details.dataset.key = prefix + ':' + id;
       const initiallyOpen = defaultOpen && childIds.length > 0
         && (!rootContext || id === String(rootId) || activeBranches.has(id));
@@ -2129,6 +2209,17 @@ h1{font-size:18px;line-height:1.35}
       }
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
+      const unmet = [...new Set([...list(node.blocked_by).map(String), ...dependencyConstraints(node, byId).filter(rule => !constraintSatisfied(rule)).map(rule => String(rule.id))])];
+      if (unmet.length && (!node.execution_status || node.execution_status === 'pending') && !inventoryPendingDisposition(node) && !rootContext?.progress.request_cancelled) {
+        const wait = document.createElement('span'); wait.className = 'dependency-wait';
+        const caption = document.createElement('span'); caption.textContent = '等待前置任务：'; wait.append(caption);
+        for (const dependency of unmet) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'dependency-link';
+          button.dataset.dependencyTarget = prefix + ':' + dependency; button.dataset.renderKey = dependency;
+          button.setAttribute('aria-pressed', 'false'); dependencyButtons.push({button, id:dependency}); wait.append(button);
+        }
+        title.append(wait);
+      }
       const right = document.createElement('span'); right.className = 'step-right';
       const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : inventoryPendingDisposition(node) ? info.label : waitingForMainSession(node) ? '等待主会话' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
       right.append(label);
@@ -2235,6 +2326,12 @@ h1{font-size:18px;line-height:1.35}
     if (rootId) appendRoot(rootId);
     nodes.filter(node => !referenced.has(String(node.id))).forEach(node => appendRoot(node.id));
     nodes.forEach(node => appendRoot(node.id));
+    for (const {button, id} of dependencyButtons) {
+      const number = taskNumbers.get(id);
+      button.disabled = !number; button.textContent = number || '前置任务未载入';
+      button.title = number ? '定位任务 ' + number + '：' + nodeTitle(byId.get(id)) : '当前任务树未包含此前置任务，请刷新或查看依赖详情。';
+      button.setAttribute('aria-label', button.title);
+    }
     return fragment;
   }
   function linearSteps(steps, prefix, openDetails, timeContext = null, snapshotAt = '') {
@@ -2583,6 +2680,7 @@ h1{font-size:18px;line-height:1.35}
       }
     }
     $('filter-empty').classList.toggle('hidden', selected === 'all' || matched > 0);
+    scheduleDependencyTrace();
   }
   $('status-filter').addEventListener('change', applyStatusFilter);
   function render(progress) {
@@ -2594,6 +2692,7 @@ h1{font-size:18px;line-height:1.35}
     const steps = Array.isArray(progress?.steps) ? progress.steps : [];
     const network = progress?.schema_version === 2;
     const legacyOnly = progress?.mode === 'legacy_archive';
+    if (!network || !hasProgress) clearDependencyTrace();
     const nodes = network ? nodesFrom(progress.nodes) : [];
     const openDetails = new Map();
     for (const el of document.querySelectorAll('details[data-key]')) {
@@ -2670,7 +2769,8 @@ h1{font-size:18px;line-height:1.35}
       const unavailable=parallels.filter(task=>task.details_unavailable || !nodesFrom(task.nodes).length).length;
       setText('step-count', (1+parallels.length)+' 个根任务 · '+count+' 个节点 · '+leaves+' 个叶子任务'+(unavailable?' · '+unavailable+' 个根待刷新详情':''));
     } else setText('step-count', total + ' 个步骤');
-    if (network) { renderNetwork(progress, nodes, openDetails); applyStatusFilter(); syncButton(); return; }
+    if (network) { renderNetwork(progress, nodes, openDetails); applyStatusFilter(); drawDependencyTrace(); syncButton(); return; }
+    clearDependencyTrace();
     $('steps').className = 'steps';
     reconcileChildren($('steps'), linearSteps(steps, taskScope(progress) + ':steps', openDetails, null, progress.updated_at || progress.created_at || ''));
     applyStatusFilter();
@@ -2825,7 +2925,7 @@ h1{font-size:18px;line-height:1.35}
     if (message.method === 'ui/notifications/host-context-changed') applyHostContext(message.params || {});
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      disposed = true; viewGeneration++;
+      disposed = true; viewGeneration++; clearDependencyTrace();
       viewRegistered = false;
       stopPolling(); stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
       // Unregister also tombstones registrations still in flight. Waiting for

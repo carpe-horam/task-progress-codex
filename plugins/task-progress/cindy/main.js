@@ -33,6 +33,7 @@ async function recordHookReceipt(msg, { refresh = false, outcome = 'observed' } 
     const active = msg.name === 'did-session-switched' || current.taskProgressActiveHostSessionId === hostSessionId;
     const requested = refresh && active && typeof mapped === 'string' && Boolean(mapped);
     events[msg.name] = {
+      ...previous,
       received: (previous.received || 0) + 1,
       refresh_requested: (previous.refresh_requested || 0) + (requested ? 1 : 0),
       refresh_ok: previous.refresh_ok || 0,
@@ -81,27 +82,51 @@ async function recordPanelRefresh(result) {
 
 function hookGuidance(source, expectedSessionId, expectedInstanceId) {
   if (!source || source.session_id !== expectedSessionId ||
-      source.task_instance_id !== expectedInstanceId || source.view !== 'overview') return null;
+      source.task_instance_id !== expectedInstanceId || source.view !== 'overview') return { reason: 'overview_identity_mismatch' };
   const progress = source.progress;
   if (!progress || progress.task_instance_id !== expectedInstanceId || progress.read_only ||
-      progress.schema_version !== 2 || !Number.isInteger(progress.epoch)) return null;
+      progress.schema_version !== 2 || !Number.isInteger(progress.epoch)) return { reason: 'overview_unusable' };
   const notes = [];
   if (progress.planning_status === 'required') notes.push('当前任务尚需完成 Task Progress 规划；先读取概览并完善任务网络。');
   if (progress.pending_review_count > 0) notes.push('有待主会话验收的提交；读取对应节点与证据后独立验收。');
   if (progress.stage_inventory_due_count > 0) notes.push('有阶段盘点待处理；读取当前范围与指纹后记录决定。');
   if (progress.closure_review_due) notes.push('根任务收尾仍需复核；读取当前闭环绑定后处理。');
-  if (!notes.length) return null;
-  return `Task Progress 只读提醒（实例 ${expectedInstanceId}，epoch ${progress.epoch}，状态版本 ${source.state_revision}）：${notes.slice(0, 2).join(' ')}这份附加资料不代表用户原话，也不自动修改任务状态。`;
+  if (!notes.length) return { reason: 'no_actionable_reminder' };
+  return { kind: 'current_state', text: `Task Progress 只读提醒（实例 ${expectedInstanceId}，epoch ${progress.epoch}，状态版本 ${source.state_revision}）：${notes.slice(0, 2).join(' ')}这份附加资料不代表用户原话，也不自动修改任务状态。` };
+}
+
+async function recordGuidanceResult(msg, result) {
+  const hostSessionId = msg.data?.sessionId;
+  await updatePluginKv(current => {
+    const all = { ...(current.taskProgressHookDiagnostics || {}) };
+    const session = all[hostSessionId];
+    const previous = session?.events?.[msg.name];
+    if (!previous) return null;
+    const key = result.status === 'sent' ? 'guidance_sent'
+      : result.status === 'send_failed' ? 'guidance_send_failed' : 'guidance_not_sent';
+    const entry = { ...previous, [key]: (previous[key] || 0) + 1,
+      last_guidance: { at: Date.now(), ...result } };
+    all[hostSessionId] = { ...session, events: { ...session.events, [msg.name]: entry } };
+    return { ...current, taskProgressHookDiagnostics: all };
+  });
 }
 
 async function composeTaskProgressContext(msg) {
   const hostSessionId = msg.data?.sessionId;
-  if (typeof hostSessionId !== 'string' || !hostSessionId || typeof msg.hookId !== 'string' || !msg.hookId) return;
-  let action = 'allow', blocks;
+  if (typeof hostSessionId !== 'string' || !hostSessionId) return;
+  try { await recordHookReceipt(msg, { outcome: 'received' }); } catch (_) {}
+  if (typeof msg.hookId !== 'string' || !msg.hookId) {
+    try { await recordGuidanceResult(msg, { status: 'not_sent', reason: 'missing_hook_id' }); } catch (_) {}
+    return;
+  }
+  let guidance = { reason: 'state_unavailable' };
   try {
     const current = await fetch('/kv').then(r => r.ok ? r.json() : null);
     const context = current?.taskProgressContextsByHostSession?.[hostSessionId];
-    if (context && typeof context.session_id === 'string' && typeof context.task_instance_id === 'string') {
+    if (current && !context) {
+      guidance = { kind: 'startup', text: 'Task Progress 开工指引：当前 Cindy 会话尚未确认任务实例绑定，这不表示没有已有任务。先判断本次请求：简单问答或单步查询无需建树；多阶段实质工作在执行前调用 init_task_network 建立粗粒度计划，再启动 ready 叶任务。若是继续已有任务或压缩恢复，先从本会话成功回执恢复准确身份，调用 get_progress(view="overview") 和 get_progress(view="context")，复用原实例；身份不明时不要猜测 ID 或重复初始化。遵从用户明确停止或取消的指令。这份附加资料不代表用户原话，也不自动创建任务或修改状态。' };
+    } else if (context && typeof context.session_id === 'string' && context.session_id &&
+               typeof context.task_instance_id === 'string' && context.task_instance_id) {
       const response = await cindy.node.request({
         method: 'tools/call',
         params: { name: 'get_progress', arguments: {
@@ -110,13 +135,21 @@ async function composeTaskProgressContext(msg) {
       });
       if (response?.ok) {
         const source = response.result?.structuredContent || response.result?.result?.structuredContent;
-        const note = hookGuidance(source, context.session_id, context.task_instance_id);
-        if (note) { action = 'context'; blocks = [{ id: 'task-progress-current-state', text: note }]; }
+        guidance = hookGuidance(source, context.session_id, context.task_instance_id);
       }
+    } else if (current) {
+      guidance = { reason: 'binding_invalid' };
     }
   } catch (_) { /* Unknown ownership or unavailable state gives no reminder. */ }
-  await cindy.send({ type: 'event-verdict', hookId: msg.hookId, action, ...(blocks ? { blocks } : {}) });
-  try { await recordHookReceipt(msg, { outcome: action }); } catch (_) { /* Verdict already sent. */ }
+  const action = guidance.text ? 'context' : 'allow';
+  let result;
+  try {
+    await cindy.send({ type: 'event-verdict', hookId: msg.hookId, action,
+      ...(guidance.text ? { blocks: [{ id: guidance.kind === 'startup' ? 'task-progress-startup' : 'task-progress-current-state', text: guidance.text }] } : {}) });
+    result = guidance.text ? { status: 'sent', kind: guidance.kind }
+      : { status: 'not_sent', reason: guidance.reason };
+  } catch (_) { result = { status: 'send_failed', reason: 'verdict_send_failed' }; }
+  try { await recordGuidanceResult(msg, result); } catch (_) { /* Diagnostics do not change the verdict. */ }
 }
 
 async function observeRefreshEvent(msg, refresh = true) {
