@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '../plugins/task-progress/cindy/main.js'), 'utf8');
 
-function harness(initialKv = {}, nodeResult = null, {hangRead = false} = {}) {
+function harness(initialKv = {}, nodeResult = null, failures = {}) {
   let handler;
   let kv = initialKv;
   const sent = [];
@@ -15,14 +15,15 @@ function harness(initialKv = {}, nodeResult = null, {hangRead = false} = {}) {
   const sandbox = {
     BroadcastChannel: class { constructor() { bus = this; } postMessage(value) { broadcasts.push(value); } },
     fetch: async (_url, options) => {
-      if (hangRead && options?.method !== 'PUT') return new Promise(()=>{});
+      if (failures.hangRead && options?.method !== 'PUT') return new Promise(()=>{});
+      if (failures.kv) return { ok: false };
       if (options?.method === 'PUT') kv = JSON.parse(options.body);
       return { ok: true, json: async () => kv };
     },
     cindy: {
       onHostMessage: callback => { handler = callback; },
-      node: { request: async request => { calls.push(request); return typeof nodeResult === 'function' ? nodeResult(request) : nodeResult; } },
-      send: value => { sent.push(value); },
+      node: { request: async request => { calls.push(request); if (failures.node) throw new Error('private backend details'); return typeof nodeResult === 'function' ? nodeResult(request) : nodeResult; } },
+      send: value => { if (failures.send) throw new Error('private transport details'); sent.push(value); },
     },
     Date, Map, Object, JSON, setTimeout, clearTimeout,
   };
@@ -49,7 +50,7 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
   assert.match(matched.sent[0].blocks[0].text, /不代表用户原话/);
   assert.equal(matched.calls[0].params.arguments.task_instance_id, instance);
   assert.equal(matched.getKv().taskProgressHookDiagnostics.host.events['will-compose-context'].received, 1);
-  assert.equal(matched.getKv().taskProgressHookDiagnostics.host.events['will-compose-context'].last.outcome, 'context');
+  assert.equal(matched.getKv().taskProgressHookDiagnostics.host.events['will-compose-context'].last.outcome, 'received');
 
   const simultaneous = harness(current,{ok:true,result:{structuredContent:{...overview.result.structuredContent,
     progress:{...overview.result.structuredContent.progress,planning_status:'required',synthesis_ready_count:1,synthesis_ready_ids:['package-a'],closure_review_due:true}}}});
@@ -72,7 +73,11 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
 
   const unknown = harness({}, overview);
   await unknown.dispatch(event);
-  assert.equal(unknown.sent[0].action, 'allow');
+  assert.equal(unknown.sent[0].action, 'context');
+  assert.equal(unknown.sent[0].blocks[0].id, 'task-progress-startup');
+  assert.match(unknown.sent[0].blocks[0].text, /init_task_network/);
+  assert.match(unknown.sent[0].blocks[0].text, /复用原实例/);
+  assert.match(unknown.sent[0].blocks[0].text, /无需建树/);
   assert.equal(unknown.calls.length, 0);
 
   const wrongBinding=harness({...current,taskProgressSessionsByHostSession:{host:'other-session'}},overview);
@@ -107,7 +112,59 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
     args: { session_id: session, session_context: { session_id: 'host' } } });
   assert.equal(cleared.getKv().taskProgressContextsByHostSession.host, undefined);
   await cleared.dispatch(event);
-  assert.equal(cleared.sent.at(-1).action, 'allow');
+  assert.equal(cleared.sent.at(-1).blocks[0].id, 'task-progress-startup');
+
+  const diagnostic = h => h.getKv().taskProgressHookDiagnostics.host.events['will-compose-context'];
+  assert.equal(diagnostic(matched).guidance_sent, 1);
+  assert.equal(diagnostic(matched).last_guidance.kind, 'current_state');
+  assert.equal(diagnostic(unknown).last_guidance.kind, 'startup');
+  assert.equal(diagnostic(stale).guidance_not_sent, 1);
+  assert.equal(diagnostic(stale).last_guidance.reason, 'overview_identity_mismatch');
+  assert.equal(diagnostic(failed).last_guidance.reason, 'state_unavailable');
+  const quietResult = JSON.parse(JSON.stringify(overview));
+  quietResult.result.structuredContent.progress.pending_review_count = 0;
+  quietResult.result.structuredContent.progress.stage_inventory_due_count = 0;
+  const quiet = harness(current, quietResult);
+  await quiet.dispatch(event);
+  assert.equal(quiet.sent[0].action, 'allow');
+  assert.equal(diagnostic(quiet).last_guidance.reason, 'no_actionable_reminder');
+  const invalid = harness({ taskProgressContextsByHostSession: { host: {} } });
+  await invalid.dispatch(event);
+  assert.equal(invalid.calls.length, 0);
+  assert.equal(diagnostic(invalid).last_guidance.reason, 'binding_invalid');
+  for (const progress of [null, { ...quietResult.result.structuredContent.progress, read_only: true },
+      { ...quietResult.result.structuredContent.progress, schema_version: 1 }]) {
+    const unusable = harness(current, { ok: true, result: { structuredContent: {
+      ...quietResult.result.structuredContent, progress } } });
+    await unusable.dispatch(event);
+    assert.equal(unusable.sent[0].action, 'allow');
+    assert.equal(diagnostic(unusable).last_guidance.reason, 'overview_unusable');
+  }
+  const throws = harness(current, null, { node: true });
+  await throws.dispatch(event);
+  assert.equal(diagnostic(throws).last_guidance.reason, 'state_unavailable');
+  assert.doesNotMatch(JSON.stringify(throws.getKv()), /private backend/);
+  const transport = harness({}, null, { send: true });
+  await transport.dispatch(event);
+  assert.equal(diagnostic(transport).received, 1);
+  assert.equal(diagnostic(transport).guidance_sent, undefined);
+  assert.equal(diagnostic(transport).guidance_send_failed, 1);
+  assert.equal(diagnostic(transport).last_guidance.reason, 'verdict_send_failed');
+  const missingHook = harness();
+  await missingHook.dispatch({ ...event, hookId: undefined });
+  assert.equal(missingHook.sent.length, 0);
+  assert.equal(diagnostic(missingHook).received, 1);
+  assert.equal(diagnostic(missingHook).last_guidance.reason, 'missing_hook_id');
+  const missingSession = harness();
+  await missingSession.dispatch({ ...event, data: {} });
+  assert.equal(missingSession.sent.length, 0);
+  assert.equal(missingSession.getKv().taskProgressHookDiagnostics, undefined);
+  const unavailableKv = harness({}, null, { kv: true });
+  await unavailableKv.dispatch(event);
+  assert.equal(unavailableKv.sent[0].action, 'allow');
+  await unknown.dispatch(event);
+  assert.equal(diagnostic(unknown).received, 2);
+  assert.equal(diagnostic(unknown).guidance_sent, 2);
 
   const lifecycle = harness({ taskProgressActiveHostSessionId: 'host',
     taskProgressSessionsByHostSession: { host: session } });

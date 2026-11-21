@@ -193,6 +193,12 @@ h1{font-size:18px;line-height:1.35}
 </style>
 <style>.status-filter-label{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:11px;color:#9aa5b7}.status-filter-label select{color:inherit;background:transparent;border:1px solid #465060;border-radius:6px;padding:4px 6px;font:inherit}.status-filter-label option{background:#222833;color:#d5deed}:root[data-theme="light"] .status-filter-label{color:#526174}:root[data-theme="light"] .status-filter-label option{background:#fff;color:#263447}.status-filter-hidden{display:none!important}</style>
 <style>
+/* Dependency navigation shares task-tree numbering and never changes readiness. */
+.card{position:relative}.dependency-wait{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;padding-bottom:8px;font-size:11px;font-weight:400;color:#9aa5b7}.dependency-link{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:2px 7px;border:1px solid #46546b;border-radius:5px;background:transparent;color:#a4c2ff;font-size:11px;cursor:pointer;font-variant-numeric:tabular-nums}.dependency-link:after{content:'↗';font-size:10px;opacity:.65}.dependency-link:hover,.dependency-link[aria-pressed=true]{background:#22334e;border-color:#a4c2ff}.dependency-link:disabled{color:#9aa5b7;border-style:dashed;cursor:default}.dependency-link:disabled:after{content:none}.dependency-target>details>.step-main{outline:1px solid #89aaff;outline-offset:3px;border-radius:4px;background:#1a2537}.dependency-source>details>.step-main>.step-title>.task-title-text{color:#a4c2ff}.dependency-connections{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;color:#a4c2ff}.dependency-connections[hidden],.dependency-trace[hidden]{display:none}.dependency-wire-base{fill:none;stroke:currentColor;stroke-width:1.4;opacity:.25}.dependency-wire-flow{fill:none;stroke:currentColor;stroke-width:1.7;stroke-dasharray:5 9;stroke-linecap:round;animation:dependency-flow .8s linear infinite}.dependency-origin{fill:currentColor}.dependency-trace{display:flex;align-items:center;gap:9px;border-top:1px solid #303642;padding:9px 0;margin-top:8px;font-size:11px;color:#a4c2ff;overflow-wrap:anywhere}.dependency-trace>span{min-width:0;flex:1}.dependency-trace>button{background:none;border:0;color:inherit;font-size:18px;padding:2px 7px;cursor:pointer}@keyframes dependency-flow{to{stroke-dashoffset:-28}}
+:root[data-theme="light"] .dependency-wait{color:#596b84}:root[data-theme="light"] .dependency-link{color:#3862b1;border-color:#c5cfdf}:root[data-theme="light"] .dependency-link:hover,:root[data-theme="light"] .dependency-link[aria-pressed=true]{background:#edf3ff;border-color:#3862b1}:root[data-theme="light"] .dependency-target>details>.step-main{background:#f3f7ff;outline-color:#3862b1}:root[data-theme="light"] .dependency-source>details>.step-main>.step-title>.task-title-text,:root[data-theme="light"] .dependency-trace,:root[data-theme="light"] .dependency-connections{color:#3862b1}:root[data-theme="light"] .dependency-trace{border-color:#dce3ed}
+@media(prefers-reduced-motion:reduce){.dependency-wire-flow{animation:none;stroke-dasharray:none}}
+</style>
+<style>
 /* One workspace: a focused overview, then the plan or its historical records. */
 :root{--workspace-paper:#13161e;--workspace-surface:#1b202c;--workspace-line:#363e4d;--workspace-ink:#eff1fa;--workspace-muted:#a6b1c4;--workspace-accent:#b4beff;--workspace-wash:#2b3451}
 :root[data-theme=light]{--workspace-paper:#f6f7fa;--workspace-surface:#fff;--workspace-line:#d9dee8;--workspace-ink:#202536;--workspace-muted:#576277;--workspace-accent:#4054be;--workspace-wash:#eaf0ff}
@@ -498,6 +504,9 @@ h1{font-size:18px;line-height:1.35}
 }
 @media(min-width:390px) and (max-width:640px){#step-list{--tree-reading:84px}}
 @media(max-width:360px){#step-list{--tree-pad:2px;--tree-gap:4px;--tree-indent:10px;--tree-limit:34px}}
+</style>
+<style>
+#step-list .dependency-wait{margin:0;padding:0 0 8px;align-items:center;gap:5px}#step-list .dependency-link{min-height:28px}#step-list .dependency-target{outline:1px solid var(--workspace-accent);outline-offset:2px;border-radius:5px;background:var(--workspace-wash)}#step-list .dependency-source .plan-title{color:var(--workspace-accent)}
 </style>
 </head>
 <body>
@@ -2630,6 +2639,87 @@ h1{font-size:18px;line-height:1.35}
     badge.textContent='第 '+attempt+' 次执行';
     title.append(badge);
   }
+  // A selected edge is a local viewing state, never a task-state mutation.
+  let selectedDependency = null, dependencyFrame = 0;
+  const dependencyCard = document.querySelector('.card');
+  const dependencySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  dependencySvg.classList.add('dependency-connections'); dependencySvg.setAttribute('aria-hidden', 'true');
+  dependencySvg.innerHTML = '<defs><marker id="dependency-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0L6 3L0 6" fill="none" stroke="currentColor" stroke-width="1.2"/></marker></defs><path class="dependency-wire-base"/><path class="dependency-wire-flow" marker-end="url(#dependency-arrow)"/><circle class="dependency-origin" r="2.5"/>';
+  dependencySvg.setAttribute('hidden', ''); dependencyCard.append(dependencySvg);
+  const dependencyTrace = document.createElement('div'); dependencyTrace.className = 'dependency-trace'; dependencyTrace.hidden = true;
+  const dependencyTraceText = document.createElement('span'); dependencyTraceText.setAttribute('role', 'status'); dependencyTraceText.setAttribute('aria-live', 'polite');
+  const dependencyClose = document.createElement('button'); dependencyClose.type = 'button'; dependencyClose.textContent = '×'; dependencyClose.setAttribute('aria-label', '收起依赖连线');
+  dependencyTrace.append(dependencyTraceText, dependencyClose); $('steps').after(dependencyTrace);
+  function clearDependencyTrace() {
+    selectedDependency = null; dependencySvg.setAttribute('hidden', ''); dependencyTrace.hidden = true;
+    document.querySelectorAll('.dependency-source,.dependency-target').forEach(el => el.classList.remove('dependency-source', 'dependency-target'));
+    document.querySelectorAll('.dependency-link[aria-pressed="true"]').forEach(el => el.setAttribute('aria-pressed', 'false'));
+  }
+  function dependencyElements() {
+    if (!selectedDependency) return {};
+    const source = Array.from(document.querySelectorAll('[data-dependency-key]')).find(el => el.dataset.dependencyKey === selectedDependency.source && el.getClientRects().length);
+    const button = source && Array.from(source.querySelectorAll('.dependency-link')).find(el => el.dataset.dependencyTarget === selectedDependency.target);
+    const candidates = Array.from(document.querySelectorAll('[data-dependency-key]')).filter(el => el.dataset.dependencyKey === selectedDependency.target);
+    const target = candidates.find(el=>el.matches('.plan-row,.plan-branch-head')) || candidates.find(el=>el.getClientRects().length);
+    return {source, button, target};
+  }
+  function drawDependencyTrace() {
+    dependencyFrame = 0;
+    if (!selectedDependency) return;
+    const {source, button, target} = dependencyElements();
+    const icon = target?.querySelector('.step-icon');
+    if (!source || !button || button.disabled || !icon || !button.getClientRects().length || !icon.getClientRects().length) { clearDependencyTrace(); return; }
+    // The trace can wrap and change the card height. Settle that layout before
+    // measuring the SVG; otherwise its old viewBox centers the line off target.
+    source.classList.add('dependency-source'); target.classList.add('dependency-target'); button.setAttribute('aria-pressed', 'true');
+    dependencyTrace.hidden = false;
+    dependencyTraceText.textContent = '任务 ' + source.dataset.taskNumber + ' → 前置任务 ' + target.dataset.taskNumber + ' · ' + target.querySelector('.plan-title,.branch-title,.task-title-text').textContent;
+    dependencySvg.removeAttribute('hidden');
+    const overlay = dependencySvg.getBoundingClientRect(), b = button.getBoundingClientRect(), t = icon.getBoundingClientRect();
+    const sx = b.left + b.width / 2 - overlay.left, sy = b.bottom - overlay.top;
+    const tx = t.left - overlay.left - 3, ty = t.top + t.height / 2 - overlay.top;
+    const gutter = Math.max(5, Math.min(tx, source.getBoundingClientRect().left - overlay.left) - 10), bottom = sy + 6;
+    const d = `M ${sx} ${sy} L ${sx} ${bottom} L ${gutter + 5} ${bottom} Q ${gutter} ${bottom} ${gutter} ${bottom - 5} L ${gutter} ${ty + 5} Q ${gutter} ${ty} ${gutter + 5} ${ty} L ${tx} ${ty}`;
+    dependencySvg.setAttribute('viewBox', `0 0 ${overlay.width} ${overlay.height}`);
+    dependencySvg.querySelectorAll('.dependency-wire-base,.dependency-wire-flow').forEach(path => path.setAttribute('d', d));
+    const origin = dependencySvg.querySelector('.dependency-origin'); origin.setAttribute('cx', sx); origin.setAttribute('cy', sy);
+  }
+  function scheduleDependencyTrace() {
+    if (selectedDependency && !dependencyFrame) dependencyFrame = requestAnimationFrame(drawDependencyTrace);
+  }
+  function selectDependency(button) {
+    const source = button.closest('[data-dependency-key]');
+    const edge = { source: source.dataset.dependencyKey, target: button.dataset.dependencyTarget };
+    const same = selectedDependency?.source === edge.source && selectedDependency?.target === edge.target;
+    clearDependencyTrace(); if (same) return;
+    selectedDependency = edge;
+    const record = typeof planRecords !== 'undefined' && planRecords.get(edge.target);
+    if (record && source.matches('.plan-row')) {
+      for (const ancestor of record.ancestors) { collapsedBranches.delete(ancestor.key); filteredCollapsedBranches.delete(ancestor.key); }
+      let target = dependencyElements().target;
+      if (!target || !target.getClientRects().length) { selectedTones.clear();selectedPackage=null;peerPackageKey='';searchBox.value=''; }
+      applyStatusFilter();
+    }
+    const {target} = dependencyElements(); if (!target) { clearDependencyTrace(); return; }
+    // Filters and disclosure are viewing state; reveal the real target without
+    // selecting an identically named node from another instance or round.
+    if (target.closest('.status-filter-hidden')) { $('status-filter').value = 'all'; applyStatusFilter(); }
+    for (let parent = target.parentElement; parent && parent !== dependencyCard; parent = parent.parentElement) if (parent.tagName === 'DETAILS') { parent.open = true; parent.dataset.openOverride = ''; }
+    drawDependencyTrace();
+    const bounds = (target.querySelector(':scope > details > summary') || target).getBoundingClientRect();
+    if (bounds.top < 0 || bounds.bottom > window.innerHeight) (target.querySelector(':scope > details > summary') || target).scrollIntoView({block:'center',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('.dependency-link');
+    if (!button) return;
+    event.preventDefault(); event.stopImmediatePropagation(); if (!button.disabled) selectDependency(button);
+  }, true);
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') clearDependencyTrace(); });
+  document.addEventListener('toggle', scheduleDependencyTrace, true);
+  window.addEventListener('resize', scheduleDependencyTrace);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(scheduleDependencyTrace).observe(dependencyCard);
+  dependencyClose.addEventListener('click', clearDependencyTrace);
+
   document.addEventListener('pointerover',event=>{
     const marker=event.target.closest?.('.retry-badge[data-tip]');
     if(!marker)return;
@@ -2679,7 +2769,7 @@ h1{font-size:18px;line-height:1.35}
       }
     }
     const referenced = new Set([...children.values()].flat());
-    const seen = new Set();
+    const seen = new Set(), taskNumbers = new Map(), dependencyButtons = [];
     const derivedStatuses = new Map();
     function nodeStatus(id, path = new Set()) {
       if (derivedStatuses.has(id)) return derivedStatuses.get(id);
@@ -2716,6 +2806,7 @@ h1{font-size:18px;line-height:1.35}
       const assignment = node.assignment && typeof node.assignment === 'object' ? node.assignment : {};
       const info = statusInfo(nodeStatus(id));
       const li = document.createElement('li'); li.className = 'step ' + info.key;
+      li.dataset.dependencyKey = prefix + ':' + id; li.dataset.taskNumber = number; taskNumbers.set(id, number);
       const unplannedRoot = id === String(rootId) && rootContext?.progress.planning_status === 'required' && !childIds.length;
       if (rootContext && !childIds.length && !unplannedRoot) li.dataset.filterTone = packageTone(node, info.key);
       if (rootContext) {
@@ -2763,6 +2854,17 @@ h1{font-size:18px;line-height:1.35}
       }
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
+      const unmet = [...new Set([...list(node.blocked_by).map(String), ...dependencyConstraints(node, byId).filter(rule => !constraintSatisfied(rule)).map(rule => String(rule.id))])];
+      if (unmet.length && (!node.execution_status || node.execution_status === 'pending') && !inventoryPendingDisposition(node) && !rootContext?.progress.request_cancelled) {
+        const wait = document.createElement('span'); wait.className = 'dependency-wait';
+        const caption = document.createElement('span'); caption.textContent = '等待前置任务：'; wait.append(caption);
+        for (const dependency of unmet) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'dependency-link';
+          button.dataset.dependencyTarget = prefix + ':' + dependency; button.dataset.renderKey = dependency;
+          button.setAttribute('aria-pressed', 'false'); dependencyButtons.push({button, id:dependency}); wait.append(button);
+        }
+        title.append(wait);
+      }
       const right = document.createElement('span'); right.className = 'step-right';
       const label = document.createElement('span'); label.textContent = id === String(rootId) && rootContext?.progress.request_cancelled ? '未解决 · 请求已取消' : rootContext?.progress.request_cancelled && node.execution_status==='pending' ? '未执行 · 请求已取消' : inventoryPendingDisposition(node) ? info.label : waitingForMainSession(node) ? '等待主会话' : nodeResultLabel(node) || (timeContext && info.key === 'running' ? timeContext.runningLabel : info.label);
       label.title = label.textContent;
@@ -2921,6 +3023,12 @@ h1{font-size:18px;line-height:1.35}
     if (rootId) appendRoot(rootId);
     nodes.filter(node => !referenced.has(String(node.id))).forEach(node => appendRoot(node.id));
     nodes.forEach(node => appendRoot(node.id));
+    for (const {button, id} of dependencyButtons) {
+      const number = taskNumbers.get(id);
+      button.disabled = !number; button.textContent = number || '前置任务未载入';
+      button.title = number ? '定位任务 ' + number + '：' + nodeTitle(byId.get(id)) : '当前任务树未包含此前置任务，请刷新或查看依赖详情。';
+      button.setAttribute('aria-label', button.title);
+    }
     return fragment;
   }
   function linearSteps(steps, prefix, openDetails, timeContext = null, snapshotAt = '') {
@@ -3519,6 +3627,7 @@ h1{font-size:18px;line-height:1.35}
     const {node,row,tone} = record;
     const item = planText('div','plan-row','');
     item.setAttribute('role','listitem');
+    item.dataset.dependencyKey = record.key; item.dataset.taskNumber = record.number;
     item.dataset.state = record.state;
     item.dataset.stepId = node.id; item.dataset.instance = record.instance; item.dataset.filterTone = tone; item.dataset.renderKey = record.key;
     const subject = planText('div','plan-subject','');
@@ -3554,7 +3663,9 @@ h1{font-size:18px;line-height:1.35}
       context.append(group);
     }
     const waiting=row.querySelector(':scope > details > .task-waiting-note');
-    if(waiting?.textContent) context.append(planText('span','plan-wait-reason',waiting.textContent));
+    const dependencyWait = sourceTitle.querySelector('.dependency-wait');
+    if (dependencyWait) context.append(dependencyWait.cloneNode(true));
+    else if(waiting?.textContent) context.append(planText('span','plan-wait-reason',waiting.textContent));
     else if(tone==='blocked' && !inventoryPendingDisposition(node)) context.append(planText('span','plan-wait-reason','受阻原因未记录，可查看详情'));
     const state = planText('div','plan-status','');
     const original = row.firstElementChild.querySelector(':scope > summary .step-reading');
@@ -3574,6 +3685,7 @@ h1{font-size:18px;line-height:1.35}
     branch.dataset.depth = String(depth);
     branch.style.setProperty('--branch-depth',depth);
     const head = planText('div','plan-branch-head','');
+    head.dataset.dependencyKey = record.key; head.dataset.taskNumber = record.number;
     head.dataset.state = record.state;
     const rootRole = record.row.dataset.rootRole;
     const name = rootRole ? taskDisplayTitle(record.snapshot) : nodeTitle(record.node);
@@ -3661,7 +3773,7 @@ h1{font-size:18px;line-height:1.35}
     $('step-page-prev').disabled=!planPage;
     $('step-page-next').disabled=planPage===pages-1;
     $('filter-empty').classList.toggle('hidden',!!roots.size || !planNodeCount);
-    syncSearchDialog(hits.length); syncPlanDetail();
+    syncSearchDialog(hits.length); syncPlanDetail(); scheduleDependencyTrace();
   }
   function renderDetailTabs(record) {
     const {node,snapshot} = record;
@@ -4382,6 +4494,7 @@ h1{font-size:18px;line-height:1.35}
     }
     syncSearchDialog(matched);
     $('filter-empty').classList.toggle('hidden', (!query && !selectedTones.size && selectedPackage === null) || matched > 0);
+    scheduleDependencyTrace();
   }
   function render(progress) {
     const hasProgress = !!progress && typeof progress === 'object';
@@ -4398,6 +4511,7 @@ h1{font-size:18px;line-height:1.35}
     const newSearchScope = hasProgress ? taskScope(progress) + ':' + (progress.epoch ?? '') : '';
     if (searchScope !== newSearchScope) { closePlanDialog(false); closeSearchDialog(false); collapsedBranches.clear(); inspectedKey='';peerPackageKey=''; searchBox.value = ''; searchScope = newSearchScope; workspaceView = progress?.mode === 'legacy_archive' ? 'archives' : 'plan'; selectedTones.clear(); }
     const legacyOnly = progress?.mode === 'legacy_archive';
+    if (!network || !hasProgress) clearDependencyTrace();
     $('summary').classList.toggle('legacy-summary', legacyOnly);
     if (!network || legacyOnly) {
       selectedPackage = null; packageScope = ''; $('package-overview').classList.add('hidden');
@@ -4468,7 +4582,7 @@ h1{font-size:18px;line-height:1.35}
       const recordFocus = inspectedKey && $('steps').contains(document.activeElement) ? document.activeElement : null;
       renderNetwork(progress, nodes, openDetails);
        indexPlanRows(progress); renderPackageOverview(progress, nodes);
-      renderStatusChips(); updateHistoryLinks(); applyStatusFilter(); syncButton();
+      renderStatusChips(); updateHistoryLinks(); applyStatusFilter(); drawDependencyTrace(); syncButton();
       // Older engines can drop focus while the current record temporarily loses its displayed ancestry.
       if (recordFocus?.isConnected && document.activeElement === document.body && recordFocus.getClientRects().length) {
         recordFocus.focus({preventScroll:true});
@@ -4629,7 +4743,7 @@ h1{font-size:18px;line-height:1.35}
     if (message.method === 'ui/notifications/host-context-changed') applyHostContext(message.params || {});
     if (message.method === 'ui/notifications/tool-result') receiveResult(message.params);
     if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      disposed = true; viewGeneration++;
+      disposed = true; viewGeneration++; clearDependencyTrace();
       viewRegistered = false;
       stopPolling(); stopViewChecks(); stopViewHeartbeat(); stopViewRetry();
       // Unregister also tombstones registrations still in flight. Waiting for

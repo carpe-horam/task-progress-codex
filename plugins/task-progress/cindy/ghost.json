@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.2.58",
+  "version": "0.2.59",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3600,5 +3600,5 @@
       }
     }
   },
-  "releaseNotes": "新增按当前 Cindy 会话读取的四类 Hook 触发与侧栏重读诊断回执；只记录事件类别、序号、计数和读取状态，不保存消息正文。"
+  "releaseNotes": "未绑定会话增加开工指引；Hook 诊断区分提示发送与未发送原因。前置任务改用可点击序号，支持流动连线、自动展开、多依赖切换与窄屏定位。"
 }

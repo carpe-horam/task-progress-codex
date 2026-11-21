@@ -40,8 +40,8 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
   const html = resource.contents[0].text;
   const browser = await chromium.launch({channel:process.env.TASK_PROGRESS_BROWSER_CHANNEL || 'chrome',headless:true});
   const errors = [];
-  async function page() {
-    const page = await browser.newPage({viewport:{width:1150,height:1200}});
+  async function page(options = {}) {
+    const page = await browser.newPage({viewport:{width:1150,height:1200}, ...options});
     page.setDefaultTimeout(8000);
     page.on('pageerror', error => errors.push(error.message));
     await page.exposeFunction('hostRpc', rawRpc);
