@@ -1,10 +1,12 @@
 """Build Cindy from shared sources without requiring a checked-in core copy."""
 import json
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,12 +15,32 @@ SHARED = CINDY.parent
 
 
 class CindyPrepareTest(unittest.TestCase):
+    def test_mismatched_versions_fail_before_creating_output(self):
+        spec = importlib.util.spec_from_file_location("cindy_prepare", CINDY / "prepare.py")
+        prepare = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(prepare)
+        for mismatch in (".codex-plugin/plugin.json", "cindy/ghost.json", "dsh/package.json"):
+            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as temp:
+                shared = Path(temp) / "shared"
+                for name in (".codex-plugin/plugin.json", "cindy/ghost.json", "dsh/package.json"):
+                    path = shared / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(json.dumps({"version": "9.8.6" if name == mismatch else "9.8.7"}))
+                destination = Path(temp) / "output"
+                with mock.patch.object(prepare, "SHARED", shared), \
+                     mock.patch.object(prepare, "CINDY", shared / "cindy"):
+                    with self.assertRaisesRegex(ValueError, "platform versions must match"):
+                        prepare.generate(destination)
+                self.assertFalse(destination.exists())
+
     def test_clean_stage_is_self_contained_and_preserves_adapter_behavior(self):
         with tempfile.TemporaryDirectory(prefix="cindy-stage-test-") as temp:
             stage = Path(temp) / "plugin"
             subprocess.run([sys.executable, str(CINDY / "prepare.py"), "--stage", str(stage)],
                            check=True, capture_output=True, text=True)
             core = stage / "core"
+            self.assertEqual(json.loads((stage / "ghost.json").read_text())["version"],
+                             json.loads((core / ".codex-plugin/plugin.json").read_text())["version"])
             self.assertEqual(json.loads((stage / "ghost.json").read_text())["id"], "task-progress")
             self.assertEqual((stage / "ghost.json").read_bytes(), (core / "ghost.json").read_bytes())
             self.assertEqual((core / "execution_lifecycle.py").read_bytes(),
