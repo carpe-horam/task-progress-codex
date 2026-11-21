@@ -56,6 +56,10 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
         const reply=result=>event.source.postMessage({jsonrpc:'2.0',id:message.id,result},'*');
         if(message.method==='ui/initialize'){
           window.host.initializations.push(message.params);
+          if(window.host.initializeError){
+            event.source.postMessage({jsonrpc:'2.0',id:message.id,error:{message:window.host.initializeError}},'*');
+            return;
+          }
           reply({protocolVersion:'2026-01-26',hostCapabilities:{},hostContext:{displayMode:window.host.modes[frame.id]}});
         }
         if(message.method==='ui/notifications/initialized')event.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:window.host.snapshots[frame.id]},'*');
@@ -84,14 +88,14 @@ with patch('pathlib.Path.home',return_value=pathlib.Path(sys.argv[2])):m.main()
     });
     return page;
   }
-  async function mount(page,id,snapshot,mode='inline') {
+  async function mount(page,id,snapshot,mode='inline',titleState='visible') {
     await page.evaluate(({id,snapshot,mode,html})=>{
       window.host.snapshots[id]=snapshot;window.host.modes[id]=mode;
       const frame=document.createElement('iframe');frame.id=id;frame.style='display:block;width:1100px;height:500px;border:1px dashed gray';frame.srcdoc=html;
       document.getElementById('frames').append(frame);
     },{id,snapshot,mode,html});
     const frame=page.frameLocator('#'+id);
-    if (snapshot.structuredContent.progress) await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.display_title || snapshot.structuredContent.progress.task_title}).waitFor();
+    if (snapshot.structuredContent.progress) await frame.locator('#task-title').filter({hasText:snapshot.structuredContent.progress.display_title || snapshot.structuredContent.progress.task_title}).waitFor({state:titleState});
     else await frame.locator('#refresh').waitFor({state:'attached'});
     return frame;
   }

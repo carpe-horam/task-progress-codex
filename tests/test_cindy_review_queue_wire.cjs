@@ -1,0 +1,44 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createHost}=require('./browser_host.cjs');
+const {collectReviewQueue,collectReviewInstances,collectSessionReviewQueue,createReviewQueueHandler}=require('../plugins/task-progress/cindy/node/review-queue.cjs');
+(async()=>{const h=await createHost();try{
+ const main={execution_mode:'main_session',self_execution_reason:'隔离验收队列测试'};
+ const sub={execution_mode:'subagent',tool_identifier:'fixture.spawn',dispatch_text:'生成隔离测试结果'};
+ const start=await h.rawRpc('init_task_network',{task_title:'验收队列',tasks:[
+  {id:'package',title:'工作包',assignment:main},{id:'work',title:'执行结果',parent_id:'package',assignment:sub},
+  {id:'other',title:'其他工作',assignment:main}]});
+ const binding={session_id:start.structuredContent.session_id,task_instance_id:start.structuredContent.task_instance_id};
+ const run=await h.rawRpc('update_task',{...binding,task_id:'work',execution_status:'running',assignment:sub});const attempt=run.structuredContent.attempt_id;
+ await h.rawRpc('bind_task_agent',{...binding,task_id:'work',attempt_id:attempt,agent_name:'fixture'});
+ await h.rawRpc('update_task',{...binding,task_id:'work',attempt_id:attempt,execution_status:'finished',outcome:'resolved',summary:'结果',evidence:['fixture://proof']});
+ const rpc=async req=>({result:await h.rawRpc(req.params.name,req.params.arguments)});
+ const before=await collectReviewQueue(rpc,binding);assert.equal(before.items.length,1);assert.equal(before.items[0].kind,'submission_review');assert.equal(before.items[0].attempt_id,attempt);
+ const reconcile=createReviewQueueHandler(rpc),request={jsonrpc:'2.0',id:91,method:'tools/call',params:{name:'cindy_review_reconcile',arguments:{...binding,observe_keys:[before.items[0].key]}}};
+ const pending=await reconcile(request);assert.equal(pending.result.structuredContent.observation_complete,true);assert.deepEqual(pending.result.structuredContent.observed_keys,[before.items[0].key]);
+ await h.rawRpc('review_task',{...binding,task_id:'work',attempt_id:attempt,decision:'accept',summary:'已核验',evidence:['fixture://review'],reviewer:main});
+ const cleared=await reconcile(request);assert.equal(cleared.result.structuredContent.observation_complete,true);assert.deepEqual(cleared.result.structuredContent.observed_keys,[]);
+ const after=await collectReviewQueue(rpc,{...binding,settled:[before.items[0].key]});
+ assert.equal(after.items.length,1);assert.equal(after.items[0].kind,'synthesis');assert.equal(after.items[0].task_id,'package');assert.match(after.items[0].source_fingerprint,/^[a-f0-9]{64}$/);
+ const duplicate=await collectReviewQueue(rpc,{...binding,settled:[after.items[0].key]});assert.equal(duplicate.items.length,0);
+ await h.rawRpc('route_request',{...binding,request_id:'parallel-review',request_text:'并行验收',task_title:'并行验收',mode:'parallel',reason:'验证队列实例隔离',acceptance_criteria:['独立验收']});
+ const context=await h.rawRpc('get_progress',{...binding,view:'context'});
+ const peer=context.structuredContent.progress.session_work.requests.find(x=>x.request_id==='parallel-review').task_instance_id;
+ const peerBinding={session_id:binding.session_id,task_instance_id:peer};
+ await h.rawRpc('decompose_task',{...peerBinding,task_id:'root',tasks:[{id:'peer-work',title:'并行结果',assignment:sub}]});
+ const peerRun=await h.rawRpc('update_task',{...peerBinding,task_id:'peer-work',execution_status:'running',assignment:sub});const peerAttempt=peerRun.structuredContent.attempt_id;
+ await h.rawRpc('bind_task_agent',{...peerBinding,task_id:'peer-work',attempt_id:peerAttempt,agent_name:'fixture-peer'});
+ await h.rawRpc('update_task',{...peerBinding,task_id:'peer-work',attempt_id:peerAttempt,execution_status:'finished',outcome:'resolved',summary:'并行结果',evidence:['fixture://peer']});
+ const peerQueue=await collectReviewQueue(rpc,peerBinding),foregroundQueue=await collectReviewQueue(rpc,binding);
+ const discovered=await collectReviewInstances(rpc,binding);
+ assert.deepEqual(discovered.instances,[binding.task_instance_id,peer],'instance discovery returns foreground and live parallel identities');
+ assert.equal(discovered.truncated,false);assert(!JSON.stringify(discovered).includes('并行结果'),'instance discovery never exposes task content');
+ await assert.rejects(()=>collectReviewInstances(rpc,peerBinding),/主任务实例/,'a parallel root cannot impersonate the foreground');
+ assert(peerQueue.items.some(x=>x.attempt_id===peerAttempt),'parallel submissions have a separate actionable queue');
+ assert(!foregroundQueue.items.some(x=>x.attempt_id===peerAttempt),'foreground queue cannot stand in for a parallel queue');
+ assert.notEqual(peerQueue.items.find(x=>x.attempt_id===peerAttempt).key,before.items[0].key,'deduplication keys include the instance');
+ const firstBatch=await collectSessionReviewQueue(rpc,binding);assert.equal(firstBatch.task_instance_id,binding.task_instance_id);assert.equal(firstBatch.items[0].kind,'synthesis');
+ const peerBatch=await collectSessionReviewQueue(rpc,{...binding,settled:firstBatch.items.map(x=>x.key)});
+ assert.equal(peerBatch.foreground_task_instance_id,binding.task_instance_id);assert.equal(peerBatch.task_instance_id,peer);assert(peerBatch.items.some(x=>x.attempt_id===peerAttempt));
+ console.log('Real backend review queue: submission → independent acceptance → fingerprint-bound synthesis, deduplication passed.');
+}finally{await h.close()}})().catch(e=>{console.error(e);process.exitCode=1});

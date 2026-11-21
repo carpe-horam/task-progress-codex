@@ -29,6 +29,14 @@ node tests/test_selective_view_app.cjs
 node tests/test_record_loading_app.cjs
 ```
 
+The live workspace regression is `node tests/test_package_distribution_app.cjs`. It creates 16 groups and 128 leaves through the real backend, checks scoped filtering and search, opens the relevant record, switches between outstanding results, and returns from archived history. Set `TASK_PROGRESS_BROWSER_ARTIFACTS` to record the served panel at 320, 390, 768, and 1280 pixels in both host themes.
+
+`node tests/test_dense_packages_app.cjs` covers a single package with 128 tasks, uneven packages with 240/3/5 tasks, and a 1000-task layout stress case at 320, 390, and 1280 pixels in both themes. It checks matrix cell geometry, 10-item global pagination, 24-item historical tree pagination, full-set search and filtering, focus jumps, refresh retention, independent historical pages, and opening an initially empty history tab while a snapshot refresh is in flight. Its screenshots use the production HTML and an isolated backend; they are not native Cindy screenshots.
+
+`node tests/test_task_detail_ux.cjs` covers accepted/resolved, pending review, running, failed, accepted-but-open, rejected, synthesized groups, and archived tasks at 320/390/900 px in both themes. It checks plain default results, hidden raw metadata, preserved failure reasons, and real evidence/attempt/review/title-history disclosures, capturing 48 default views plus 8 expanded-record views. It uses the isolated real backend and a simulated MCP Apps host, not native Cindy. `TASK_PROGRESS_BROWSER_ARTIFACTS` selects its evidence directory.
+
+`node tests/test_workspace_navigation_app.cjs` checks the three workspace tabs, keyboard focus, lazy history, revision records, the leaf progress bar, task status and atomic-task compatibility. `node tests/test_cindy_panel.cjs` regenerates the Cindy core before testing the actual adapter, so stale generated files cannot conceal a shared UI change.
+
 Make `playwright` available through normal Node module resolution or set `NODE_PATH` to an existing package directory. `TASK_PROGRESS_BROWSER_CHANNEL` can select another already-installed Playwright channel; it defaults to `chrome`. No dependency or browser is installed by the tests.
 
 Fixtures use temporary session directories and temporary export files. They never read or modify existing task sessions or Downloads. The browser checks exercise real timers, reordered replies, historical iframe mounts, clear/recreate ordering, and the real export click handler. `validate_exports.py` independently checks the generated workbook using ZIP/XML parsing, including synthesis and retry records.
