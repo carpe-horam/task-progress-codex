@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3600,5 +3600,5 @@
       }
     }
   },
-  "releaseNotes": "Cindy、Codex 与 DeepSeekRuntime 统一使用 0.3.1，后续从 0.3.x 同步递增；构建时校验三端版本一致。补齐“等待主会话先完成”的可点击任务序号与定位连线，支持当前执行项切换、刷新保持和执行结束释放等待；保留串行等待与前置依赖的区别。"
+  "releaseNotes": "放大进度百分比，新增多色渐变、细刻度与端点光晕；进度条和数字同步缓动，变化时扫光，连续更新平滑衔接。优化暗色对比度，支持减少动态效果。"
 }
