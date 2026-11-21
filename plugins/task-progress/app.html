@@ -2673,7 +2673,7 @@ h1{font-size:18px;line-height:1.35}
     // measuring the SVG; otherwise its old viewBox centers the line off target.
     source.classList.add('dependency-source'); target.classList.add('dependency-target'); button.setAttribute('aria-pressed', 'true');
     dependencyTrace.hidden = false;
-    dependencyTraceText.textContent = '任务 ' + source.dataset.taskNumber + ' → 前置任务 ' + target.dataset.taskNumber + ' · ' + target.querySelector('.plan-title,.branch-title,.task-title-text').textContent;
+    dependencyTraceText.textContent = '任务 ' + source.dataset.taskNumber + (button.dataset.waitKind === 'main_session' ? ' → 主会话当前任务 ' : ' → 前置任务 ') + target.dataset.taskNumber + ' · ' + target.querySelector('.plan-title,.branch-title,.task-title-text').textContent;
     dependencySvg.removeAttribute('hidden');
     const overlay = dependencySvg.getBoundingClientRect(), b = button.getBoundingClientRect(), t = icon.getBoundingClientRect();
     const sx = b.left + b.width / 2 - overlay.left, sy = b.bottom - overlay.top;
@@ -2855,12 +2855,15 @@ h1{font-size:18px;line-height:1.35}
       const identifier = document.createElement('span'); identifier.className = 'step-id'; identifier.textContent = id; title.append(identifier);
       appendInlineExecutionSummary(title, node);
       const unmet = [...new Set([...list(node.blocked_by).map(String), ...dependencyConstraints(node, byId).filter(rule => !constraintSatisfied(rule)).map(rule => String(rule.id))])];
-      if (unmet.length && (!node.execution_status || node.execution_status === 'pending') && !inventoryPendingDisposition(node) && !rootContext?.progress.request_cancelled) {
+      const waiting = waitingForMainSession(node) ? [...new Set(list(node.main_session_waiting_on).map(String))] : [];
+      const waitIds = unmet.length ? unmet : waiting;
+      const waitKind = unmet.length ? 'dependency' : 'main_session';
+      if (waitIds.length && (!node.execution_status || node.execution_status === 'pending') && !inventoryPendingDisposition(node) && !rootContext?.progress.request_cancelled) {
         const wait = document.createElement('span'); wait.className = 'dependency-wait';
-        const caption = document.createElement('span'); caption.textContent = '等待前置任务：'; wait.append(caption);
-        for (const dependency of unmet) {
+        const caption = document.createElement('span'); caption.textContent = waitKind === 'main_session' ? '等待主会话先完成：' : '等待前置任务：'; wait.append(caption);
+        for (const dependency of waitIds) {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'dependency-link';
-          button.dataset.dependencyTarget = prefix + ':' + dependency; button.dataset.renderKey = dependency;
+          button.dataset.dependencyTarget = prefix + ':' + dependency; button.dataset.renderKey = dependency; button.dataset.waitKind = waitKind;
           button.setAttribute('aria-pressed', 'false'); dependencyButtons.push({button, id:dependency}); wait.append(button);
         }
         title.append(wait);
@@ -3025,8 +3028,8 @@ h1{font-size:18px;line-height:1.35}
     nodes.forEach(node => appendRoot(node.id));
     for (const {button, id} of dependencyButtons) {
       const number = taskNumbers.get(id);
-      button.disabled = !number; button.textContent = number || '前置任务未载入';
-      button.title = number ? '定位任务 ' + number + '：' + nodeTitle(byId.get(id)) : '当前任务树未包含此前置任务，请刷新或查看依赖详情。';
+      button.disabled = !number; button.textContent = number || (button.dataset.waitKind === 'main_session' ? '执行任务未载入' : '前置任务未载入');
+      button.title = number ? '定位任务 ' + number + '：' + nodeTitle(byId.get(id)) : (button.dataset.waitKind === 'main_session' ? '当前任务树未包含此主会话执行任务，请刷新或查看等待详情。' : '当前任务树未包含此前置任务，请刷新或查看依赖详情。');
       button.setAttribute('aria-label', button.title);
     }
     return fragment;

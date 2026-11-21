@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.2.59",
+  "version": "0.2.60",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3600,5 +3600,5 @@
       }
     }
   },
-  "releaseNotes": "未绑定会话增加开工指引；Hook 诊断区分提示发送与未发送原因。前置任务改用可点击序号，支持流动连线、自动展开、多依赖切换与窄屏定位。"
+  "releaseNotes": "补齐“等待主会话先完成”的可点击任务序号与定位连线，支持当前执行项切换、刷新保持和执行结束释放等待；保留串行等待与前置依赖的区别。"
 }
