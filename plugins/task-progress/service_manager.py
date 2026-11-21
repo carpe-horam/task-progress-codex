@@ -93,6 +93,24 @@ class ServiceManager:
         if self.platform not in ("darwin", "linux", "win32"):
             raise ServiceError("Automatic service management is unsupported on this platform")
 
+    def _manifest_path(self):
+        """Return the manifest for this host's plugin package."""
+        return self.plugin_root / ".codex-plugin/plugin.json"
+
+    @staticmethod
+    def _version_key(value):
+        match = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[-+][A-Za-z0-9.-]+)?", str(value or ""))
+        return tuple(map(int, match.groups())) if match else None
+
+    def _source_version(self):
+        try:
+            version = json.loads(self._manifest_path().read_text()).get("version")
+        except (OSError, ValueError, TypeError) as error:
+            raise ServiceError("Unable to read the Task Progress package version") from error
+        if not isinstance(version, str) or self._version_key(version) is None:
+            raise ServiceError("Invalid Task Progress package version")
+        return version
+
     def _command(self, args, check=True, encoding=None):
         try:
             result = self.runner(args, capture_output=True, text=True, timeout=30, encoding=encoding)
@@ -442,7 +460,7 @@ class ServiceManager:
 
     def _release(self):
         required = ["server.py", "execution_lifecycle.py", "execution_worker.py", "app.html", "shared_service.py", "service_manager.py", "legacy_history.py",
-                    ".codex-plugin/plugin.json"]
+                    str(self._manifest_path().relative_to(self.plugin_root))]
         files = [self.plugin_root / name for name in required]
         assets = self.plugin_root / "assets"
         if assets.exists():
@@ -456,7 +474,7 @@ class ServiceManager:
             data = path.read_bytes()
             digest.update(str(relative).encode() + b"\0" + data + b"\0")
             contents.append((relative, data))
-        manifest = json.loads((self.plugin_root / ".codex-plugin/plugin.json").read_text())
+        manifest = json.loads(self._manifest_path().read_text())
         version = manifest.get("version", "")
         if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", version):
             raise ServiceError("Invalid plugin version for release directory")
@@ -493,6 +511,7 @@ class ServiceManager:
 
     def install(self):
         self._supported()
+        requested_version = self._source_version()
         self.prepare()
         with self._management_lock():
             previous = self._owned_plist()
@@ -500,6 +519,14 @@ class ServiceManager:
             if loaded and previous is None:
                 raise ServiceError("An unmanaged user service already uses the Task Progress label")
             live = self.health()
+            if live:
+                running_key = self._version_key(live.get("version"))
+                requested_key = self._version_key(requested_version)
+                if running_key is None:
+                    raise ServiceError("Refusing to replace a healthy service with an unrecognized version")
+                if running_key > requested_key:
+                    raise ServiceError(
+                        f"Refusing to downgrade the healthy Task Progress service ({live['version']} > {requested_version})")
             if self._port_busy() and (not loaded or previous is None or not live or
                     Path(live["runtime_path"]).resolve() != Path(previous["ProgramArguments"][1]).resolve()):
                 raise ServiceError(f"Port {PORT} is occupied by an unverified service; no process was stopped")

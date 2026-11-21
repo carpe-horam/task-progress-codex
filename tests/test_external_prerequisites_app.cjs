@@ -24,19 +24,20 @@ async function main() {
   await host.rpc('snapshot_task_network', {...binding, snapshot_id:'old-records', reason:'Legacy compatibility'});
   const page = await host.page();
   const frame = await host.mount(page, 'dependencies', await host.rawRpc('get_progress_view', binding));
-  const leaf = id => frame.locator('#steps .step-id').filter({hasText:new RegExp('^' + id + '$')}).locator('xpath=ancestor::li[1]');
-  const right = id => leaf(id).locator(':scope > details > summary .step-right');
-  assert.match(await right('a').textContent(), /依赖就绪/);
-  assert.match(await right('b').textContent(), /依赖阻塞/);
-  await leaf('a').locator(':scope > details > summary').click();
-  await leaf('a').locator(':scope > details > .execution-review > summary').click();
+  const leaf = id => frame.locator('#step-list .plan-row[data-step-id="'+id+'"]');
+  const right = id => leaf(id).locator('.plan-status');
+  assert.match(await right('a').textContent(), /待开始/);
+  assert.match(await right('b').textContent(), /受阻/);
+  await leaf('a').locator('.plan-title').click();
+  await frame.locator('#detail-tab-raw').click();
   assert(!/外部前置|仍须现场判断|Historical manual record/.test(await frame.locator('body').textContent()));
+  await frame.locator('#step-detail-back').click();
   const started = await host.rpc('update_task', {...binding, task_id:'a', execution_status:'running', assignment});
   await host.rpc('update_task', {...binding, task_id:'a', execution_status:'finished', outcome:'resolved',
     summary:'Dependency completed', attempt_id:started.structuredContent.attempt_id});
   await frame.locator('#refresh').click();
   await frame.locator('#refresh:not([disabled])').waitFor();
-  assert.match(await right('b').textContent(), /依赖就绪/);
+  assert.match(await right('b').textContent(), /待开始/);
   await page.close();
 
   const exported = await host.exportReport(await host.rawRpc('get_progress_view', binding));

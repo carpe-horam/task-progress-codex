@@ -25,9 +25,9 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 ## 2. 建立任务并启动
 
 1. 首次建任务调用 `init_task_network`。已有任务时，同一目标的继续、归档旧计划或新一轮规划使用 `rebuild_task_network`，即使旧计划已收束也不创建新实例。仅独立新目标且符合切换条件时复用 `session_id` 初始化，并填写 `task_relationship="independent"` 和 `new_task_reason`；“归档并新启计划”本身不是独立目标的依据。
-2. 多阶段任务优先一次传入至少两个有独立结果边界的 `tasks`，每项填写计划 `assignment.execution_mode`。尚未提供完整阶段时，立即调用 `decompose_task`；已有完整阶段则无需重复分解。
+2. 多阶段任务先按交付与验收边界建立工作包，再在包内列出有独立结果的 `tasks`，每项填写计划 `assignment.execution_mode`。尚未提供完整阶段时，立即调用 `decompose_task`；已有完整阶段则无需重复分解。
 3. 确认任务结构、依赖和执行者，再请求展示：主会话首次规划后调用一次 `render_progress`。回执不代表宿主已显示；普通更新、继续和恢复不重复调用，用户明确要求重开时除外。
-4. 调用 `get_ready_tasks`，只启动依赖满足的 ready 叶节点。未规划的空 root 不能开工；使用 `atomic_reason` 初始化的原子 root 是可启动的叶节点。不要为凑数量制造子任务或单子项分组。
+4. 调用 `get_ready_tasks`，只启动依赖满足的 ready 叶节点。未规划的空 root 不能开工；使用 `atomic_reason` 初始化的原子 root 是可启动的叶节点。不要为凑数量制造子任务或把每个步骤独立套包；有稳定交付边界的新工作包可先承载一项任务。
 
 保存工具返回的 `session_id`、`task_instance_id`、`epoch`、`root_id` 和启动后的 `attempt_id`。当前任务的写操作传入当前实例和所需的尝试 ID；不要推算 ID。写回执只证明身份与状态，不包含完整证据。需要查询范围、依赖证据或分页时读 [查询与展示入口](references/query-and-display.md)。
 
@@ -67,7 +67,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 - **主要阶段结束，准备开始下一阶段** → 检查 `stage_inventory_due` 和 `stage_inventory_due_has_more`。无有效提醒时不调用盘点工具；有提醒时按 [生命周期](references/planning-and-lifecycle.md) 找全提醒和未解决叶节点，并用 `review_stage_inventory` 逐项记录理由。没有未解决叶节点时提交空 `decisions`；盘点不改变任务状态。
 - **HTN 叶节点超过 10 分钟，或收到拆分复核门禁** → 多个独立结果使用 `decompose_task`；唯一剩余结果用 `review_task_split` 提交理由和证据，最多有效 10 分钟且绑定当前执行。摘要文字不能豁免。不要为拆分中断实际运行。旧线性步骤仍按 [生命周期](references/planning-and-lifecycle.md) 复核。
 - **启动命令或外部运行** → 已授权的本地命令优先通过 `start_task_execution` 获得自动退出回执；项目要求走 Dagu 时仍走 Dagu，并用 `record_task_execution` 将实际 run ID 和终态绑定当前 attempt。每 attempt 仅一轮执行；失败或阻塞后必须收尾并用 `retry=true` 取得新 attempt，不能在 running 上覆盖 run ID。成功命令仍须验收任务，外部回执缺失保持未知。
-- **范围或依赖变化** → 先读任务树，为新增工作找最具体的未结束父任务。同一阶段的追加放在同一个分组下，根的直属子项留给不同阶段或独立结果。选择父节点及批量建树方法见 [HTN 初始化与分解](references/htn-planning.md)，真实依赖与结果失效规则见 [生命周期](references/planning-and-lifecycle.md) 和 [HTN 重试与重规划](references/htn-retry.md)。
+- **范围或依赖变化** → 先读任务树，由 Agent 按交付目标自动归类到最具体的未结束工作包；同类追加复用原包，新方向才建包，根已有工作包后不再追加裸叶。跨包批量落位需 `task_existing_parent_v1`，旧服务端分别以各包为 `task_id` 调用。选择父节点及批量建树方法见 [HTN 初始化与分解](references/htn-planning.md)，真实依赖与结果失效规则见 [生命周期](references/planning-and-lifecycle.md) 和 [HTN 重试与重规划](references/htn-retry.md)。
 
 ## 5. 恢复、分流和收尾
 

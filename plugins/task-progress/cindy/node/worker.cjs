@@ -1,6 +1,8 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const readline = require('node:readline');
+const { createExportTransfers } = require('./export-transfer.cjs');
+const { createReviewQueueHandler } = require('./review-queue.cjs');
 const pending = new Map();
 let nextId = 1;
 const bridge = spawn(process.env.TASK_PROGRESS_PYTHON || 'python3', [
@@ -31,12 +33,14 @@ function rpc(message) {
   });
 }
 function reply(message) { process.stdout.write(JSON.stringify(message) + '\n'); }
+const handleExportTransfer = createExportTransfers(rpc);
+const handleReviewQueue = createReviewQueueHandler(rpc);
 
 readline.createInterface({ input: process.stdin }).on('line', async line => {
   let request;
   try { request = JSON.parse(line); }
   catch { reply({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); return; }
   if (!Object.hasOwn(request, 'id')) { bridge.stdin.write(line + '\n'); return; }
-  const response = await rpc(request);
-  reply(response);
+  const response = await handleExportTransfer(request) || await handleReviewQueue(request) || await rpc(request);
+  reply({ ...response, id: request.id });
 });

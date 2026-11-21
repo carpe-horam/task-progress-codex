@@ -16,8 +16,8 @@ async function main() {
     expected_epoch:overview.structuredContent.progress.epoch, expected_revision:overview.structuredContent.progress.revision, depends_on:[]});
   const compact=await host.rpc('get_progress_view',{session_id:sid});
   const page=await host.page(), frame=await host.mount(page,'main',compact);
-  assert((await frame.locator('#history-title').textContent()).includes('快照 1 · 修订 1'));
-  await frame.locator('#history-title').click();
+  assert((await frame.locator('#history-title').textContent()).includes('1 个快照 · 1 次修订'));
+  await frame.locator('#workspace-tab-revisions').click();
   await frame.locator('#history-list').filter({hasText:'计划快照'}).waitFor();
   const history=await frame.locator('#history-list').textContent();
   assert(history.includes('Capture without stopping') && history.includes('Independent B'));
@@ -37,9 +37,10 @@ async function main() {
   assert.notEqual(planKeys[0],planKeys[1]);
   assert((await revision.locator('.revision-plan.before .task-tree').textContent()).includes('依赖任务'));
   assert(!(await revision.locator('.revision-plan.after .task-tree').textContent()).includes('依赖任务'));
-  assert.deepEqual(await revision.locator('.revision-field').allTextContents(), ['depends_on']);
-  assert((await revision.locator('.revision-value.before pre').textContent()).includes('"a"'));
-  assert.equal(await revision.locator('.revision-value.after pre').textContent(), '[]');
+  assert.match(await revision.locator('summary').first().textContent(),/原位修订 · B/);
+  assert.deepEqual(await revision.locator('.revision-field').allTextContents(), ['前置任务']);
+  assert.equal(await revision.locator('.revision-value.before pre').textContent(), 'A');
+  assert.equal(await revision.locator('.revision-value.after pre').textContent(), '无');
   assert.equal(await revision.locator('.revision-raw').evaluate(el=>el.open), false);
   await revision.locator('.revision-raw summary').click();
   assert((await revision.locator('.revision-raw pre').textContent()).includes('node_order'));
@@ -50,12 +51,12 @@ async function main() {
   const legacy=structuredClone(await host.rpc('get_progress_view',{session_id:sid,include_history:true}));
   for(const record of legacy.structuredContent.progress.plan_revisions) {delete record.before_plan; delete record.after_plan;}
   const legacyPage=await host.page(), legacyFrame=await host.mount(legacyPage,'legacy',legacy);
-  await legacyFrame.locator('#history-title').click();
+  await legacyFrame.locator('#workspace-tab-revisions').click();
   const legacyRevision=legacyFrame.locator('#history-list .history-item').filter({hasText:'原位修订'});
   await legacyRevision.locator('summary').first().click();
   assert.equal(await legacyRevision.locator('.revision-plan').count(),0);
   assert((await legacyRevision.textContent()).includes('旧修订记录未保存完整任务树'));
-  assert.deepEqual(await legacyRevision.locator('.revision-field').allTextContents(),['depends_on']);
+  assert.deepEqual(await legacyRevision.locator('.revision-field').allTextContents(),['前置任务']);
   await legacyRevision.locator('.revision-raw summary').click();
   assert.deepEqual(JSON.parse(await legacyRevision.locator('.revision-raw pre').textContent()).before.depends_on,['a']);
   await legacyPage.close();

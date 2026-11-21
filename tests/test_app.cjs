@@ -94,7 +94,8 @@ async function main() {
   if (!await card.locator('details[data-key$=":root"]').evaluate(e=>e.open)) await card.locator('details[data-key$=":root"] > summary').click();
   assert.equal(await card.locator('.step-title').count(),3);
   assert.equal(await card.locator('#error').textContent(),'');
-  assert.deepEqual(await card.locator('#network-meta > span').allTextContents(),['任务计划轮次 第 1 轮','主会话模型 audit-fixture']);
+  assert.equal(await card.locator('#network-meta').count(),0);
+  assert(await card.locator('#leaf-progress').isVisible());
   await card.locator('#refresh').click();
   await card.locator('#refresh:not([disabled])').waitFor();
   assert(await card.locator('details[data-key$=":root"]').getAttribute('open') !== null);
@@ -103,9 +104,10 @@ async function main() {
   const running=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',assignment:fixtureAssignment});
   const aid=running.structuredContent.progress.nodes.find(n=>n.id==='a').attempt_id;
   await notify('current',running);
-  const inlineMeta=await card.locator('details[data-key$=":a"] > summary .step-execution-meta').innerText();
-  assert.match(inlineMeta,/主会话[\s\S]*audit-fixture[\s\S]*思考 high/);
-  assert(!inlineMeta.includes('未由 Codex 核实'));
+  const inlineMeta=card.locator('details[data-key$=":a"] > summary .step-execution-meta');
+  assert.equal(await inlineMeta.innerText(),'主会话');
+  assert.match(await inlineMeta.getAttribute('title'),/主会话[\s\S]*audit-fixture[\s\S]*思考 high/);
+  assert(!(await inlineMeta.innerText()).includes('未由 Codex 核实'));
   assert.equal(await card.locator('details[data-key$=":a"] > .task-details > .step-execution-meta').count(),0);
   assert.match(await card.locator('details[data-key$=":a"] > .task-details > .more-details .metadata-provenance').textContent(),/调用方填报，未经 Codex 宿主核验/);
   await page.evaluate(()=>{window.audit.holdRead=true;});
@@ -113,19 +115,19 @@ async function main() {
   await page.waitForFunction(()=>window.audit.held.length===1);
   const finished=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'finished',outcome:'resolved',attempt_id:aid,summary:'Fixture finished',evidence:['https://example.invalid/audit']});
   await notify('current',finished);
-  await card.locator('li.step.completed').waitFor();
+  await card.locator('#step-list .plan-row[data-step-id="a"] .plan-status').filter({hasText:'已验收'}).waitFor();
   const before=await card.locator('#fraction').textContent();
   await page.evaluate(()=>{window.audit.holdRead=false;for(const h of window.audit.held)h.source.postMessage({jsonrpc:'2.0',id:h.id,result:h.result},'*');window.audit.held=[];});
   await card.locator('#refresh:not([disabled])').waitFor();
   const after=await card.locator('#fraction').textContent();
-  assert.equal(before,'1 / 2 项已解决 / 已验收完成 · 主任务');
+  assert.equal(before,'1 / 2 项已验收');
   assert.equal(after,before);
   assert.equal(await card.locator('li.step.completed:has(> details[data-key$=":a"])').count(),1);
   record('stale_refresh_is_ignored','pass',{before,after});
 
   // Restore current snapshot; export exercises the real click handler and real generators.
   await notify('current',finished);
-  await card.locator('li.step.completed').waitFor();
+  await card.locator('#step-list .plan-row[data-step-id="a"] .plan-status').filter({hasText:'已验收'}).waitFor();
   await card.locator('#export-all').click();
   await card.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const exports=fs.readdirSync(temp).filter(n=>n.endsWith('.xlsx')||n.endsWith('.html'));
@@ -141,7 +143,7 @@ async function main() {
 
   // Observe an actual 5-second polling interval, with backend state changed silently.
   const bRunning=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'running',assignment:fixtureAssignment});
-  await card.locator('li.step.running:has(> details[data-key$=":b"])').waitFor({timeout:9000});
+  await card.locator('#step-list .plan-row[data-step-id="b"] .plan-status').filter({hasText:'进行中'}).waitFor({timeout:9000});
   record('automatic_poll','pass','Backend-only B update reaches card within 5-second polling cycle');
 
   const bAttempt=bRunning.structuredContent.progress.nodes.find(n=>n.id==='b').attempt_id;
@@ -175,7 +177,7 @@ async function main() {
   await newest.locator('#task-title').filter({hasText:'新的任务'}).waitFor({state:'attached'});
   await newest.locator('.card.tab-hidden').waitFor({state:'attached'});
   assert.equal(await card.locator('.card').evaluate(e=>e.classList.contains('compact')),false);
-  await card.locator('#task-history-section > summary').click();
+  await card.locator('#workspace-tab-archives').click();
   await card.locator('#task-history-list').filter({hasText:'浏览器隔离检查'}).waitFor({state:'attached'});
   await card.locator('#export-all').click();
   await card.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
@@ -215,7 +217,7 @@ async function main() {
   const inheritedCard=await mount('inherited',inheritedSnapshot,'fullscreen');
   const replan=await rpc('rebuild_task_network',{session_id:inheritedSid,reason:'Validate raw history'});
   await notify('inherited',replan);
-  await inheritedCard.locator('#history-section > summary').click();
+  await inheritedCard.locator('#workspace-tab-revisions').click();
   await inheritedCard.locator('#history-list li.step.blocked:has(> details[data-key$=":h"])').waitFor({state:'attached'});
   assert.equal(await inheritedCard.locator('#history-list li.step.blocked:has(> details[data-key$=":h"])').count(),1);
   await inheritedCard.locator('#export-all').click();

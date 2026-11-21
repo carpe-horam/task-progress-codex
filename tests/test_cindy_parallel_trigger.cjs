@@ -1,0 +1,24 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {createHost}=require('./browser_host.cjs');
+const {createReviewQueueHandler}=require('../plugins/task-progress/cindy/node/review-queue.cjs');
+(async()=>{const h=await createHost();try{
+ const main={execution_mode:'main_session',self_execution_reason:'隔离触发测试'},sub={execution_mode:'subagent',tool_identifier:'fixture.spawn',dispatch_text:'完成隔离任务'};
+ const init=await h.rawRpc('init_task_network',{task_title:'主任务',tasks:[{id:'a',title:'工作一',assignment:main},{id:'b',title:'工作二',assignment:main}]});
+ const binding={session_id:init.structuredContent.session_id,task_instance_id:init.structuredContent.task_instance_id};
+ await h.rawRpc('route_request',{...binding,request_id:'peer',request_text:'并行工作',task_title:'并行工作',mode:'parallel',reason:'隔离验证',acceptance_criteria:['结果可独立核验']});
+ const context=await h.rawRpc('get_progress',{...binding,view:'context'}),peer=context.structuredContent.progress.session_work.requests.find(x=>x.request_id==='peer').task_instance_id;
+ const peerBinding={session_id:binding.session_id,task_instance_id:peer};await h.rawRpc('decompose_task',{...peerBinding,task_id:'root',tasks:[{id:'peer-work',title:'并行结果',assignment:sub}]});
+ const start=await h.rawRpc('update_task',{...peerBinding,task_id:'peer-work',execution_status:'running',assignment:sub}),attempt=start.structuredContent.attempt_id;
+ await h.rawRpc('bind_task_agent',{...peerBinding,task_id:'peer-work',attempt_id:attempt,agent_name:'fixture'});
+ let kv={taskProgressSessionsByHostSession:{host:binding.session_id},taskProgressContextsByHostSession:{host:binding},taskProgressAutoReview:{host:{enabled:true,session_id:binding.session_id,ledger:{}}}},receive;
+ const dispatches=[],replies=[],handler=createReviewQueueHandler(async req=>({result:await h.rawRpc(req.params.name,req.params.arguments)}));
+ const sandbox={BroadcastChannel:class{postMessage(){}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout:(fn,ms)=>{const timer=setTimeout(fn,ms);if(ms>=1000)timer.unref();return timer;},clearTimeout,fetch:async(_u,opt)=>{if(opt?.method==='PUT')kv=JSON.parse(opt.body);return {ok:true,json:async()=>structuredClone(kv)}},cindy:{onHostMessage(fn){receive=fn},send:async msg=>replies.push(msg),node:{request:async req=>{try{const result=await handler({jsonrpc:'2.0',id:1,...req});return result?(result.error?{ok:false,message:result.error.message}:{ok:true,result:result.result}):{ok:true,result:await h.rawRpc(req.params.name,req.params.arguments)};}catch(error){return {ok:false,message:error.message}}}},agent:{run:async args=>{dispatches.push(args);return {ok:true,mode:'continue',sessionId:'host'}}}}};
+ vm.runInNewContext(fs.readFileSync('plugins/task-progress/cindy/main.js','utf8')+'\nglobalThis.schedule=scheduleDueReviews;',sandbox);
+ await receive({type:'tool-call',callId:'peer-submit',tool:'update_task',args:{...peerBinding,task_id:'peer-work',attempt_id:attempt,execution_status:'finished',outcome:'resolved',summary:'并行结果',evidence:['fixture://result'],session_context:{session_id:'host'}}});
+ assert.equal(replies.find(x=>x.callId==='peer-submit').ok,true);assert.equal(kv.taskProgressContextsByHostSession.host.task_instance_id,binding.task_instance_id);
+ const deadline=Date.now()+5000;while(!dispatches.length && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+ assert.equal(dispatches.length,1,'parallel submission automatically schedules one follow-up');assert.equal(dispatches[0].event.task_instance_id,peer);assert.equal(dispatches[0].event.foreground_task_instance_id,binding.task_instance_id);
+ sandbox.schedule('host',1);sandbox.schedule('host',1);await new Promise(resolve=>setTimeout(resolve,300));assert.equal(dispatches.length,1,'repeat triggers cannot duplicate an outstanding dispatch');
+ console.log('Parallel trigger: real adapter mutation automatically dispatches the correct instance exactly once.');
+}finally{await h.close()}})().catch(e=>{console.error(e);process.exitCode=1});

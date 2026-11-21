@@ -2,6 +2,10 @@ const appFrame = document.getElementById('progress-app');
 const panelStatus = document.getElementById('panel-status');
 const panelBus = new BroadcastChannel('task-progress-panel');
 let sessionId = null;
+let activeHostSessionId = null;
+const autoReviewStates = new Map();
+const unverifiedReviewAssociations = new Set();
+let sessionBinding = 0;
 let disposed = false;
 let lastTheme = null;
 let appInitialized = false;
@@ -10,6 +14,7 @@ let sessionSyncTimer = null;
 let sessionSyncBusy = false;
 let sessionLoadFailed = false;
 let taskStateRefreshTimer = null;
+let themeSyncTimer = null;
 let pendingRefreshReceipts = [];
 let toolRequestSequence = 0;
 const pendingToolCalls = new Map();
@@ -36,9 +41,22 @@ function acknowledgeRefresh(receipts, status, result) {
 function setPanelStatus(text) {
   panelStatus.textContent = text || '';
   panelStatus.hidden = !text;
-  // The embedded app starts with an empty-state placeholder. Do not show it
-  // while a known session is still loading: it incorrectly says there is no task.
+  // Present connection and loading feedback on one surface until the iframe is ready.
   appFrame.style.visibility = (/^(正在连接任务界面|任务界面已连接，正在同步会话|正在读取当前会话|已找到当前任务，正在读取进度|任务数据已读取，正在显示)/.test(text || '') || (sessionId && sessionLoadFailed)) ? 'hidden' : '';
+}
+
+function applyAutoReviewStatus(status) {
+  const notices={consent_required:'自动验收跟进需要重新启用。',host_unsupported:'自动验收跟进暂不可用：当前宿主不支持后台派发。',
+    uncertain:'自动验收派发结果待核实，已暂停以避免重复。',recovery_required:'自动验收派发记录待核实，已暂停以避免重复。',
+    retry_exhausted:'自动验收多次无法核对或安排，请检查状态后重新启用。',rate_limited:'自动验收派发受限，稍后自动重试。',
+    incomplete:'自动验收待办信息不完整，请查看任务详情。',unavailable:'自动验收待办暂不可读取，请稍后重试。',read_retry:'自动验收待办暂不可读取，稍后自动重试。',
+    recovery_retry:'自动验收状态暂不可读取，将限次重试；不会重复派发。',recovery_unavailable:'自动验收状态读取失败，请检查后台后重试；不会重复派发。',
+    binding_changed:'当前任务已切换，自动验收需重新核对并启用。',association_unverified:'自动验收的会话授权尚未确认，可能需要重新启用。',queue_changed:'验收待办正在变化，将重新核对。',event_gap:'会话事件有缺失，自动验收暂缓；可重新启用并恢复任务。',host_suspended:'当前会话已暂停、出错或等待处理，自动验收暂缓。',review_pending:'自动验收已安排，待办仍存在；可能正在排队或检查中。',dispatched_with_pending:'新的验收已安排；此前待办仍可能在排队或检查中。'};
+  if(notices[status])setPanelStatus(notices[status]);
+  else if(status==='disabled' || status==='association_verified' || status==='dispatched' ||
+          (['empty','recovered'].includes(status) && !panelStatus.textContent.includes('会话授权尚未确认'))) {
+    if(Object.values(notices).includes(panelStatus.textContent))setPanelStatus('');
+  }
 }
 
 function reply(id, result, error) {
@@ -56,6 +74,7 @@ function hostTheme() {
 }
 
 function syncHostContext() {
+  if (disposed) return;
   const theme = hostTheme();
   if (theme === lastTheme) return;
   lastTheme = theme;
@@ -79,7 +98,9 @@ function applyPanelDiagnostic(diagnostic) {
   } else if (diagnostic?.kind === 'panel-error') {
     text = `侧栏同步失败：${diagnostic.message || '未知错误'}`;
   }
-  if (text) setPanelStatus(text);
+  // The ready, unmapped iframe presents the reason alongside its empty state.
+  // Loading and bridge errors still belong to the outer status surface.
+  if (text) setPanelStatus(appInitialized && !sessionId && diagnostic.kind === 'session-switch' ? '' : text);
   postToApp({ jsonrpc: '2.0', method: 'ui/notifications/panel-diagnostic', params: { text } });
 }
 
@@ -107,12 +128,12 @@ async function syncSessionFromKV(receipt) {
     const response = await fetch('/kv');
     if (!response.ok) throw new Error(`读取 Cindy 插件状态失败（HTTP ${response.status}）`);
     const settings = await response.json();
-    const activeHostSessionId = settings.taskProgressActiveHostSessionId;
+    activeHostSessionId = settings.taskProgressActiveHostSessionId;
+    if(autoReviewStates.has(activeHostSessionId))applyAutoReviewStatus(autoReviewStates.get(activeHostSessionId));
+    else if(panelStatus.textContent.startsWith('自动验收'))setPanelStatus('');
     let nextSession = '';
     if (typeof activeHostSessionId === 'string' && activeHostSessionId) {
       nextSession = settings.taskProgressSessionsByHostSession?.[activeHostSessionId] || '';
-    } else {
-      nextSession = localStorage.getItem('task-progress-panel-session') || settings.taskProgressPanelSessionId || '';
     }
     const diagnostic = settings.taskProgressPanelDiagnostic || {
       kind: 'session-switch', hasHostSession: Boolean(activeHostSessionId), mapped: Boolean(nextSession)
@@ -144,6 +165,8 @@ function bindSession(value, diagnostic, receipt) {
     return;
   }
   sessionId = nextSession;
+  const binding = ++sessionBinding;
+  latestUpdate = null;
   applyPanelDiagnostic(diagnostic || (sessionId ? null : { kind: 'session-switch', hasHostSession: true, mapped: false }));
   if (sessionId) {
     sessionLoadFailed = false;
@@ -157,7 +180,7 @@ function bindSession(value, diagnostic, receipt) {
     const requestedSession = sessionId;
     void callTool('get_progress_view', { session_id: requestedSession, include_history: false })
       .then(result => {
-        if (sessionId !== requestedSession) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
+        if (binding !== sessionBinding || disposed) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
         acknowledgeRefresh([receipt], 'read_ok', result);
         sessionLoadFailed = false;
         const structured = result?.structuredContent || {};
@@ -166,7 +189,7 @@ function bindSession(value, diagnostic, receipt) {
         applyUpdate(latestUpdate);
       })
       .catch(error => {
-        if (sessionId !== requestedSession) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
+        if (binding !== sessionBinding || disposed) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
         acknowledgeRefresh([receipt], 'read_failed');
         sessionLoadFailed = true;
         setPanelStatus(`读取任务失败：${String(error.message || error)}`);
@@ -230,12 +253,18 @@ window.addEventListener('message', async event => {
   }
   if (message.method === 'task-progress/rendered') {
     const renderedSession = message.params?.session_id;
-    if (!renderedSession || renderedSession === sessionId) setPanelStatus('');
+    if (!renderedSession || renderedSession === sessionId) {
+      setPanelStatus('');
+      // Rendering and five-second polling must not hide a persistent
+      // automatic-review authorization or recovery warning.
+      if(autoReviewStates.has(activeHostSessionId))applyAutoReviewStatus(autoReviewStates.get(activeHostSessionId));
+    }
     return;
   }
   if (message.method === 'ui/resource-teardown') {
     reply(message.id, {});
     disposed = true;
+    stopThemeSync();
   }
 });
 
@@ -253,6 +282,20 @@ panelBus.onmessage = event => {
     // Inline cards and delayed host events may refer to another conversation.
     // The active host-session mapping is the authority for the global panel.
     void syncSessionFromKV(message);
+  } else if (message.type === 'task-init-error') {
+    // Initializations from another Cindy conversation must not affect this panel.
+    if (activeHostSessionId && message.host_session_id === activeHostSessionId) {
+      setPanelStatus(`新任务未开始：${message.message || '请检查当前任务状态。'}`);
+    }
+  } else if (message.type === 'auto-review-state') {
+    if(typeof message.host_session_id!=='string' || !message.host_session_id)return;
+    const host=message.host_session_id;
+    if(message.status==='association_unverified')unverifiedReviewAssociations.add(host);
+    if(['disabled','association_verified','dispatched','dispatched_with_pending'].includes(message.status))unverifiedReviewAssociations.delete(host);
+    const status=['empty','recovered'].includes(message.status) && unverifiedReviewAssociations.has(host) ? 'association_unverified' : message.status;
+    autoReviewStates.set(host,status);
+    while(autoReviewStates.size>100){const oldest=autoReviewStates.keys().next().value;autoReviewStates.delete(oldest);unverifiedReviewAssociations.delete(oldest);}
+    if(host===activeHostSessionId)applyAutoReviewStatus(status);
   } else if (message.type === 'refresh-mapped-session') {
     if (message.session_id !== sessionId || !sessionId) {
       acknowledgeRefresh([message], 'skipped_session_changed');
@@ -265,20 +308,22 @@ panelBus.onmessage = event => {
       const receipts = pendingRefreshReceipts;
       pendingRefreshReceipts = [];
       const requestedSession = sessionId;
+      const binding = sessionBinding;
       if (!requestedSession || disposed) { acknowledgeRefresh(receipts, 'skipped_session_changed'); return; }
       void callTool('get_progress_view', { session_id: requestedSession, include_history: false })
         .then(result => {
-          if (sessionId !== requestedSession || disposed) { acknowledgeRefresh(receipts, 'skipped_session_changed'); return; }
+          if (binding !== sessionBinding || disposed) { acknowledgeRefresh(receipts, 'skipped_session_changed'); return; }
           acknowledgeRefresh(receipts, 'read_ok', result);
           latestUpdate = { type: 'update', session_id: requestedSession, result };
           if (appInitialized) applyUpdate(latestUpdate);
-        }).catch(() => { acknowledgeRefresh(receipts, 'read_failed'); });
+        }).catch(() => { acknowledgeRefresh(receipts, binding === sessionBinding && !disposed ? 'read_failed' : 'skipped_session_changed'); });
     }, 250);
   } else if (message.type === 'update' && message.result) {
     if (message.session_id && message.session_id !== sessionId) {
       void syncSessionFromKV();
       return;
     }
+    if (message.tool === 'init_task_network' || message.tool === 'init_progress') setPanelStatus('');
     latestUpdate = message;
     applyPanelDiagnostic(message.diagnostic);
     if (appInitialized) applyUpdate(message);
@@ -291,8 +336,21 @@ panelBus.onmessage = event => {
   }
 };
 
-matchMedia('(prefers-color-scheme: light)').addEventListener('change', syncHostContext);
-new MutationObserver(syncHostContext).observe(document.head, { childList: true, subtree: true, attributes: true });
+const themeMedia = matchMedia('(prefers-color-scheme: light)');
+const themeObserver = new MutationObserver(syncHostContext);
+themeMedia.addEventListener('change', syncHostContext);
+themeObserver.observe(document.head, { childList: true, subtree: true, attributes: true });
+// Cindy injects its theme with webview.insertCSS(), which changes computed
+// styles without a DOM mutation or OS media-query event. Sample that public
+// style signal; syncHostContext only notifies the app when the value changes.
+themeSyncTimer = window.setInterval(syncHostContext, 500);
+function stopThemeSync() {
+  window.clearInterval(themeSyncTimer);
+  themeSyncTimer = null;
+  themeMedia.removeEventListener('change', syncHostContext);
+  themeObserver.disconnect();
+}
+window.addEventListener('pagehide', stopThemeSync, { once: true });
 syncHostContext();
 
 // The local app resource can load faster than this external script. Assign its

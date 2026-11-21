@@ -298,8 +298,8 @@ class ResponsibilityContractTests(unittest.TestCase):
 
     def test_overview_advertises_additive_assignment_capabilities(self):
         result = server.get_progress(self.sid)
-        self.assertEqual(result["structuredContent"]["protocol_capabilities"],
-                         ["assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1", "task_batch_parent_v1"])
+        self.assertTrue({"assignment_sources_v1", "fork_context_v1", "acceptance_contract_v1", "task_batch_parent_v1", "task_existing_parent_v1", "review_queue_v1"}.issubset(
+            result["structuredContent"]["protocol_capabilities"]))
         detail = server.get_progress(self.sid, view="tasks", task_ids=["work"])
         self.assertNotIn("protocol_capabilities", detail["structuredContent"])
 

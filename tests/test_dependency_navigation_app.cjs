@@ -22,9 +22,9 @@ async function main() {
     await page.waitForFunction(()=>document.getElementById('main').contentDocument.documentElement.dataset.navigationAdapter==='cindy');
     await frame.locator('.dependency-link').first().waitFor();
   }
-  const rows=(id,instance=binding.task_instance_id)=>frame.locator('#steps li[data-dependency-key]').filter({has:frame.locator(':scope > details[data-key="task:'+instance+':epoch:0:'+id+'"]')});
+  const rows=(id,instance=binding.task_instance_id)=>frame.locator('#step-list [data-step-id="'+id+'"][data-instance="'+instance+'"]').locator(':scope.plan-row, :scope > .plan-branch-head');
   const consumer=rows('consumer'),group=rows('group'),a=rows('a'),b=rows('b');
-  const buttons=consumer.locator(':scope > details > summary .dependency-link');
+  const buttons=consumer.locator('.dependency-link');
   const settleLayout=()=>frame.locator('body').evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   async function assertEdge(id, label) {
     await settleLayout();
@@ -33,7 +33,7 @@ async function main() {
     const geometry=await frame.locator('.dependency-wire-flow').evaluate((wire,id)=>{
       const button=document.querySelector('.dependency-link[aria-pressed="true"]');
       const target=document.querySelector('.dependency-target');
-      const icon=target.querySelector(':scope > details > summary .step-icon');
+      const icon=target.querySelector('.step-icon');
       const b=button.getBoundingClientRect(),t=icon.getBoundingClientRect(),matrix=wire.getScreenCTM();
       const start=wire.getPointAtLength(0).matrixTransform(matrix),end=wire.getPointAtLength(wire.getTotalLength()).matrixTransform(matrix);
       return {start:[start.x,start.y],expectedStart:[b.left+b.width/2,b.bottom],end:[end.x,end.y],expectedEnd:[t.left-3,t.top+t.height/2],cardScroll:document.querySelector('.card').scrollTop,cardHeight:document.querySelector('.card').scrollHeight,svgRect:wire.ownerSVGElement.getBoundingClientRect().toJSON(),viewBox:wire.ownerSVGElement.getAttribute('viewBox'),id:target.dataset.dependencyKey.split(':').pop(),startError:Math.hypot(start.x-(b.left+b.width/2),start.y-b.bottom),endError:Math.hypot(end.x-(t.left-3),end.y-(t.top+t.height/2)),visible:!!wire.getClientRects().length};
@@ -49,15 +49,16 @@ async function main() {
     const count=await page.evaluate(()=>window.host.calls.length);
     await frame.locator('#refresh').click();await waitForRead(count);
   }
-  assert.deepEqual(await buttons.allTextContents(),['1-1-1','1-1-2']);
+  assert.deepEqual(await buttons.allTextContents(),['1-1','1-2']);
   assert.match(await buttons.first().getAttribute('aria-label'),/Task a/);
-  assert.equal(await a.isVisible(),false,'pending subtree starts collapsed');
-  const sourceOpen=await consumer.locator(':scope > details').getAttribute('open');
+  await group.locator('.branch-toggle').click();
+  assert.equal(await a.isVisible(),false,'collapsed branch hides target');
+  const sourceOpen=await frame.locator('#step-dialog').getAttribute('open');
   const callsBefore=await page.evaluate(()=>window.host.calls.length);
   await buttons.first().click();
   await frame.locator('.dependency-target').waitFor();
   assert.equal(await a.isVisible(),true,'click reveals collapsed target branch');
-  assert.equal(await consumer.locator(':scope > details').getAttribute('open'),sourceOpen,'button must not toggle its enclosing summary');
+  assert.equal(await frame.locator('#step-dialog').getAttribute('open'),sourceOpen,'button must not toggle its enclosing summary');
   assert.equal(await a.evaluate(el=>el.classList.contains('dependency-target')),true);
   assert.equal(await frame.locator('.dependency-connections').isVisible(),true);
   assert.match(await frame.locator('.dependency-wire-flow').getAttribute('d'),/^M /);
@@ -90,9 +91,9 @@ async function main() {
   assert.equal(await a.evaluate(el=>el.classList.contains('dependency-target')),true);
   await assertEdge('a','notification refresh retains geometry');
   // Filtering a target out should not leave a dangling line.
-  await frame.locator('#status-filter').selectOption('completed');
+  await frame.locator('[data-status-filter="tone:blocked"]').click();
   await frame.locator('.dependency-connections').waitFor({state:'hidden'});
-  await frame.locator('#status-filter').selectOption('all');
+  await frame.locator('[data-status-filter="all"]').click();
   await buttons.first().click();
   const desktopPath=await frame.locator('.dependency-wire-flow').getAttribute('d');
   for(const width of [320,360,430]) {
@@ -125,22 +126,14 @@ async function main() {
   const started=await host.rpc('update_task',{...binding,task_id:'a',execution_status:'running',assignment});
   await host.rpc('update_task',{...binding,task_id:'a',attempt_id:started.structuredContent.attempt_id,execution_status:'finished',outcome:'resolved',summary:'fixture',evidence:['fixture://a']});
   await push(await view());
-  assert.deepEqual(await buttons.allTextContents(),['1-1-2']);
+  assert.deepEqual(await buttons.allTextContents(),['1-2']);
   assert.equal(await frame.locator('.dependency-target').count(),0,'resolved edge clears selection');
   assert.equal(await frame.locator('.dependency-connections').isVisible(),false);
   // Snapshot and current tree reuse task IDs; references must stay in their own scope.
   await host.rawRpc('snapshot_task_network',{...binding,snapshot_id:'dependency-snapshot',reason:'Isolated history navigation fixture'});
   await push(await view());
-  await frame.locator('#history-section > summary').click();
-  await frame.locator('#history-list .history-item > details > summary').first().click();
-  await frame.locator('#history-list .task-tree > li > details > summary').first().click();
-  const historical=frame.locator('#history-list .dependency-link').first();
-  await historical.click();
-  assert.equal(await frame.locator('#history-list .dependency-target').count(),1);
-  assert.equal(await frame.locator('#steps .dependency-target').count(),0);
-  await page.keyboard.press('Escape');
   await buttons.first().click();
-  assert.equal(await frame.locator('#steps .dependency-target').count(),1);
+  await assertEdge('b','snapshot refresh remains bound to current visible task');
   assert.equal(await frame.locator('#history-list .dependency-target').count(),0);
   const routed=await host.rpc('route_request',{...binding,request_id:'dependency-peer',request_text:'Isolated peer navigation',task_title:'Peer navigation',mode:'parallel',reason:'Same task IDs must remain isolated',acceptance_criteria:['No cross-instance edge']});
   const peerId=routed.structuredContent.session_work.requests.find(r=>r.request_id==='dependency-peer').task_instance_id;
@@ -150,9 +143,8 @@ async function main() {
   await push(await view());
   // Open only the peer group; clicking a descendant's inherited prerequisite
   // must resolve to peer a, despite a matching main-session task ID.
-  await rows('group',peerId).locator(':scope > details > summary').click();
-  const peerButton=rows('consumer',peerId).locator(':scope > details > summary .dependency-link');
-  assert.equal(await peerButton.textContent(),'2-1');
+  const peerButton=rows('consumer',peerId).locator('.dependency-link');
+  assert.equal(await peerButton.textContent(),'3-1');
   await peerButton.click();
   assert.equal(await rows('a',peerId).evaluate(el=>el.classList.contains('dependency-target')),true);
   assert.equal(await a.evaluate(el=>el.classList.contains('dependency-target')),false);

@@ -19,7 +19,7 @@ async function main() {
   await host.rpc('decompose_task', {...peer, task_id:'root', tasks:[{id:'same', title:'并行工作', assignment:SUB}]});
   const page = await host.page();
   const frame = await host.mount(page, 'main', await host.rpc('get_progress_view', {session_id:sid}));
-  const root = frame.locator('#steps > .step[data-task-instance="'+iid+'"]');
+  const root = frame.locator('#step-list .plan-branch[data-instance="'+iid+'"]').first();
   async function refresh() { await frame.locator('#refresh').click(); await frame.locator('#refresh:not([disabled])').waitFor(); }
   async function start(retry=false) {
     const r = await host.rpc('update_task', {...peer, task_id:'same', execution_status:'running', assignment:SUB, retry});
@@ -28,9 +28,9 @@ async function main() {
   async function submit(aid, label) {
     await host.rpc('bind_task_agent', {...peer, task_id:'same', attempt_id:aid, agent_name:'archive-fixture'});
     await host.rpc('update_task', {...peer, task_id:'same', attempt_id:aid, execution_status:'finished', outcome:'resolved', summary:label+' output', evidence:['fixture://'+label]});
-    await refresh(); assert.equal(await root.count(),1); assert.match(await root.innerText(),/待主会话验收/);
+    await refresh(); assert.equal(await root.count(),1); assert.match(await root.innerText(),/待复核/);
     await host.rpc('review_task', {...peer, task_id:'same', attempt_id:aid, decision:'accept', reviewer:MAIN, summary:label+' independently reviewed', evidence:['fixture://review-'+label]});
-    await refresh(); assert.equal(await root.count(),1); assert.match(await root.innerText(),/待汇总验收/);
+    await refresh(); assert.equal(await root.count(),1); assert.match(await root.innerText(),/待整体验收/);
   }
   async function synthesize(label) {
     await host.rpc('update_task', {...peer, task_id:'root', execution_status:'finished', outcome:'resolved', assignment:MAIN, summary:label+' synthesis', evidence:['fixture://root-'+label]});
@@ -40,18 +40,23 @@ async function main() {
   assert.equal(await frame.locator('#percent').textContent(),'0');
   assert.match(await frame.locator('#task-history-title').textContent(),/1 项/);
   assert.equal(await page.evaluate(()=>window.host.calls.filter(call=>call.name==='get_progress_view' && call.args.include_history).length),0,'Compact polling never loads archived evidence');
-  await frame.locator('#task-history-title').click();
+  await frame.locator('#workspace-tab-archives').click();
   const archives = frame.locator('#task-history-list > .history-item > details');
   await archives.waitFor(); await archives.locator(':scope > summary').click();
   const oldKey = await archives.getAttribute('data-key');
   assert.match(await archives.textContent(),/completion-one synthesis/);
   const frozen = (await host.rpc('get_progress_view',{session_id:sid,include_history:true})).structuredContent.progress.task_history[0];
+  await frame.locator('#workspace-tab-plan').click();
   const newAttempt = await start(true); assert.notEqual(oldAttempt,newAttempt); await refresh(); await root.waitFor();
-  assert.equal(await root.locator('.awaiting_review').count(),0);
+  assert.doesNotMatch(await root.innerText(),/待复核/);
   assert.match(await root.innerText(),/进行中/);
+  await frame.locator('#workspace-tab-archives').click();
+  await frame.locator('#task-history-list > .history-item > details').waitFor();
   assert.equal(await frame.locator('#task-history-list > .history-item > details').getAttribute('data-key'),oldKey);
+  await frame.locator('#workspace-tab-plan').click();
   await assert.rejects(()=>host.rpc('update_task',{...peer,task_id:'same',attempt_id:oldAttempt,execution_status:'finished',outcome:'resolved',summary:'Late old output'}));
   await submit(newAttempt,'completion-two'); await synthesize('completion-two');
+  await frame.locator('#workspace-tab-archives').click();
   await frame.locator('#task-history-title').filter({hasText:'2 项'}).waitFor();
   await archives.nth(1).waitFor();
   assert.deepEqual(await archives.evaluateAll(items=>items.map(item=>item.open)),[false,false],'New acceptance does not inherit an old disclosure');

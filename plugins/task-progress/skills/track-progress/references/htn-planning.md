@@ -9,24 +9,44 @@
   "task_instance_id": "<当前任务实例 ID>",
   "task_id": "root",
   "tasks": [
-    {"id":"inspect","title":"深入调查并确认根因","assignment":{"execution_mode":"subagent","complexity":"complex"}},
-    {"id":"assets","title":"整理独立素材","assignment":{"execution_mode":"subagent"}},
-    {"id":"fix","title":"实施修复及跨文件集成","depends_on":["inspect"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
-    {"id":"verify","title":"专门回归验证","depends_on":["fix"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
-    {"id":"accept","title":"判断交付是否满足目标","depends_on":["verify","assets"],"assignment":{"execution_mode":"main_session","complexity":"simple","self_execution_reason":"主会话汇总已复核证据并做最终交付决策"}}
+    {"id":"scope","title":"目标与依据","assignment":{"execution_mode":"main_session"}},
+    {"id":"inspect","parent_id":"scope","title":"深入调查并确认根因","assignment":{"execution_mode":"subagent","complexity":"complex"}},
+    {"id":"assets","parent_id":"scope","title":"整理独立素材","assignment":{"execution_mode":"subagent"}},
+    {"id":"delivery","title":"修复与验证","assignment":{"execution_mode":"main_session"}},
+    {"id":"fix","parent_id":"delivery","title":"实施修复及跨文件集成","depends_on":["inspect"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
+    {"id":"verify","parent_id":"delivery","title":"专门回归验证","depends_on":["fix"],"assignment":{"execution_mode":"subagent","complexity":"complex"}},
+    {"id":"accept","parent_id":"delivery","title":"判断交付是否满足目标","depends_on":["verify","assets"],"assignment":{"execution_mode":"main_session","complexity":"simple","self_execution_reason":"主会话汇总已复核证据并做最终交付决策"}}
   ]
 }
 ```
 
-将以上对象传给 `decompose_task`。每个子任务都必须在 `assignment.execution_mode` 标明计划执行者；分组节点标为 `main_session`，叶节点按分工标为主会话或子智能体。尚未确定执行者时，先完成分工评估再调用工具，不要留空后默认全由主会话处理。可继续分解未结束的叶任务形成层级；也可对尚未结束的同一父任务重复调用 `decompose_task`，把新一批子任务追加到现有 children。每个实际委派的子智能体都必须有自己的子任务节点，不能只在消息或根任务备注中记录。父任务进入终态后不能再追加子任务；计划结构需要重做时使用重规划。任务 ID 必须由 1–64 位字母、数字、连字符或下划线组成，并在当前 `task_instance_id` 的生命周期内唯一，同一任务实例的不同重规划轮次也不可复用；新任务实例可重用已归档任务的节点 ID。所有依赖必须有效且无环。
+以上是工具已声明 `parent_id` / `task_batch_parent_v1` 时的分组示例；旧服务端按下方兼容流程逐包建树。将以上对象传给 `decompose_task`。每个子任务都必须在 `assignment.execution_mode` 标明计划执行者；分组节点标为 `main_session`，叶节点按分工标为主会话或子智能体。尚未确定执行者时，先完成分工评估再调用工具，不要留空后默认全由主会话处理。可继续分解未结束的叶任务形成层级；也可对尚未结束的同一父任务重复调用 `decompose_task`，把新一批子任务追加到现有 children。每个实际委派的子智能体都必须有自己的子任务节点，不能只在消息或根任务备注中记录。父任务进入终态后不能再追加子任务；计划结构需要重做时使用重规划。任务 ID 必须由 1–64 位字母、数字、连字符或下划线组成，并在当前 `task_instance_id` 的生命周期内唯一，同一任务实例的不同重规划轮次也不可复用；新任务实例可重用已归档任务的节点 ID。所有依赖必须有效且无环。
 
 任务树按独立结果、owner 或核验边界拆分，不按命令或阶段机械拆分。若调查、修复和局部验证紧密耦合，可用一个实现结果节点并交给同一 owner；worker 在派发范围内自行安排这些步骤。若要保留单独的阶段结果，后续阶段也可通过 follow-up 交给同一真实 agent ID，无需创建新 agent。只有独立产物、独立 owner 或高风险/难以直接核验的要求才增加节点。主会话仍负责目标与范围变更、资源冲突、依赖和最终验收；worker 发现新范围时先请求调整计划。
 
-### 追加到合适的父任务
+### 自动归类到工作包
 
-1. 先用 `get_progress(view="tree")` 找与新增工作共享交付或验收结果的分组。以最具体、未结束的分组 ID 作为 `decompose_task.task_id`。同阶段再次追加时沿用这个 ID。已有叶任务可以在符合分解条件时拆为两个或更多有独立结果的子任务。仅补充原任务细节时更新上下文即可。
-2. 多项新增工作属于同一个新阶段时，在合适的上级下建一个分组。若 `get_progress(view="overview")` 的 `protocol_capabilities` 含 `task_batch_parent_v1`，可在一次 `decompose_task` 中提交新分组与子任务。每个子任务的 `parent_id` 引用同批新父任务的 ID。没有此能力时，先创建分组节点，再以该节点作为 `task_id` 提交子任务，两次调用都省略 `parent_id`。首次 `init_task_network` 也支持同批分层，前提是当前工具的任务 schema 声明了 `parent_id`。
-3. 分组已结束时保留其执行和验收记录。确需继续时，在合适的未结束上级下建立有明确验收目标的补充分组，或在当前计划已收束时按同一目标重规划。已有平铺节点若尚未开始，且相关分支和消费者符合原位修订条件，可用 `revise_task_plan` 移进已有分组。
+工作包是共享交付目标或验收边界的一组任务。规划 Agent 负责理解用户新增诉求并自动归类，工具负责原子保存和检查归属；不要让用户为常规追加选择目录，也不要按标题关键词机械归类。新建多步骤计划时先确定少量稳定工作包，再在包内列可执行叶任务；不要把每次新消息当作一个新工作包。
+
+1. 追加前读取当前 `get_progress(view="overview")` 和 `view="tree"`（按需分页/展开），根据交付目标、范围和验收结果选最具体的未结束工作包。补充同一任务细节时更新上下文即可。一个包内追加仍以该包 ID 为 `decompose_task.task_id`，省略各项 `parent_id`。
+2. 新增工作跨多个已有包，且 overview 的 `protocol_capabilities` 含 `task_existing_parent_v1` 时，以共同上级为 `task_id`，每项 `parent_id` 填其真实所属工作包 ID。插件一次校验并原子落位；任何归属、依赖或状态不合法则整批不写。`parent_id` 只能引用此次 `task_id` 范围内已有未结束分组或同批新分组，不能借此把已有叶任务隐式变成包。
+3. 只有新方向没有合适包时才建立新包，并在同批加入其叶任务（能力 `task_batch_parent_v1`）。既有根已含工作包时，不再向根追加裸叶任务；服务端会拒绝并给出候选包，Agent 应重新按语义选择归属，不能改成无意义的“其他”包绕过。新包可先承载一项有明确交付边界的新工作，后续同类任务持续归入此包；不为凑层级把每个步骤套独立包。
+4. 工作包或祖先已结束时保留其执行和验收记录。确需继续时，在未结束上级建立目标明确的补充工作包；当前计划已收束则按同一目标重规划。旧平铺计划和原子单步仍可读取和继续；已有平铺节点仅在未开始且分支和消费者符合原位修订条件时，才用 `revise_task_plan` 归组，不能移动执行过的记录。
+5. 旧服务端没有 `task_existing_parent_v1` 时，分别以每个现有包 ID 调用 `decompose_task`，不要发送引用已有父节点的 `parent_id`。没有 `task_batch_parent_v1` 时，先在合适上级创建新包，再以新包为 `task_id` 加入子任务，两次都省略 `parent_id`。兼容路径仍由 Agent 自动归类，不回退为根平铺。
+
+跨已有工作包追加的示例（先确认这些包 ID 在当前实例存在）：
+
+```json
+{
+  "task_id": "root",
+  "tasks": [
+    {"id":"extra-source","parent_id":"scope","title":"补充新发现的数据来源","addition_reason":"用户补充了数据范围","assignment":{"execution_mode":"subagent"}},
+    {"id":"extra-check","parent_id":"delivery","title":"核对新增数据的展示","addition_reason":"覆盖新增数据范围","depends_on":["extra-source"],"assignment":{"execution_mode":"subagent"}}
+  ]
+}
+```
+
+以上调用还需携带本会话的 `session_id` 和 `task_instance_id`。归类只决定父节点，不替代真实依赖；不要为视觉分组删除或放宽 `depends_on`。
 
 例如，把多项新验证聚合成一个“导出回归”分组。以下是支持 `task_batch_parent_v1` 时传给 `decompose_task` 的 `tasks`，顶层 `task_id` 填实际查到的上级 ID。后续发现同类验证时直接向 `export-checks` 追加。
 

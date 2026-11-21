@@ -34,7 +34,7 @@ async function main(){
  const page=await host.page();await configure(page,full);const frame=await host.mount(page,'main',compact(full));
  assert((await frame.locator('#task-history-title').textContent()).includes('1 项'));
  assert.equal(await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress_view'&&c.args.include_history).length),0,'initial compact card never loads full history');
- await frame.locator('#task-history-title').click();await frame.locator('#task-history-list').filter({hasText:'ARCHIVE_COMPLETE'}).waitFor();
+ await frame.locator('#workspace-tab-archives').click();await frame.locator('#task-history-list').filter({hasText:'ARCHIVE_COMPLETE'}).waitFor();
  await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();
  assert((await frame.locator('#task-history-list').textContent()).includes('ARCHIVE_COMPLETE'),'same binding compact refresh retains history');
  assert((await page.evaluate(()=>window.host.calls.filter(c=>c.name==='get_progress_view'))).some(c=>c.args.include_history===false),'refresh explicitly requests compact state');
@@ -52,7 +52,7 @@ async function main(){
  await frame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
  const exported=await savedReport(page);assert((await exported.report.locator('#rp-archives').textContent()).includes('ARCHIVE_NEW'));assert((await exported.report.locator('#rp-plans').textContent()).includes('PLAN_COMPLETE'));
  await exported.report.close();
- await frame.locator('#task-history-title').click();await frame.locator('#task-history-list').filter({hasText:'ARCHIVE_NEW'}).waitFor();
+ await frame.locator('#workspace-tab-archives').click();await frame.locator('#task-history-list').filter({hasText:'ARCHIVE_NEW'}).waitFor();
  results.push('Compact initial/refresh responses omit full history; exact-bound history survives refresh, new revisions/counts invalidate it, stale full replies cannot truncate export.');
  // Failed full loading must not invoke save_export_files.
  await frame.locator('#task-history-title').click();const failed=clone(newer);failed.structuredContent.state_revision++;progress(failed).state_revision++;
@@ -64,7 +64,7 @@ async function main(){
  // Old SQLite semantics remain separate from JSON acceptance semantics.
  const dual=clone(full);progress(dual).legacy_history={schema:3,source:'sqlite_v3',read_only:true,status:'available',task_count:1,records:[{task_instance_id:'sqlite-old',title:'SQLITE_OLD_TASK',status:'resolved',control_state:'completed',summary:'SQLITE_ORIGINAL_SUMMARY',is_current:true}]};progress(dual).history_summary.legacy_task_count=1;
  const dualPage=await host.page();await configure(dualPage,dual);const dualFrame=await host.mount(dualPage,'main',compact(dual));
- await dualFrame.locator('#legacy-history-title').click();await dualFrame.locator('#legacy-history-list').filter({hasText:'SQLITE_OLD_TASK'}).waitFor();
+ await dualFrame.locator('#workspace-tab-archives').click();await dualFrame.locator('#legacy-history-list').filter({hasText:'SQLITE_OLD_TASK'}).waitFor();
  const legacyText=await dualFrame.locator('#legacy-history-list').textContent();assert(legacyText.includes('状态冲突不自动合并')&&legacyText.includes('旧状态按原值展示'));
  await dualFrame.locator('#export-all').click();await dualFrame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();const dualExport=await savedReport(dualPage);assert((await dualExport.report.locator('#rp-legacy').textContent()).includes('SQLITE_ORIGINAL_SUMMARY'));
  const xlsx=dualExport.call.result.structuredContent.files.find(f=>f.name.endsWith('.xlsx')).path;
@@ -73,7 +73,7 @@ async function main(){
  const only=clone(dual);Object.assign(progress(only),{mode:'legacy_archive',schema_version:3,read_only:true,task_title:'SQLite-only fixture',display_title:'SQLite-only fixture',status:'legacy_archive'});delete progress(only).nodes;delete progress(only).steps;delete progress(only).task_instance_id;progress(only).task_history=[];progress(only).history=[];progress(only).history_summary={task_count:0,plan_count:0,legacy_task_count:1};
  const onlyPage=await host.page();await configure(onlyPage,only);const onlyBootstrap={structuredContent:{session_id:only.structuredContent.session_id,state_revision:only.structuredContent.state_revision,view_sequence:only.structuredContent.view_sequence,acknowledged:true,bootstrap:true,view_tool:'get_progress_view'}};const onlyFrame=await host.mount(onlyPage,'main',onlyBootstrap);await onlyFrame.locator('#task-title').filter({hasText:'SQLite-only fixture'}).waitFor();
  assert.equal(await onlyFrame.locator('#empty').isVisible(),false);assert.equal(await onlyFrame.locator('#task-status-label').textContent(),'旧版只读记录');assert.equal(await onlyFrame.locator('#steps-section').isVisible(),false);assert(!(await onlyFrame.locator('#summary').textContent()).includes('0 / 0'));
- await onlyFrame.locator('#legacy-history-title').click();await onlyFrame.locator('#legacy-history-list').filter({hasText:'SQLITE_OLD_TASK'}).waitFor();
+ await onlyFrame.locator('#workspace-tab-archives').click();await onlyFrame.locator('#legacy-history-list').filter({hasText:'SQLITE_OLD_TASK'}).waitFor();
  assert((await onlyFrame.locator('#legacy-history-list').textContent()).includes('无当前 JSON 任务'));
  await onlyFrame.locator('#export-all').click();await onlyFrame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();const onlyExport=await savedReport(onlyPage);assert.equal(await onlyExport.report.locator('.rp-delivery').textContent(),'旧版只读记录');
  const onlyText=await onlyExport.report.locator('body').textContent();for(const invented of ['顺序步骤','待开始','当前任务','第 1 轮计划','计划沿革','当前计划展开','0/0'])assert(!onlyText.includes(invented),'SQLite-only export invents '+invented);
@@ -90,10 +90,10 @@ async function main(){
  await onlyExport.report.close();await onlyPage.close();
  const partial=clone(only);progress(partial).legacy_history.truncated=true;progress(partial).legacy_history.task_count=101;progress(partial).history_summary.legacy_task_count=101;progress(partial).legacy_history.records[0].nodes_truncated=false;progress(partial).legacy_history.records[0].nodes=[{id:'missing-old-detail',details_unavailable:true}];
  const partialPage=await host.page();await configure(partialPage,partial);const partialFrame=await host.mount(partialPage,'main',compact(partial));
- await partialFrame.locator('#legacy-history-title').click();await partialFrame.locator('#legacy-history-list').filter({hasText:'这里只显示旧库摘录'}).waitFor();
+ await partialFrame.locator('#workspace-tab-archives').click();await partialFrame.locator('#legacy-history-list').filter({hasText:'这里只显示旧库摘录'}).waitFor();
  assert((await partialFrame.locator('#legacy-history-list').textContent()).includes('节点已截断或详情不可用'));
  await partialFrame.locator('#export-all').click();await partialFrame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
- const partialExport=await savedReport(partialPage);const partialText=await partialExport.report.locator('#rp-legacy').textContent();assert(partialText.includes('有界兼容摘录') && partialText.includes('历史已截断') && partialText.includes('节点已截断或详情不可用'));
+ const partialExport=await savedReport(partialPage);const partialText=await partialExport.report.locator('#rp-legacy').textContent();const sourceText=await partialExport.report.locator('.rp-source-details').textContent();assert(partialText.includes('仅保留部分旧版记录'));assert(partialText.includes('节点已截断或详情不可用'));assert(partialText.includes('details_unavailable'));assert(sourceText.includes('有界兼容摘录'));
  await partialExport.report.close();
  const unavailable=clone(dual);unavailable.structuredContent.state_revision++;progress(unavailable).state_revision++;progress(unavailable).legacy_history={schema:3,source:'sqlite_v3',read_only:true,status:'unavailable',task_count:0,records:[],warning:'旧库来源不可用'};progress(unavailable).history_summary.legacy_task_count=0;progress(unavailable).legacy_history_warning='旧库来源不可用';
  await partialPage.evaluate(full=>{window.fixture.full=full;},unavailable);await push(partialPage,compact(unavailable));await partialFrame.locator('#export-all').click();await partialFrame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();

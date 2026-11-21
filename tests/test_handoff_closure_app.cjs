@@ -29,24 +29,25 @@ async function main(){
  const page=await host.page(),frame=await host.mount(page,'main',await call('get_progress_view'));
  async function refresh(){await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();}
  const sourceRoot=frame.locator('#steps > .step[data-task-instance="'+source.task_instance_id+'"]');
- assert.match(await sourceRoot.innerText(),/待汇总验收/);
+ assert.match(await sourceRoot.innerText(),/待整体验收/);
  const binding=(await host.rpc('get_progress',{...source})).structuredContent.progress.closure_review_binding;
  const registration=await call('handoff_request',{request_id:'Handoff source',handoff_id:'handoff-browser',source_task_instance_id:source.task_instance_id,...binding,mappings:[{source_task_id:'cancelled',source_attempt_id:null,target_task_instance_id:foreground.task_instance_id,target_epoch:0,target_task_id:'target',target_attempt_id:target}],summary:'Recovery explicitly assigned to foreground',evidence:['fixture://handoff-browser'],reviewer:MAIN});
  assert.equal(registration.structuredContent.handoff_id,'handoff-browser');
  await refresh();assert.equal(await sourceRoot.count(),1);
  await call('update_task',{task_id:'target',attempt_id:target,execution_status:'finished',outcome:'resolved',summary:'Runtime online and heartbeat verified',evidence:['fixture://runtime-heartbeat-accepted']});
  await refresh();await sourceRoot.waitFor({state:'detached'});
- await frame.locator('#task-history-title').click();
+ await frame.locator('#workspace-tab-archives').click();
  const archives=frame.locator('#task-history-list > .history-item > details');await archives.first().waitFor();
  await archives.first().locator(':scope > summary').click();
  assert.match(await archives.first().innerText(),/移交已验收/);
  assert.match(await archives.first().innerText(),/2\/3/);
  const proof=archives.first().locator('.closure-audit').filter({hasText:'移交已验收'});await proof.locator(':scope > summary').click();
+ await proof.locator(':scope > .audit-raw > summary').click();
  assert.match(await proof.innerText(),/fixture:\/\/runtime-heartbeat-accepted/);
  assert.match(await proof.innerText(),/target_attempt_id/);
  const closureSource=await peer('Reviewed cancellation',false);
  await refresh();const pendingRoot=frame.locator('#steps > .step[data-task-instance="'+closureSource.task_instance_id+'"]');
- assert.match(await pendingRoot.innerText(),/待汇总验收/);
+ assert.match(await pendingRoot.innerText(),/待整体验收/);
  const cb=(await host.rpc('get_progress',closureSource)).structuredContent.progress.closure_review_binding;
  await host.rpc('review_task_closure',{...closureSource,task_id:'root',review_id:'browser-closure',...cb,decision:'accept',summary:'Cancellation accepted; work will not continue',evidence:['fixture://cancelled-reviewed'],reviewer:MAIN});
  await refresh();await pendingRoot.waitFor({state:'detached'});

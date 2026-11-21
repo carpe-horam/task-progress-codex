@@ -1,0 +1,40 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const {createHost}=require('./browser_host.cjs');
+const {createReviewQueueHandler}=require('../plugins/task-progress/cindy/node/review-queue.cjs');
+(async()=>{const h=await createHost();try{
+ const main={execution_mode:'main_session',self_execution_reason:'隔离批次测试'};
+ const sub={execution_mode:'subagent',tool_identifier:'fixture.spawn',dispatch_text:'生成隔离测试结果'};
+ const tasks=Array.from({length:27},(_,i)=>({id:'w'+String(i).padStart(2,'0'),title:'工作 '+i,assignment:sub}));
+ const init=await h.rawRpc('init_task_network',{task_title:'多批次验收',tasks});
+ const binding={session_id:init.structuredContent.session_id,task_instance_id:init.structuredContent.task_instance_id};
+ const attempts={};
+ for(const {id} of tasks){const started=await h.rawRpc('update_task',{...binding,task_id:id,execution_status:'running',assignment:sub});attempts[id]=started.structuredContent.attempt_id;await h.rawRpc('bind_task_agent',{...binding,task_id:id,attempt_id:attempts[id],agent_name:'agent-'+id});await h.rawRpc('update_task',{...binding,task_id:id,attempt_id:attempts[id],execution_status:'finished',outcome:'resolved',summary:'隔离结果',evidence:['fixture://result']});}
+ const rpc=async req=>({result:await h.rawRpc(req.params.name,req.params.arguments)}),handler=createReviewQueueHandler(rpc),calls=[];let kv={taskProgressSessionsByHostSession:{host:binding.session_id},taskProgressContextsByHostSession:{host:{...binding}},taskProgressAutoReview:{host:{enabled:true,session_id:binding.session_id,ledger:{}}}};
+ const sandbox={BroadcastChannel:class{postMessage(){}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout,clearTimeout,fetch:async(_u,opt)=>{if(opt?.method==='PUT')kv=JSON.parse(opt.body);return {ok:true,json:async()=>structuredClone(kv)}},cindy:{onHostMessage(){},send:async()=>{},node:{request:async req=>{const r=await handler({jsonrpc:'2.0',id:1,...req});return r.error?{ok:false,message:r.error.message}:{ok:true,result:r.result}}},agent:{run:async args=>{calls.push(args);return {ok:true,mode:'continue',sessionId:'host',disposition:'queued'}}}}};
+ vm.runInNewContext(fs.readFileSync(path.resolve('plugins/task-progress/cindy/main.js'),'utf8')+'\nglobalThis.dispatch=dispatchDueReviews;globalThis.reconcile=reconcileUncertainReviews;',sandbox);
+ assert.equal(await sandbox.dispatch('host'),'dispatched');assert.equal(calls.length,1);
+ for(let i=0;i<24;i++){const id=tasks[i].id;await h.rawRpc('review_task',{...binding,task_id:id,attempt_id:attempts[id],decision:'accept',summary:'已核验',evidence:['fixture://review'],reviewer:main});}
+ assert.equal(await sandbox.reconcile('host',true),'awaiting_completion');
+ for(const entry of Object.values(kv.taskProgressAutoReview.host.ledger))if(entry.state==='dispatched')entry.at-=61000;
+ assert.equal(await sandbox.reconcile('host',true),'review_pending');
+ assert.equal(await sandbox.dispatch('host'),'dispatched_with_pending');assert.equal(calls.length,2);
+ assert.match(calls[1].userMessage,/w25/);assert.match(calls[1].userMessage,/w26/);assert.doesNotMatch(calls[1].userMessage,/w24/);
+ const queue=await h.rawRpc('get_progress',{...binding,view:'review_queue'});assert.equal(queue.structuredContent.progress.records.length,3,'未处理的三项仍待真实复核');
+ assert.equal(Object.values(kv.taskProgressAutoReview.host.ledger).filter(x=>x.state==='review_pending').length,1);
+ for(const entry of Object.values(kv.taskProgressAutoReview.host.ledger))if(entry.state==='dispatched')entry.at-=61000;
+ assert.equal(await sandbox.reconcile('host',true),'review_pending');
+ assert.equal(await sandbox.dispatch('host'),'review_pending');assert.equal(calls.length,2,'two stalled batches stop further queue growth');
+ const raceInit=await h.rawRpc('init_task_network',{task_title:'派发前变化',tasks:[{id:'race',title:'待复核',assignment:sub},{id:'other',title:'其他',assignment:main}]});
+ const race={session_id:raceInit.structuredContent.session_id,task_instance_id:raceInit.structuredContent.task_instance_id};
+ const raceStart=await h.rawRpc('update_task',{...race,task_id:'race',execution_status:'running',assignment:sub}),raceAttempt=raceStart.structuredContent.attempt_id;
+ await h.rawRpc('bind_task_agent',{...race,task_id:'race',attempt_id:raceAttempt,agent_name:'race-agent'});
+ await h.rawRpc('update_task',{...race,task_id:'race',attempt_id:raceAttempt,execution_status:'finished',outcome:'resolved',summary:'结果',evidence:['fixture://race']});
+ let changed=false;const raceRpc=async req=>({result:await h.rawRpc(req.params.name,req.params.arguments)});
+ const raceHandler=createReviewQueueHandler(raceRpc),raceCalls=[];
+ let raceKv={taskProgressSessionsByHostSession:{host:race.session_id},taskProgressContextsByHostSession:{host:{...race}},taskProgressAutoReview:{host:{enabled:true,session_id:race.session_id,ledger:{}}}};
+ const raceSandbox={...sandbox,fetch:async(_u,opt)=>{if(opt?.method==='PUT')raceKv=JSON.parse(opt.body);return {ok:true,json:async()=>structuredClone(raceKv)}},cindy:{...sandbox.cindy,node:{request:async req=>{if(req.params.name==='cindy_review_reconcile'&&!changed){changed=true;await h.rawRpc('review_task',{...race,task_id:'race',attempt_id:raceAttempt,decision:'accept',summary:'其他执行者已核验',evidence:['fixture://review'],reviewer:main});}const response=await raceHandler({jsonrpc:'2.0',id:1,...req});return response.error?{ok:false,message:response.error.message}:{ok:true,result:response.result}}},agent:{run:async args=>{raceCalls.push(args);return {ok:true,mode:'continue',sessionId:'host'}}}}};
+ vm.runInNewContext(fs.readFileSync(path.resolve('plugins/task-progress/cindy/main.js'),'utf8')+'\nglobalThis.dispatch=dispatchDueReviews;',raceSandbox);
+ assert.equal(await raceSandbox.dispatch('host'),'queue_changed');assert.equal(raceCalls.length,0,'派发前已被处理的待办不能进入后台回合');assert.equal(raceKv.taskProgressAutoReview.host.reservation,null);
+ console.log('Real backend multi-batch: partial completion, one stalled item, distinct next batch and no fabricated acceptance passed.');
+}finally{await h.close()}})().catch(e=>{console.error(e);process.exitCode=1});

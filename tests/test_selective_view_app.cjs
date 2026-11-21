@@ -39,14 +39,17 @@ async function main() {
   await frame.locator('#task-title').filter({hasText:'App-only selective view'}).waitFor();
   assert.equal(await frame.locator('#session-work > details[open]').count(), 0);
   const leaf = frame.locator('#steps > .step > details > .children > .step');
-  assert.match(await leaf.locator(':scope > details > summary .step-execution-meta').textContent(), /子智能体 · \/fixture\/real-agent · fixture-model · 思考 high/);
+  const row=frame.locator('#step-list .plan-row[data-step-id="work"]');
+  const inlineMeta=row.locator('.plan-owner');
+  assert.equal(await inlineMeta.locator('[aria-label="子智能体"]').count(),1);
+  assert.match(await inlineMeta.innerText(),/fixture-model.*high/);
+  assert.doesNotMatch(await row.innerText(),/real-agent/);
   assert.equal(await leaf.locator('.execution-review').getAttribute('open'), null);
   assert.equal(await page.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress_view' && call.args.include_history).length), 0);
   assert.equal(await page.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress').length), 0);
   results.push('Raw init/update receipts and render bootstrap contain no task tree; fullscreen panel initializes through get_progress_view.');
   await capture(page,'01-default-identity-collapsed');
-  await leaf.locator(':scope > details > summary').click();
-  await leaf.locator('.execution-review > summary').click();
+  await row.locator('.plan-title').click();
   await page.evaluate(() => {
     const raw = window.hostRpc;
     window.lazy = {hold:true,release:null,fail:false};
@@ -60,16 +63,20 @@ async function main() {
       return raw(name,args);
     };
   });
-  await leaf.locator('.attempt-history > summary').click();
+  await frame.locator('#detail-tab-records').click();
   await page.waitForFunction(() => !!window.lazy.release);
-  await leaf.locator('.review-history > summary').click();
-  assert.equal(await page.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress_view' && call.args.include_history).length), 1, 'simultaneous details share one read');
   await page.evaluate(() => window.lazy.release());
-  await leaf.locator('.attempt-history .attempt-record').first().waitFor();
-  assert.match(await leaf.locator('.attempt-history').textContent(), /LAZY_EVIDENCE_SENTINEL/);
-  await frame.locator('#refresh').click();
-  await frame.locator('#refresh:not([disabled])').waitFor();
-  assert.match(await leaf.locator('.attempt-history').textContent(), /LAZY_EVIDENCE_SENTINEL/);
+  await frame.locator('#detail-panel-records .detail-event').first().waitFor();
+  assert.match(await frame.locator('#detail-panel-result').textContent(), /LAZY_EVIDENCE_SENTINEL/);
+  await frame.locator('#detail-tab-raw').click();
+  const execution=frame.locator('#detail-raw-fields details[data-key$=":config"]');
+  await execution.locator(':scope > summary').click();
+  assert.match(await execution.innerText(),/fixture-model[\s\S]*思考强度[\s\S]*高/);
+  const ids=frame.locator('#detail-raw-fields details[data-key$=":ids"]');
+  await ids.locator(':scope > summary').click();
+  assert.match(await ids.innerText(),/智能体[\s\S]*\/fixture\/real-agent/);
+  await frame.locator('#step-detail-back').click();
+  await frame.locator('#refresh').click();await frame.locator('#refresh:not([disabled])').waitFor();
   assert.equal(await page.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress_view' && call.args.include_history).length), 1);
   results.push('Execution/review disclosures deduplicate one full instance read; exact-binding records survive compact refresh.');
   // A small mutation receipt refreshes the panel without becoming a blank tree.
@@ -77,13 +84,14 @@ async function main() {
   assert(!Object.hasOwn(receipt.structuredContent, 'progress'));
   await push(page, receipt);
   assert.equal(await frame.locator('#task-title').textContent(), 'App-only selective view');
-  await leaf.locator('.review-history').filter({hasText:'REVIEW_ACCEPTED_SENTINEL'}).waitFor();
+  await row.locator('.plan-title').click();
+  await frame.locator('#detail-panel-result').filter({hasText:'REVIEW_ACCEPTED_SENTINEL'}).waitFor();
   const overview = await host.rawRpc('get_progress', {session_id:binding.session_id});
   assert.equal(overview.structuredContent.view, 'overview');
   await push(page, overview);
   assert.equal(await leaf.count(), 1, 'selective model query does not replace full panel snapshot');
   results.push('Mutation receipts refresh the existing tree; selective model query results cannot overwrite the panel.');
-  await frame.locator('#export-all').click();
+  await frame.locator('#step-detail-back').click();await frame.locator('#export-all').click();
   await frame.locator('#export-feedback').filter({hasText:'已导出 Excel'}).waitFor();
   const save = await page.evaluate(() => window.host.calls.findLast(call => call.name === 'save_export_files'));
   const report = await host.browser.newPage();
@@ -92,22 +100,54 @@ async function main() {
   assert.match(await report.locator('body').textContent(), /REVIEW_ACCEPTED_SENTINEL/);
   results.push('Export reads full history through the app-only tool and retains execution plus review evidence.');
   await capture(page,'02-expanded-execution-records');
-  // A failed bootstrap read leaves a usable refresh button for retry.
+  // A failed bootstrap read shows its cause beside the recovery action.
   const failedPage = await host.page();
   await failedPage.evaluate(() => {
     const raw = window.hostRpc;
-    window.failBootstrap = true;
-    window.hostRpc = (name,args) => name === 'get_progress_view' && window.failBootstrap ? Promise.reject(new Error('Injected bootstrap failure')) : raw(name,args);
+    window.bootstrapMode = 'reject';
+    window.hostRpc = async (name,args) => {
+      if (name === 'get_progress_view') {
+        if (window.bootstrapMode === 'reject') throw new Error('Injected bootstrap failure');
+        if (window.bootstrapMode === 'hold') {
+          await new Promise(resolve => {window.releaseRead = resolve;});
+          return {isError:true,content:[{type:'text',text:'Read service unavailable'}]};
+        }
+      }
+      return raw(name,args);
+    };
   });
   const failureInit = await host.rawRpc('init_task_network',{task_title:'App-only selective view',atomic_reason:'Isolated bootstrap retry fixture'});
   const failureSid = failureInit.structuredContent.session_id;
   const currentBootstrap = await host.rawRpc('render_progress',{session_id:failureSid});
   const failedFrame = await host.mount(failedPage, 'main', currentBootstrap);
-  await failedFrame.locator('#error').filter({hasText:'Injected bootstrap failure'}).waitFor();
-  await failedPage.evaluate(() => {window.failBootstrap=false;});
-  await failedFrame.locator('#refresh').click();
+  await failedFrame.locator('#empty-message').filter({hasText:'Injected bootstrap failure'}).waitFor();
+  const retry = failedFrame.getByRole('button',{name:'重试',exact:true});
+  assert.equal(await failedFrame.getByRole('button').count(),1);
+  const initialReadCount = await failedPage.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress_view').length);
+  await failedPage.evaluate(() => {window.bootstrapMode='hold';});
+  await retry.click();
+  await failedPage.waitForFunction(() => !!window.releaseRead);
+  assert.equal(await failedFrame.getByRole('button',{name:'正在重试…'}).getAttribute('aria-disabled'),'true');
+  await failedPage.keyboard.press('Enter');
+  await failedPage.evaluate(() => window.releaseRead());
+  await failedFrame.locator('#empty-message').filter({hasText:'Read service unavailable'}).waitFor();
+  assert.equal(await failedPage.evaluate(() => window.host.calls.filter(call => call.name === 'get_progress_view').length),initialReadCount+1);
+  assert.equal(await failedFrame.locator('#error').isVisible(),false);
+  await failedPage.evaluate(() => {window.bootstrapMode='ready';});
+  await retry.click();
   await failedFrame.locator('#task-title').filter({hasText:'App-only selective view'}).waitFor();
-  results.push('Bootstrap query failure remains visible and retries through the regular refresh button.');
+  assert.equal(await failedFrame.locator('#empty').isVisible(),false);
+  assert.equal(await failedFrame.locator('#refresh').isVisible(),true);
+  results.push('Initial transport and tool errors show one reason and retry action. Repeated input while waiting sends one read; retry restores the live workspace.');
+  const reconnectPage = await host.page();
+  await reconnectPage.evaluate(() => {window.host.initializeError='Host offline';});
+  const reconnectFrame = await host.mount(reconnectPage,'main',currentBootstrap);
+  await reconnectFrame.locator('#empty-message').filter({hasText:'Host offline'}).waitFor();
+  await reconnectPage.evaluate(() => {window.host.initializeError='';});
+  await reconnectFrame.getByRole('button',{name:'重新连接'}).click();
+  await reconnectFrame.locator('#task-title').filter({hasText:'App-only selective view'}).waitFor();
+  await reconnectPage.close();
+  results.push('An initial handshake failure can reconnect and load the actual task without reopening the page.');
   // Empty-state receipts have no instance ID and must still query the panel.
   const cleared = await host.rawRpc('clear_progress', {session_id:failureSid});
   assert(!Object.hasOwn(cleared.structuredContent,'progress'));

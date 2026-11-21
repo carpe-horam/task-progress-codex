@@ -53,6 +53,40 @@ class SelectiveWireTests(unittest.TestCase):
     def read(self, **args):
         return self.rpc('get_progress', session_id=self.sid, task_instance_id=self.iid, **args)['structuredContent']
 
+    def test_review_queue_identity_pagination_and_revision_binding(self):
+        workers = [{'id': f'worker_{i:02}', 'title': f'Worker {i}', 'assignment': SUB} for i in range(23)]
+        created = self.rpc('init_task_network', task_title='Review queue', tasks=workers)['structuredContent']
+        sid, iid = created['session_id'], created['task_instance_id']
+        for i in range(23):
+            tid=f'worker_{i:02}'
+            start=self.rpc('update_task',session_id=sid,task_instance_id=iid,task_id=tid,execution_status='running',assignment=SUB)['structuredContent']
+            attempt=start['attempt_id']
+            self.rpc('bind_task_agent',session_id=sid,task_instance_id=iid,task_id=tid,attempt_id=attempt,agent_name=f'agent-{i}')
+            self.rpc('update_task',session_id=sid,task_instance_id=iid,task_id=tid,attempt_id=attempt,execution_status='finished',outcome='resolved',summary='done',evidence=['fixture'])
+        first=self.rpc('get_progress',session_id=sid,task_instance_id=iid,view='review_queue',limit=20)['structuredContent']
+        self.assertEqual(first['progress']['pagination']['total'],23)
+        self.assertTrue(first['progress']['pagination']['has_more'])
+        second=self.rpc('get_progress',session_id=sid,task_instance_id=iid,view='review_queue',limit=20,offset=20,expected_state_revision=first['state_revision'])['structuredContent']
+        rows=first['progress']['records']+second['progress']['records']
+        self.assertEqual(len(rows),23);self.assertEqual(len({r['task_id'] for r in rows}),23)
+        self.assertTrue(all(r['kind']=='submission_review' and r['actionable'] and r['attempt_id'] for r in rows))
+        first_row=rows[0]
+        self.rpc('review_task',session_id=sid,task_instance_id=iid,task_id=first_row['task_id'],attempt_id=first_row['attempt_id'],decision='accept',summary='verified',evidence=['proof'],reviewer=MAIN)
+        response=json.loads(server.handle({'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'get_progress','arguments':{'session_id':sid,'task_instance_id':iid,'view':'review_queue','offset':20,'expected_state_revision':first['state_revision']}}}))['result']
+        self.assertTrue(response.get('isError'));self.assertIn('state_revision',response['content'][0]['text'])
+
+    def test_review_queue_exposes_missing_identity_without_authorizing_action(self):
+        with server._session_lock(self.sid):
+            data=server._read(self.sid)
+            data['nodes']['work']['review_status']='pending'
+            data['nodes']['work']['attempt_id']=None
+            server._write(self.sid,data)
+        response=self.read(view='review_queue')
+        item=next(item for item in response['progress']['records'] if item['task_id']=='work')
+        self.assertEqual(item['kind'],'submission_review')
+        self.assertFalse(item['actionable'])
+        self.assertIsNone(item['attempt_id'])
+
     def test_context_update_missing_reason_reports_validation_error(self):
         args = {'session_id': self.sid, 'task_instance_id': self.iid, 'goal': 'Updated goal',
                 'constraints': [], 'acceptance_criteria': ['Proof'], 'resume_note': 'Next check'}

@@ -7,9 +7,8 @@ const { execFileSync } = require('node:child_process');
 const { createHost } = require('./browser_host.cjs');
 
 const root = path.resolve(__dirname, '..', 'plugins/task-progress/cindy');
-if (!fs.existsSync(path.join(root, 'core'))) {
-  execFileSync('python3', [path.join(root, 'prepare.py')], { stdio: 'inherit' });
-}
+// Test this source tree, even when a prior run left a generated core behind.
+execFileSync('python3', [path.join(root, 'prepare.py')], { stdio: 'inherit' });
 const mainAssignment = { execution_mode: 'main_session', self_execution_reason: 'Isolated Cindy panel display fixture' };
 let host;
 let server;
@@ -66,6 +65,18 @@ async function main() {
 
   const page = await host.page();
   await page.addInitScript(() => {
+    window.__themeTimers = new Set();
+    const nativeSetInterval = window.setInterval.bind(window);
+    const nativeClearInterval = window.clearInterval.bind(window);
+    window.setInterval = (fn, delay, ...args) => {
+      const id = nativeSetInterval(fn, delay, ...args);
+      if (delay === 500) window.__themeTimers.add(id);
+      return id;
+    };
+    window.clearInterval = id => {
+      window.__themeTimers.delete(id);
+      return nativeClearInterval(id);
+    };
     localStorage.setItem('task-progress-panel-session', 'stale-session-from-another-chat');
     window.__bridgeStats = { wakes: 0, requests: 0, executions: 0, viewRegistrations: 0 };
     window.__wakeFailures = 2;
@@ -111,24 +122,60 @@ async function main() {
   const app = page.frameLocator('#progress-app');
   await app.locator('#task-title').filter({ hasText: 'Cindy 端到端验证' }).waitFor({ timeout: 15000 });
   assert.ok(await page.evaluate(() => window.__bridgeStats.wakes >= 3), 'panel retries after initial wake failures');
-  await app.locator('#steps > .step').first().waitFor();
+  await app.locator('#step-list .plan-row').first().waitFor();
   await page.locator('#panel-status').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#progress-app').evaluate(el => getComputedStyle(el).visibility), 'visible', 'the task is shown after loading completes');
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'other-chat',status:'uncertain'}));
+  await page.waitForTimeout(100);assert.equal(await page.locator('#panel-status').isHidden(),true,'other sessions cannot surface auto-review state');
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'uncertain'}));
+  await page.locator('#panel-status').filter({hasText:'派发结果待核实'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'review_pending'}));
+  await page.locator('#panel-status').filter({hasText:'可能正在排队或检查中'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'host_suspended'}));
+  await page.locator('#panel-status').filter({hasText:'自动验收暂缓'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'association_unverified'}));
+  await page.locator('#panel-status').filter({hasText:'会话授权尚未确认'}).waitFor();
+  await app.locator('html').evaluate((_,session)=>window.parent.postMessage({jsonrpc:'2.0',method:'task-progress/rendered',params:{session_id:session}},'*'),binding.session_id);
+  await page.locator('#panel-status').filter({hasText:'会话授权尚未确认'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'empty'}));
+  await page.locator('#panel-status').filter({hasText:'会话授权尚未确认'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'association_verified'}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'consent_required'}));
+  await page.locator('#panel-status').filter({hasText:'需要重新启用'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'disabled'}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'event_gap'}));
+  await page.locator('#panel-status').filter({hasText:'会话事件有缺失'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'empty'}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'next-chat',status:'association_unverified'}));
+  assert.equal(await page.locator('#panel-status').isHidden(),true,'a background session warning stays scoped');
+  currentKV.taskProgressSessionsByHostSession['next-chat']=binding.session_id;
+  currentKV.taskProgressActiveHostSessionId='next-chat';
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'bind-session',session_id:null}));
+  await page.locator('#panel-status').filter({hasText:'会话授权尚未确认'}).waitFor();
+  currentKV.taskProgressActiveHostSessionId='cindy-session-current';
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'bind-session',session_id:null}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'empty'}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'task-init-error',host_session_id:'other-chat',message:'其他会话错误'}));
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('#panel-status').isHidden(), true, 'another conversation cannot surface an init error here');
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'task-init-error',host_session_id:'cindy-session-current',message:'请说明独立新目标'}));
+  await page.locator('#panel-status').filter({hasText:'新任务未开始：请说明独立新目标'}).waitFor();
+  await page.evaluate(session => new BroadcastChannel('task-progress-panel').postMessage({type:'update',tool:'init_task_network',session_id:session,result:{structuredContent:{}}}), binding.session_id);
+  await page.locator('#panel-status').waitFor({state:'hidden'});
   await page.waitForFunction(() => window.__bridgeStats.wakes > 0 && window.__bridgeStats.requests > window.__bridgeStats.executions);
   assert.equal(await app.locator('#task-title').textContent(), 'Cindy 端到端验证');
-  // Pending branches are collapsed until explicitly opened; exercise that real path.
-  const stageDisclosure = app.locator('#steps details[data-key$=":stage"]');
-  if (await stageDisclosure.getAttribute('open') === null) await stageDisclosure.locator(':scope > summary').click();
-  assert.match(await app.locator('#steps').innerText(), /工具桥接与实时刷新/);
-  assert.match(await app.locator('#steps').innerText(), /暗色主题与任务列表显示/);
+  assert.match(await app.locator('#step-list').innerText(), /工具桥接与实时刷新/);
+  assert.match(await app.locator('#step-list').innerText(), /暗色主题与任务列表显示/);
+  await app.locator('#step-list .plan-title').filter({hasText:'暗色主题与任务列表显示'}).click();
   const editLeaf = app.locator('li.step').filter({has: app.locator('.task-title-text', {hasText:'暗色主题与任务列表显示'})}).last();
-  await editLeaf.locator(':scope > details > summary').click();
-  await editLeaf.locator(':scope > details > details.execution-review > summary').click();
-  await editLeaf.locator('.task-title-editor > summary').click();
-  await editLeaf.locator('input[name="title"]').fill('暗色主题与任务显示已修订');
-  await editLeaf.locator('.task-title-editor input[name="reason"]').fill('验证侧栏标题编辑');
-  await editLeaf.locator('.task-title-editor button').click();
-  await app.locator('#steps').getByText('暗色主题与任务显示已修订').waitFor();
+  await app.locator('#detail-tab-raw').click();
+  assert.equal(await app.locator('.task-title-editor, form[data-title-edit]').count(),0,'title editing is absent from every current task');
+  await app.locator('#step-detail-back').click();
   assert.equal(await page.evaluate(() => window.__bridgeStats.viewRegistrations), 0, 'the persistent sidebar must not compete with inline cards for latest-view ownership');
   const newerCardSource = (await host.rpc('get_progress_view', { session_id: binding.session_id })).structuredContent;
   const newerCard = await host.rpc('register_ui_view', {
@@ -137,9 +184,9 @@ async function main() {
   });
   assert.equal(newerCard.structuredContent.is_latest, true, 'fixture must register a newer inline card');
   await host.rpc('update_task', { ...binding, task_id: 'bridge', execution_status: 'running', assignment: mainAssignment });
-  await app.locator('#steps').filter({ hasText: '进行中' }).waitFor({ timeout: 8000 });
+  await app.locator('#step-list').filter({ hasText: '进行中' }).waitFor({ timeout: 8000 });
   assert.equal(await app.locator('#compact-view').isHidden(), true, 'a newer inline card must not collapse the sidebar');
-  assert.equal(await app.locator('#auto-refresh-label').textContent(), '每 5 秒自动刷新');
+  assert.equal(await app.locator('#auto-refresh-label').textContent(), '自动更新');
   currentKV.taskProgressPanelDiagnostic = { kind: 'tool-call', hasHostSession: true, hasTaskSession: true, mapped: true };
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({ type: 'panel-diagnostic', diagnostic: { kind: 'tool-call', hasHostSession: true, hasTaskSession: true, mapped: true } }));
   await page.waitForTimeout(5300);
@@ -154,39 +201,105 @@ async function main() {
   await page.waitForTimeout(300);
   assert.equal(await app.locator('#task-title').textContent(), 'Cindy 端到端验证', 'a stale inline card cannot rebind the global panel');
 
+  assert.equal(await app.locator('#task-info, #root-review, .task-title-editor, form[data-title-edit]').count(),0);
+  assert(await app.locator('#leaf-progress').isVisible());
+  assert.equal(await app.locator('#progressbar').getAttribute('aria-valuenow'),'0');
+  assert.equal(await app.getByText('修改标题',{exact:true}).count(),0);
+  assert.equal(await app.getByText('保存标题',{exact:true}).count(),0);
+  const reviewArtifacts = process.env.TASK_PROGRESS_BROWSER_ARTIFACTS || path.resolve(__dirname,'../.cindy-build/ux-acceptance/task-details-review');
+  fs.mkdirSync(reviewArtifacts,{recursive:true});
+  await app.locator('#leaf-progress').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(reviewArtifacts,'cindy-leaf-progress.png')});
+
   await page.emulateMedia({ colorScheme: 'dark' });
   await app.locator('html[data-theme="dark"]').waitFor();
+  // Electron insertCSS changes computed styles without changing the head DOM.
+  // Keep the OS scheme dark while switching only the host-injected stylesheet.
+  await page.evaluate(() => {
+    window.__themeMessages = [];
+    document.querySelector('#progress-app').contentWindow.addEventListener('message', event => {
+      if (event.data?.method === 'ui/notifications/host-context-changed') window.__themeMessages.push(event.data.params.theme);
+    });
+    window.__themeDOMChanges = 0;
+    window.__themeDOMObserver = new MutationObserver(records => { window.__themeDOMChanges += records.length; });
+    window.__themeDOMObserver.observe(document.head, {childList:true, subtree:true, attributes:true});
+    window.__hostThemeSheet = new CSSStyleSheet();
+    window.__hostThemeSheet.replaceSync(':root { color-scheme: light; }');
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.__hostThemeSheet];
+  });
+  await app.locator('html[data-theme="light"]').waitFor({timeout:2500});
+  assert.equal(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), true, 'host theme overrides the OS theme');
+  assert.equal(await page.evaluate(() => window.__themeDOMChanges), 0, 'host stylesheet change must not notify the DOM observer');
+  await page.waitForTimeout(1100);
+  assert.deepEqual(await page.evaluate(() => window.__themeMessages), ['light'], 'unchanged host theme does not resend messages on each poll');
+  await page.evaluate(() => window.__hostThemeSheet.replaceSync(':root { color-scheme: dark; }'));
+  await app.locator('html[data-theme="dark"]').waitFor({timeout:2500});
+  assert.deepEqual(await page.evaluate(() => window.__themeMessages), ['light', 'dark'], 'CSSOM-only changes synchronize in both directions');
+  await page.evaluate(() => {
+    window.__themeDOMObserver.disconnect();
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== window.__hostThemeSheet);
+  });
   await app.locator('#refresh').click();
   await app.locator('#refresh:not([disabled])').waitFor();
   await app.locator('#refresh').click();
   await app.locator('#refresh:not([disabled])').waitFor();
-  await app.locator('#steps').filter({ hasText: '进行中' }).waitFor();
-  await app.locator('#status-filter').selectOption('running');
-  assert.equal(await app.locator('.step.running').first().isVisible(), true, 'running task remains visible');
-  assert.equal(await app.locator('.step').filter({hasText:'暗色主题与任务显示已修订'}).last().isVisible(), false, 'nonmatching leaf is hidden');
+  await app.locator('#step-list').filter({ hasText: '进行中' }).waitFor();
+  await app.locator('#status-chips [data-status-filter="tone:running"]').click();
+  assert.equal(await app.locator('#step-list .plan-row[data-step-id="bridge"]').isVisible(), true, 'running task remains visible');
+  assert.equal(await app.locator('#step-list .plan-row[data-step-id="theme"]').count(), 0, 'nonmatching leaf is hidden');
   await app.locator('#refresh').click();
   await app.locator('#refresh:not([disabled])').waitFor();
-  assert.equal(await app.locator('#status-filter').inputValue(), 'running', 'refresh preserves filter selection');
-  await app.locator('#status-filter').selectOption('review');
+  assert.equal(await app.locator('#status-chips [data-status-filter="tone:running"]').getAttribute('aria-pressed'), 'true', 'refresh preserves filter selection');
+  await app.locator('#step-search-open').click();
+  await app.locator('#step-search').fill('不存在的任务');
+  await app.locator('#search-dialog-done').click();
   assert.equal(await app.locator('#filter-empty').isVisible(), true, 'empty filter shows a visible explanation');
   await page.emulateMedia({ colorScheme: 'light' });
   await app.locator('html[data-theme="light"]').waitFor();
   assert.equal(await app.locator('#filter-empty').isVisible(), true, 'empty filter remains visible in light theme');
   await page.emulateMedia({ colorScheme: 'dark' });
   await app.locator('html[data-theme="dark"]').waitFor();
-  await app.locator('#status-filter').selectOption('all');
+  await app.locator('#clear-plan-filters').click();
   const theme = await app.locator('html').getAttribute('data-theme');
   assert.equal(theme, 'dark', 'embedded app follows the Cindy panel dark theme');
-  assert.equal(await app.locator('#auto-refresh-label').textContent(), '每 5 秒自动刷新');
+  assert.equal(await app.locator('#auto-refresh-label').textContent(), '自动更新');
 
-  const deleteLeaf = app.locator('li.step').filter({has: app.locator('.task-title-text', {hasText:'暗色主题与任务显示已修订'})}).last();
-  if (!await deleteLeaf.locator(':scope > details').evaluate(el => el.open)) await deleteLeaf.locator(':scope > details > summary').click();
-  if (!await deleteLeaf.locator(':scope > details > details.execution-review').evaluate(el => el.open)) await deleteLeaf.locator(':scope > details > details.execution-review > summary').click();
-  await deleteLeaf.locator('.task-delete > summary').click();
-  await deleteLeaf.locator('.task-delete input[name="reason"]').fill('隔离验收删除');
-  await deleteLeaf.locator('.task-delete button').click();
-  await app.locator('#steps').getByText('暗色主题与任务显示已修订').waitFor({state:'hidden'});
-  const deletedState = (await host.rpc('get_progress',{...binding,view:'full'})).structuredContent.progress;
+  const deleteLeaf = app.locator('li.step').filter({has: app.locator('.task-title-text', {hasText:'暗色主题与任务列表显示'})}).last();
+  await app.locator('#step-list .plan-title').filter({hasText:'暗色主题与任务列表显示'}).click();
+  await app.locator('#detail-tab-raw').click();
+  await app.locator('#detail-panel-raw .task-delete > summary').click();
+  for (const width of [320,390]) {
+    await page.setViewportSize({width,height:900});
+    await page.waitForFunction(width => {
+      const frame=document.querySelector('#progress-app');
+      return Math.round(frame.getBoundingClientRect().width)===width && frame.contentDocument.documentElement.clientWidth>0;
+    },width,{timeout:8000});
+    for (const theme of ['light','dark']) {
+      await page.emulateMedia({colorScheme:theme});
+      await app.locator('html[data-theme="'+theme+'"]').waitFor();
+      await app.locator('#detail-panel-raw .task-delete').scrollIntoViewIfNeeded();
+      const formLayout = await app.locator('#detail-panel-raw .task-delete form').evaluate(form => ({
+        display:getComputedStyle(form).display,
+        fields:[...form.querySelectorAll('input,button')].map(control => {
+          const box=control.getBoundingClientRect(),style=getComputedStyle(control);
+          return {width:box.width,height:box.height,left:box.left,right:box.right,fontSize:parseFloat(style.fontSize),viewport:innerWidth};
+        })
+      }));
+      assert.equal(formLayout.display,'grid','delete controls retain a structured form layout');
+      assert(formLayout.fields.every(control => control.width>0 && control.height>=30 && control.fontSize>=12 && control.left>=0 && control.right<=control.viewport+1),
+        'delete controls remain readable and inside the '+width+'px '+theme+' panel: '+JSON.stringify(formLayout));
+      await page.screenshot({path:path.join(reviewArtifacts,'cindy-delete-'+width+'-'+theme+'.png')});
+    }
+  }
+  await page.setViewportSize({width:1150,height:1200});
+  await app.locator('#detail-panel-raw .task-delete input[name="reason"]').fill('隔离验收删除');
+  await app.locator('#detail-panel-raw .task-delete button').click();
+  let deletedState;
+  for (let i=0; i<40; i++) {
+    deletedState = (await host.rpc('get_progress',{...binding,view:'full'})).structuredContent.progress;
+    if (!deletedState.nodes.some(node => node.id === 'theme')) break;
+    await page.waitForTimeout(250);
+  }
   assert(!deletedState.nodes.some(node => node.id === 'theme'));
   assert(deletedState.plan_revisions.some(record => record.operation === 'delete_task' && record.before_plan.nodes.theme));
 
@@ -226,7 +339,7 @@ async function main() {
     execution_status: 'running',
     assignment: mainAssignment
   });
-  await app.locator('#steps').filter({ hasText: '进行中' }).waitFor({ timeout: 8000 });
+  await app.locator('#step-list').filter({ hasText: '进行中' }).waitFor({ timeout: 8000 });
   await page.screenshot({ path: '/tmp/task-progress-cindy-reused-app.png' });
   currentKV = { ...currentKV, taskProgressSessionsByHostSession: {}, taskProgressPanelDiagnostic: { kind: 'session-switch', hasHostSession: true, mapped: false } };
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({
@@ -235,18 +348,21 @@ async function main() {
   }));
   await app.locator('#empty-session-diagnostic').filter({ hasText: '已收到 Cindy 会话切换，但该会话尚未关联 Task Progress 数据。' }).waitFor();
   assert.equal(await page.locator('#progress-app').evaluate(el => getComputedStyle(el).visibility), 'visible', 'unmapped sessions still show the real empty state');
-  await page.locator('#panel-status').filter({ hasText: '已收到 Cindy 会话切换，但该会话尚未关联 Task Progress 数据。' }).waitFor();
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(() => window.__themeTimers.size), 1, 'one theme watcher belongs to the mounted panel');
+  await app.locator('html').evaluate(() => window.parent.postMessage({jsonrpc:'2.0', id:'theme-teardown', method:'ui/resource-teardown'}, '*'));
+  await page.waitForFunction(() => window.__themeTimers.size === 0);
   assert.deepEqual(host.errors, []);
   console.log(JSON.stringify({
     pass: true,
     reused: 'plugins/task-progress/cindy/core/app.html',
-    checks: ['full task network is visible', 'visible chat app binds the right panel to its current task session', 'panel wakes the resident tool bridge and retries until a reply arrives', 'repeated request ids execute only once', '5 second polling shows a running task without manual refresh', 'dark theme is passed into the embedded app', 'stale local cache cannot override the current session mapping', 'unmapped Cindy sessions show a visible sync diagnosis'],
+    checks: ['full task network is visible', 'title editing is removed from root and leaf details', 'pending leaf deletion form is readable at 320/390px in both themes and deletes through the real backend', 'visible chat app binds the right panel to its current task session', 'panel wakes the resident tool bridge and retries until a reply arrives', 'repeated request ids execute only once', '5 second polling shows a running task without manual refresh', 'dark theme is passed into the embedded app', 'CSSOM-only host theme changes synchronize without duplicate notifications', 'theme watcher is cleared on resource teardown', 'stale local cache cannot override the current session mapping', 'unmapped Cindy sessions show a visible sync diagnosis'],
     screenshot: '/tmp/task-progress-cindy-reused-app.png'
   }, null, 2));
   await page.close();
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
-  if (server) await new Promise(resolve => server.close(resolve));
   await host?.close();
+  if (server) await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
 });

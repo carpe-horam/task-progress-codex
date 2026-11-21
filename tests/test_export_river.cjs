@@ -104,9 +104,9 @@ async function main(){
  assert.equal(await theme.inputValue(),'porcelain-blue','first open defaults to porcelain blue even with a dark OS theme');
  assert.equal(await report.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(250, 251, 255)');
  const expectedTones={failed:'danger',rejected:'danger',blocked:'attention',open:'attention',running:'running','deep-peer':'attention',worker:'success',cancelled:'neutral',unknown:'neutral'};
- for(const [id,tone] of Object.entries(expectedTones))assert.equal(await report.locator('#rp-current [data-node-id="'+id+'"] > .r-task-meta .r-state').getAttribute('data-tone'),tone,id+' semantic tone');
+ for(const [id,tone] of Object.entries(expectedTones))assert.equal(await report.locator('#rp-current [data-node-id="'+id+'"] > .r-node-head > .r-task-meta .r-state').getAttribute('data-tone'),tone,id+' semantic tone');
  assert.equal(await report.locator('#rp-plans .rp-round:not(#rp-current) .r-state:not([data-tone="neutral"]),#rp-archives .r-state:not([data-tone="neutral"])').count(),0,'history does not look like a current alert');
- assert((await report.locator('#rp-current [data-node-id="unknown"] > .r-task-meta').textContent()).includes('验收未记录'));
+ assert((await report.locator('#rp-current [data-node-id="unknown"] > .r-node-head > .r-task-meta').textContent()).includes('验收未记录'));
  assert.deepEqual(await report.locator('.rp-attention .rp-concern').allTextContents(),['失败 / 退回 2','待验收 1','依赖阻塞 1','仍未解决 1'],'current leaf attention is counted once, excluding old rounds and archives');
  assert.deepEqual(await report.locator('#rp-current [data-node-id="root"] > .r-child-bottom .rp-concern').allTextContents(),['失败 / 退回 2','待验收 1','依赖阻塞 1','仍未解决 1'],'collapsed parent exposes descendant concerns');
  const semanticColors=await report.locator('.rp-legend > span').evaluateAll(items=>items.map(item=>getComputedStyle(item).color));
@@ -151,12 +151,22 @@ async function main(){
  const rootLeafCount=p(fixture).nodes.filter(node=>!node.children?.length).length;
  assert((await rootCounts.textContent()).includes('底层任务 '+rootLeafCount+' 项'),'direct children and bottom-level tasks have distinct labels');
  assert.equal(await report.locator('#rp-current [data-node-id="worker"]').getAttribute('data-hierarchy'),'1.1.1.1');
- const failedTime=report.locator('#rp-current [data-node-id="failed"] > .r-task-meta .r-task-time');
- assert((await failedTime.textContent()).includes('历史未记录 · 结束于 '),'end-only timestamps do not invent a start or completion');
+ assert.equal(await report.locator('.r-parent-ref').count(),0,'hierarchy does not repeat parent labels');
+ assert((await report.locator('.rp-print-note').textContent()).includes('时间线中已展开'));
+ assert((await report.locator('.r-node-index .r-index-local').allTextContents()).every(text=>/^\d+$/.test(text)),'visible hierarchy markers use compact local numbers');
+ assert.match(await report.locator('#rp-current [data-node-id="worker"] > .r-node-head > [data-task]').getAttribute('aria-label'),/^1\.1\.1\.1 /,'full hierarchy remains accessible to keyboard/screen reader users');
+ const failedTime=report.locator('#rp-current [data-node-id="failed"] > .r-node-head > .r-task-meta .r-task-time');
+ assert((await failedTime.textContent()).startsWith('结束于 '),'end-only timestamps do not invent a start or completion');
+ assert((await failedTime.getAttribute('title')).includes('展示开始：历史未记录'),'unknown starting boundary remains available in full time metadata');
  assert((await failedTime.getAttribute('title')).includes('2026-10-26T01:04:05Z'),'tooltip keeps original timestamp and seconds');
- assert((await report.locator('#rp-current [data-node-id="running"] > .r-task-meta .r-task-time').textContent()).startsWith('开始于 '));
- assert.equal(await report.locator('#rp-current [data-node-id="cancelled"] > .r-task-meta .r-task-time').textContent(),'历史未记录 / 历史未记录');
- const workerTime=await report.locator('#rp-current [data-node-id="worker"] > .r-task-meta .r-task-time').textContent();
+ assert((await report.locator('#rp-current [data-node-id="running"] > .r-node-head > .r-task-meta .r-task-time').textContent()).startsWith('开始于 '));
+ assert.equal(await report.locator('#rp-current [data-node-id="cancelled"] > .r-node-head > .r-task-meta .r-task-time').textContent(),'时间未记录');
+ const groupTime=report.locator('#rp-current [data-node-id="depth-3"] > .r-node-head > .r-task-meta .r-task-time');
+ assert.equal(await groupTime.textContent(),'未开始','pending group time does not repeat its unfinished state or derivation explanation');
+ assert((await groupTime.getAttribute('title')).includes('子任务尚未全部结束'),'complete derived end state remains available');
+ assert((await report.locator('#rp-current [data-node-id="depth-3"] > .r-detail .rp-original-info').textContent()).includes('子任务尚未全部结束'),'original information preserves derived interval semantics');
+ assert(!(await report.locator('#rp-current .r-node-head .r-task-time').allTextContents()).some(text=>/子任务|尚未全部结束/.test(text)),'default time rows omit repeated source and status wording');
+ const workerTime=await report.locator('#rp-current [data-node-id="worker"] > .r-node-head > .r-task-meta .r-task-time').textContent();
  assert(workerTime.includes('10/25')&&workerTime.includes('10/26'),'cross-day range keeps both dates');
  assert(!workerTime.includes('未记录')&&!workerTime.includes('2026'),'known range remains compact');
  const pendingGroup=report.locator('#rp-current [data-node-id="nested"] > .r-child-bottom [data-group]');
@@ -241,21 +251,47 @@ async function main(){
  assert.equal(await report.locator('.rp-task-table tbody tr:not([hidden])').count(),0);assert(await report.locator('#rp-search-empty').isVisible());
  await report.locator('#rp-search').fill('');assert.equal(await report.locator('.rp-task-table tbody tr:not([hidden])').count(),7,'clearing search restores collapsed tree');
  await report.locator('#rp-tab-timeline').click();assert.equal(await turn.getAttribute('aria-expanded'),'true','view switching preserves disclosure state');
- for(const width of [320,760,1280]){
+ for(const width of [320,390,760,1280]){
   await report.setViewportSize({width,height:900});await report.emulateMedia({reducedMotion:'reduce'});
   if(width>=760){const sides=await report.locator('#rp-plans .rp-round').evaluateAll(items=>items.slice(0,2).map(item=>item.querySelector('.r-plan-content').getBoundingClientRect().left));assert(sides[1]>sides[0]+100,'successive timeline rounds alternate left and right at '+width);}
   await report.locator('[data-action="expand-all"]').click();
   const deep=report.locator('#rp-current [data-node-id="depth-7"]');
-  assert.equal(await deep.locator(':scope > [data-task]').textContent(),longTitle,'long titles stay complete');
-  const layout=await deep.evaluate(node=>{const title=node.querySelector(':scope > [data-task]'),badge=node.querySelector(':scope > .r-task-meta .r-state'),time=node.querySelector(':scope > .r-task-meta .r-task-time');return {titleWidth:title.getBoundingClientRect().width,titleOverflow:title.scrollWidth>title.clientWidth+1,badgeWidth:badge.getBoundingClientRect().width,badgeHeight:badge.getBoundingClientRect().height,badgeBottom:badge.getBoundingClientRect().bottom,timeTop:time.getBoundingClientRect().top,border:getComputedStyle(node).borderTopWidth};});
+  assert.equal(await deep.locator(':scope > .r-node-head > [data-task]').textContent(),longTitle,'long titles stay complete');
+  const layout=await deep.evaluate(node=>{const title=node.querySelector(':scope > .r-node-head > [data-task]'),badge=node.querySelector(':scope > .r-node-head > .r-task-meta .r-state'),time=node.querySelector(':scope > .r-node-head > .r-task-meta .r-task-time');return {titleWidth:title.getBoundingClientRect().width,titleOverflow:title.scrollWidth>title.clientWidth+1,badgeWidth:badge.getBoundingClientRect().width,badgeHeight:badge.getBoundingClientRect().height,badgeBottom:badge.getBoundingClientRect().bottom,timeTop:time.getBoundingClientRect().top,sideBorder:getComputedStyle(node).borderLeftWidth,radius:getComputedStyle(node).borderRadius,background:getComputedStyle(node).backgroundColor,rail:getComputedStyle(node.closest('.r-children')).borderLeftWidth};});
+  if(width<=390){
+   const hierarchy=deep.locator(':scope > .r-node-head .r-index-path');
+   assert(await hierarchy.isVisible());
+   assert.equal(await hierarchy.innerText(),await deep.getAttribute('data-hierarchy'),'complete deep hierarchy remains visible on touch screens');
+   assert(layout.titleWidth>=width-105,'deep titles retain most of the narrow viewport');
+  }
   assert(layout.titleWidth>=150,'deep title keeps usable width at '+width);
   assert.equal(layout.titleOverflow,false,'long title wraps without clipping at '+width);
   assert(layout.badgeWidth>60&&layout.badgeHeight<45,'status stays a readable complete badge at '+width);
   assert(layout.timeTop>=layout.badgeBottom,'time has its own line at '+width);
-  assert.equal(layout.border,'1px','each task has a visible boundary');
+  assert.equal(layout.sideBorder,'0px','task rows do not form nested card frames');
+  assert.equal(layout.radius,'0px','task rows remain flat');
+  assert.equal(layout.background,'rgba(0, 0, 0, 0)','nested task rows do not stack background panels');
+  assert.equal(layout.rail,'1px','a fine tree rail preserves the parent-child relationship');
   assert.equal(await report.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'expanded page overflow at '+width);
   await report.locator('#rp-tab-table').click();
   assert.equal(await report.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'table viewport overflow at '+width);
+  if(width<=390){
+   for(const sheet of [0,1]){
+    await report.locator('[data-sheet-index="'+sheet+'"]').click();
+    const panel=report.locator('#rp-sheet-panel-'+sheet),grid=panel.locator('.rp-book-grid');
+    const detail=panel.locator('tr:not([hidden]) > td:first-child > .rp-table-detail').first();
+    const summary=detail.locator(':scope > summary');
+    await summary.click();
+    assert.equal(await detail.evaluate(d=>d.open),true,'tap title-column action opens the same record');
+    assert.equal(await grid.evaluate(g=>g.scrollLeft),0,'details reachable at the left edge');
+    const bounds=await detail.locator(':scope > .rp-table-detail-body').boundingBox();
+    assert(bounds.x>=0&&bounds.x+bounds.width<=width,'full detail is readable on the narrow viewport');
+    assert(await grid.evaluate(g=>g.scrollWidth>g.clientWidth+300),'audit columns remain horizontally accessible');
+    await summary.press('Enter');
+    assert.equal(await detail.evaluate(d=>d.open),false);
+   }
+   await report.locator('[data-sheet-index="0"]').click();
+  }
   await report.locator('#rp-tab-timeline').click();
  }
  assert.equal(await report.evaluate(()=>document.getAnimations().filter(animation=>animation.playState==='running').length),0,'reduced motion has no running visual animation');

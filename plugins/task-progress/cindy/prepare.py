@@ -25,6 +25,8 @@ def generate(destination: Path) -> None:
         with (CINDY / "patches" / (name + ".patch")).open("rb") as patch:
             subprocess.run(["patch", "--batch", "--forward", "-s", "-p1"],
                            cwd=destination, stdin=patch, check=True)
+        # BSD patch may create a backup when context shifts. It is not a runtime file.
+        (destination / (name + ".orig")).unlink(missing_ok=True)
     for directory in ("scripts", "skills", ".codex-plugin"):
         shutil.copytree(SHARED / directory, destination / directory,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

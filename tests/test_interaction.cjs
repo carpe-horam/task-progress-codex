@@ -65,28 +65,27 @@ async function main(){
   r=await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'running',attempt_id:aid,summary:'供用户复制的稳定结果文本，自动刷新时内容没有发生变化。'});
   const card=await mount('current',r,900,'fullscreen');
   await page.waitForFunction(()=>window.audit.calls.some(c=>c.name==='register_ui_view'));
+  await card.locator('#step-list .plan-row[data-step-id="a"] .plan-title').click();
   const openAndSelect=()=>{
-    const leaf=document.querySelector('li.step > details[data-key$=":a"]');leaf.open=true;
-    for(const d of leaf.querySelectorAll('details'))d.open=true;
-    const scroll=leaf.querySelector('.dispatch .detail-value');scroll.scrollTop=160;
-    const summary=leaf.querySelector(':scope > summary');summary.focus();
-    const range=document.createRange();range.selectNodeContents(leaf.querySelector('.leaf-result-summary .detail-value'));const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
-    return {focus:document.activeElement.parentElement.dataset.key,selection:selection.toString(),scrollTop:scroll.scrollTop};
+    document.getElementById('detail-tab-result').focus();
+    const range=document.createRange();range.selectNodeContents(document.querySelector('#detail-panel-result'));const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    return {focus:document.activeElement.id,selection:selection.toString()};
   };
   const before=await card.locator('body').evaluate(openAndSelect);
   const readCount=await page.evaluate(()=>window.audit.calls.filter(c=>c.name==='get_progress_view').length);
   await page.waitForFunction(n=>window.audit.calls.filter(c=>c.name==='get_progress_view').length>n,readCount,{timeout:8500});
   await card.locator('body').evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-  const after=await card.locator('body').evaluate(()=>({focusTag:document.activeElement.tagName,focusKey:document.activeElement.parentElement?.dataset.key||null,selection:getSelection().toString(),scrollTop:document.querySelector('li.step > details[data-key$=":a"] .dispatch .detail-value').scrollTop,expanded:document.querySelector('li.step > details[data-key$=":a"]').open}));
-  assert.equal(after.focusKey,before.focus);assert.equal(after.selection,before.selection);assert.equal(after.scrollTop,before.scrollTop);assert.equal(after.expanded,true);
+  const after=await card.locator('body').evaluate(()=>({focus:document.activeElement.id,selection:getSelection().toString(),expanded:document.querySelector('#step-dialog').open}));
+  assert.equal(after.focus,before.focus);assert.equal(after.selection,before.selection);assert.equal(after.expanded,true);
   add('automatic_poll_preserves_interaction',{before,after});
   const changed=await rpc('update_task',{session_id:sid,task_id:'b',execution_status:'cancelled'});
   await page.evaluate(r=>document.getElementById('current').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*'),changed);
-  await card.locator('li.step.cancelled').waitFor();
-  const changedState=await card.locator('body').evaluate(()=>({focusKey:document.activeElement.parentElement?.dataset.key,selection:getSelection().toString(),scrollTop:document.querySelector('li.step > details[data-key$=":a"] .dispatch .detail-value').scrollTop}));
-  assert.equal(changedState.focusKey,before.focus);assert.equal(changedState.selection,before.selection);assert.equal(changedState.scrollTop,before.scrollTop);
-  await page.keyboard.press('Enter');assert.equal(await card.locator('li.step > details[data-key$=":a"]').evaluate(e=>e.open),false);
-  await page.keyboard.press('Enter');assert.equal(await card.locator('li.step > details[data-key$=":a"]').evaluate(e=>e.open),true);
+  await card.locator('#step-list .plan-row[data-step-id="b"] .plan-status').filter({hasText:'已取消'}).waitFor({state:'attached'});
+  const changedState=await card.locator('body').evaluate(()=>({focus:document.activeElement.id,selection:getSelection().toString()}));
+  assert.equal(changedState.focus,before.focus);assert.equal(changedState.selection,before.selection);
+  await card.locator('#step-detail-back').click();
+  await page.keyboard.press('Enter');assert.equal(await card.locator('#step-dialog').evaluate(e=>e.open),true);
+  await page.keyboard.press('Escape');assert.equal(await card.locator('#step-dialog').evaluate(e=>e.open),false);
   add('changed_sibling_preserves_interaction_and_keyboard',changedState);
   const selectedHeader=await card.locator('#task-title').evaluate(element=>{
     const range=document.createRange();range.selectNodeContents(element);getSelection().removeAllRanges();getSelection().addRange(range);
@@ -119,7 +118,8 @@ async function main(){
   assert(widths.every(w=>w.refreshInside && w.cardScrollWidth<=w.cardWidth+1),JSON.stringify(widths));
   add('responsive_widths',widths);
   assert.equal(await card.locator('html').getAttribute('data-theme'),'light');
-  assert.equal(await card.locator('.card').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
+  assert.equal(await card.locator('.card').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(246, 247, 250)');
+  assert.equal(await card.locator('#steps').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)','light task rows remain on a distinct white surface');
   add('light_host_theme',{cardBackground:await card.locator('.card').evaluate(e=>getComputedStyle(e).backgroundColor),colorScheme:await card.locator('html').evaluate(e=>getComputedStyle(e).colorScheme)});
   const contrast=await card.locator('.dispatch').first().evaluate(element=>{
     const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
@@ -128,7 +128,8 @@ async function main(){
   });
   assert(contrast.every(value=>value>=4.5),JSON.stringify(contrast));add('light_theme_readable_dispatch',contrast);
   await page.evaluate(()=>document.getElementById('current').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{theme:'dark'}},'*'));
-  await card.locator('html[data-theme="dark"]').waitFor();assert.equal(await card.locator('.card').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(21, 25, 32)');
+  await card.locator('html[data-theme="dark"]').waitFor();assert.equal(await card.locator('.card').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(19, 22, 30)');
+  assert.equal(await card.locator('#steps').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(27, 32, 44)','dark task rows retain a distinct surface');
   add('host_theme_change','light to dark applied');
   // Finish, retry, and verify whether the current card exposes preserved attempt history.
   await rpc('update_task',{session_id:sid,task_id:'a',execution_status:'failed',attempt_id:aid,summary:'FIRST_ATTEMPT_FAILURE_EVIDENCE'});
