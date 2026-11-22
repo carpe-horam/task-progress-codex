@@ -4459,6 +4459,34 @@ def get_progress_view(session_id: str, include_history: bool = False, task_insta
     return _tool_result(_format_detail(progress), progress, sid, state_revision=revision, include_history=include_history, response_snapshot=response_snapshot)
 
 
+def peek_hook_overview(session_id: str, task_instance_id: str | None = None) -> dict[str, Any]:
+    """Read only the Cindy hook's reminder facts, without reconciling executions.
+
+    Context composition must not change task state or allocate a view sequence.
+    A normal get_progress remains the authoritative, reconciling read path.
+    """
+    sid = _normalize_session_id(session_id)
+    with _session_lock(sid):
+        document = _read(sid)
+        selected = _task_from_document(document, task_instance_id, writable=False)
+        revision = _read_order(sid)["state_revision"]
+        if selected is None:
+            return {"content": [{"type": "text", "text": "当前会话没有进度数据。"}],
+                    "structuredContent": {"session_id": sid, "view": "overview",
+                                          "state_revision": revision, "progress": None}}
+        projected = _progress_payload(selected)
+        nodes = projected.get("nodes", projected.get("steps", []))
+        due = [node for node in nodes if node.get("stage_inventory_due_attempt")]
+        keys = ("schema_version", "task_instance_id", "epoch", "planning_status",
+                "pending_review_count", "synthesis_ready_count", "synthesis_ready_ids",
+                "closure_review_due", "read_only")
+        progress = {key: projected[key] for key in keys if key in projected}
+        progress["stage_inventory_due_count"] = len(due)
+        return {"content": [{"type": "text", "text": "Task Progress hook 概览。"}],
+                "structuredContent": {"session_id": sid, "task_instance_id": projected.get("task_instance_id"),
+                                      "view": "overview", "state_revision": revision, "progress": progress}}
+
+
 def select_work_context(session_id: str, task_instance_id: str, epoch: int,
                         purpose: str = "work", task_id: str | None = None,
                         attempt_id: str | None = None) -> dict[str, Any]:
@@ -6059,6 +6087,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     ),
     "record_coverage": lambda args: record_coverage(**args),
     "get_progress": lambda args: get_progress(**args),
+    "peek_hook_overview": lambda args: peek_hook_overview(**args),
     "get_progress_view": lambda args: get_progress_view(**args),
     "render_progress": lambda args: render_progress(args.get("session_id")),
     "save_export_files": lambda args: save_export_files(args.get("files")),

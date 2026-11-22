@@ -1,28 +1,54 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const source=fs.readFileSync(path.resolve('plugins/task-progress/cindy/main.js'),'utf8');
-const host='host',sid='sid',iid='iid',sent=[],calls=[];let key='b'.repeat(64);
-let receive,bus,ready=false,kv={taskProgressActiveHostSessionId:host,taskProgressSessionsByHostSession:{[host]:sid},taskProgressContextsByHostSession:{[host]:{session_id:sid,task_instance_id:iid}}};
-const sandbox={BroadcastChannel:class{constructor(){bus=this}postMessage(){}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout,clearTimeout,
- fetch:async(_url,opt)=>{if(opt?.method==='PUT')kv=JSON.parse(opt.body);return {ok:true,json:async()=>structuredClone(kv)}},
+const host='host',sid='sid',iid='iid',sent=[],calls=[],broadcasts=[];let key='b'.repeat(64);
+let receive,bus,ready=false,rejectNextPut=false,kv={taskProgressActiveHostSessionId:host,taskProgressSessionsByHostSession:{[host]:sid},taskProgressContextsByHostSession:{[host]:{session_id:sid,task_instance_id:iid}}};
+const sandbox={BroadcastChannel:class{constructor(){bus=this}postMessage(msg){broadcasts.push(msg)}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout,clearTimeout,
+ fetch:async(_url,opt)=>{if(opt?.method==='PUT'){if(rejectNextPut){rejectNextPut=false;return {ok:false,status:409,json:async()=>({error:'LEGACY_KV_SEALED'})};}kv=JSON.parse(opt.body);}return {ok:true,json:async()=>structuredClone(kv)}},
  cindy:{onHostMessage(fn){receive=fn},send:async msg=>sent.push(msg),agent:{run:async args=>{calls.push(args);return {ok:true,sessionId:host,mode:'continue',disposition:'queued'}}},node:{request:async req=>{
   if(req.params.name==='cindy_review_collect_session'){const settled=req.params.arguments.settled||[];return {ok:true,result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:0,state_revision:3,items:!ready||settled.includes(key)?[]:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt',actionable:true}]}}};}
   if(req.params.name==='cindy_review_reconcile'){const observed=ready&&req.params.arguments.observe_keys.includes(key)?[key]:[];return {ok:true,result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:0,state_revision:3,observation_complete:true,observed_keys:observed}}};}
   return {ok:true,result:{structuredContent:{session_id:sid,task_instance_id:iid,acknowledged:true}}};
  }}}};
-vm.runInNewContext(source,sandbox);
+vm.runInNewContext(source+'\nglobalThis.testAssociations=reviewHostAssociations;globalThis.testSuspended=reviewSuspendedHosts;globalThis.testObserve=observeReviewHostActivity;',sandbox);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 (async()=>{
+ let resolveRead;
+ const lateRead=new Promise(resolve=>{resolveRead=resolve;});
+ const timeoutSandbox={...sandbox,BroadcastChannel:class{postMessage(){}},scheduled:0,
+  fetch:()=>lateRead,setTimeout:(fn,ms)=>setTimeout(fn,ms===3000?15:ms),
+  cindy:{...sandbox.cindy,onHostMessage(){}}};
+ vm.runInNewContext(source+'\nglobalThis.testSchedulePanelReview=schedulePanelReview;scheduleDueReviews=()=>{globalThis.scheduled++;};',timeoutSandbox);
+ await timeoutSandbox.testSchedulePanelReview(sid);
+ resolveRead({ok:true,json:async()=>structuredClone(kv)});
+ await delay(30);
+ assert.equal(timeoutSandbox.scheduled,0,'a late panel state read must not schedule a review after timeout');
  await receive({type:'tool-call',callId:'config',tool:'configure_auto_review',args:{session_context:{session_id:host}}});
  assert(sent.some(x=>x.type==='card-update'&&x.html.includes('auto-review-enable')));
  assert.equal(kv.taskProgressAutoReview,undefined,'showing a card is not consent');
  await receive({type:'event',name:'card-action',callId:'config',actionId:'auto-review-enable',sessionId:host});
  assert.equal(kv.taskProgressAutoReview,undefined,'missing click token cannot enable');
+ rejectNextPut=true;
+ await receive({type:'event',name:'card-action',callId:'rejected',actionId:'auto-review-enable',sessionId:host,userActionToken:'trusted-host-token'});
+ assert.equal(kv.taskProgressAutoReview,undefined,'rejected enable must not change persisted configuration');
+ assert.equal(sandbox.testAssociations.has(host),false,'rejected enable must not establish an association');
+ assert(sent.some(x=>x.callId==='rejected'&&x.html.includes('未能更新自动跟进')));
+ assert.equal(calls.length,0);
  await receive({type:'event',name:'card-action',callId:'config',actionId:'auto-review-enable',sessionId:host,userActionToken:'trusted-host-token'});
  assert.equal(kv.taskProgressAutoReview[host].enabled,true);await delay(400);
  assert.equal(calls.length,0,'enabling without a due review does not send a turn');
+ kv.taskProgressAutoReview[host].host_suspended=true;sandbox.testSuspended.add(host);rejectNextPut=true;
+ const active={data:{sessionId:host,state:{status:'active',activity:{phase:'running',currentTurnActive:true,gracefulStopState:'none'}}}};
+ sandbox.testObserve(active);await delay(30);
+ assert.equal(kv.taskProgressAutoReview[host].host_suspended,true,'rejected resume must preserve persisted suspension');
+ assert.equal(sandbox.testSuspended.has(host),true,'rejected resume must preserve in-memory suspension');
+ sandbox.testObserve(active);await delay(30);
+ assert.equal(kv.taskProgressAutoReview[host].host_suspended,false);
+ assert.equal(sandbox.testSuspended.has(host),false);
+ const beforeGapGeneration=kv.taskProgressAutoReview[host].settings_generation;
  await receive({type:'event',name:'did-message-created',seq:50,dropped:2,data:{sessionId:host,role:'user'}});
  assert.equal(kv.taskProgressAutoReview[host].host_suspended,true,'dropped events suspend dispatch');
+ assert.equal(kv.taskProgressAutoReview[host].settings_generation,beforeGapGeneration+1,'an event gap invalidates previously reserved dispatches');
  let receiveAfterRestart;
  const gapRestarted={...sandbox,BroadcastChannel:class{postMessage(){}},cindy:{...sandbox.cindy,onHostMessage(fn){receiveAfterRestart=fn}}};
  vm.runInNewContext(source+'\nglobalThis.dispatchAfterGapRestart=dispatchDueReviews;',gapRestarted);
@@ -47,9 +73,11 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  ready=false;
  await receive({type:'event',name:'did-task-state-changed',seq:54,data:{sessionId:host,state:{status:'active',activity:{phase:'running',currentTurnActive:true,gracefulStopState:'none'}}}});await delay(200);
  assert.equal(kv.taskProgressAutoReview[host].host_suspended,false,'a later complete active event resumes');
+ const beforeStopGeneration=kv.taskProgressAutoReview[host].settings_generation;
  ready=true;
  await receive({type:'event',name:'did-task-state-changed',data:{sessionId:host,state:{activity:{phase:'running',currentTurnActive:true,recordStatus:'active',gracefulStopState:'requested'}}}});
  assert.equal(kv.taskProgressAutoReview[host].host_suspended,true,'stop is persisted before later mutations');
+ assert.equal(kv.taskProgressAutoReview[host].settings_generation,beforeStopGeneration+1,'a stop invalidates previously reserved dispatches');
  const restarted={...sandbox,BroadcastChannel:class{postMessage(){}},cindy:{...sandbox.cindy,onHostMessage(){}}};
  vm.runInNewContext(source+'\nglobalThis.dispatchAfterRestart=dispatchDueReviews;',restarted);
  assert.equal(await restarted.dispatchAfterRestart(host),'host_suspended','plugin restart cannot erase a recorded stop');
@@ -70,9 +98,33 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  await Promise.all([bus.onmessage({data:panelRequest}),bus.onmessage({data:panelRequest})]);await delay(400);
  assert.equal(calls.length,2,'panel mutation triggers one check despite duplicate delivery');
  assert.equal(kv.taskProgressAutoReview[host].ledger[key].state,'dispatched');
+ rejectNextPut=true;
+ await receive({type:'event',name:'card-action',callId:'failed-disable',actionId:'auto-review-disable',sessionId:host,userActionToken:'another-token'});
+ assert.equal(kv.taskProgressAutoReview[host].enabled,true);
+ assert(broadcasts.some(x=>x.status==='disable_unconfirmed'));
+ const beforeReplay=broadcasts.length;
+ await bus.onmessage({data:{type:'panel-review-state-request',host_session_id:host}});
+ assert(broadcasts.slice(beforeReplay).some(x=>x.status==='disable_unconfirmed'),'a reopened panel can recover the local warning');
+ const beforeOther=broadcasts.length;
+ await bus.onmessage({data:{type:'panel-review-state-request',host_session_id:'other-host'}});
+ assert.equal(broadcasts.length,beforeOther,'a warning remains scoped to its own host');
+ await receive({type:'tool-call',callId:'paused-status',tool:'get_auto_review_status',args:{session_context:{session_id:host}}});
+ const paused=sent.find(x=>x.callId==='paused-status'&&x.type==='tool-result').result.structuredContent;
+ assert.equal(paused.enabled,true,'persisted enablement remains observable');
+ assert.equal(paused.local_stop_requested,true,'local stop is separately observable');
+ assert.equal(paused.reconciliation,'paused');
  await receive({type:'event',name:'card-action',callId:'config',actionId:'auto-review-disable',sessionId:host,userActionToken:'another-token'});
  assert.equal(kv.taskProgressAutoReview[host].enabled,false);
+ const disabledGeneration=kv.taskProgressAutoReview[host].settings_generation;
+ const afterConfirmed=broadcasts.length;
+ await bus.onmessage({data:{type:'panel-review-state-request',host_session_id:host}});
+ assert.equal(broadcasts.length,afterConfirmed,'confirmed disable does not replay an unresolved warning');
  await receive({type:'tool-call',callId:'mutation2',tool:'update_task',args:{session_id:sid,task_instance_id:iid,session_context:{session_id:host}}});await delay(300);
  assert.equal(calls.length,2,'disabled session never dispatches');
+ kv.taskProgressAutoReview[host].reservation={id:'old',session_id:sid,task_instance_id:iid,settings_generation:disabledGeneration-1};
+ await receive({type:'event',name:'card-action',callId:'reenable',actionId:'auto-review-enable',sessionId:host,userActionToken:'another-token'});
+ assert.equal(kv.taskProgressAutoReview[host].settings_generation,disabledGeneration+1);
+ assert.notEqual(kv.taskProgressAutoReview[host].reservation.settings_generation,kv.taskProgressAutoReview[host].settings_generation,
+  're-enabling must not make a reservation from before the stop current');
  console.log('Auto-review control: explicit click, session binding, one dispatch, mutation deduplication, status and opt-out passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});
