@@ -5,6 +5,7 @@ let sessionId = null;
 let activeHostSessionId = null;
 const autoReviewStates = new Map();
 const unverifiedReviewAssociations = new Set();
+const unconfirmedReviewStops = new Set();
 let sessionBinding = 0;
 let disposed = false;
 let lastTheme = null;
@@ -12,6 +13,8 @@ let appInitialized = false;
 let latestUpdate = null;
 let sessionSyncTimer = null;
 let sessionSyncBusy = false;
+let sessionSyncQueued = false;
+let sessionSyncQueuedReceipt = null;
 let sessionLoadFailed = false;
 let taskStateRefreshTimer = null;
 let themeSyncTimer = null;
@@ -50,7 +53,7 @@ function applyAutoReviewStatus(status) {
     uncertain:'自动验收派发结果待核实，已暂停以避免重复。',recovery_required:'自动验收派发记录待核实，已暂停以避免重复。',
     retry_exhausted:'自动验收多次无法核对或安排，请检查状态后重新启用。',rate_limited:'自动验收派发受限，稍后自动重试。',
     incomplete:'自动验收待办信息不完整，请查看任务详情。',unavailable:'自动验收待办暂不可读取，请稍后重试。',read_retry:'自动验收待办暂不可读取，稍后自动重试。',
-    recovery_retry:'自动验收状态暂不可读取，将限次重试；不会重复派发。',recovery_unavailable:'自动验收状态读取失败，请检查后台后重试；不会重复派发。',
+    recovery_retry:'自动验收状态暂不可读取，将限次重试；不会重复派发。',recovery_unavailable:'自动验收状态读取失败，请检查后台后重试；不会重复派发。',disable_unconfirmed:'自动验收已在当前进程暂停；关闭设置尚未确认保存，请重试关闭。',
     binding_changed:'当前任务已切换，自动验收需重新核对并启用。',association_unverified:'自动验收的会话授权尚未确认，可能需要重新启用。',queue_changed:'验收待办正在变化，将重新核对。',event_gap:'会话事件有缺失，自动验收暂缓；可重新启用并恢复任务。',host_suspended:'当前会话已暂停、出错或等待处理，自动验收暂缓。',review_pending:'自动验收已安排，待办仍存在；可能正在排队或检查中。',dispatched_with_pending:'新的验收已安排；此前待办仍可能在排队或检查中。'};
   if(notices[status])setPanelStatus(notices[status]);
   else if(status==='disabled' || status==='association_verified' || status==='dispatched' ||
@@ -121,14 +124,41 @@ async function callTool(name, args) {
   });
 }
 
+async function readPanelSessionSettings() {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer;
+  try {
+    const read = (async () => {
+      const response = await fetch('/kv', controller ? {signal:controller.signal} : {});
+      if (!response.ok) throw new Error(`读取 Cindy 插件状态失败（HTTP ${response.status}）`);
+      return response.json();
+    })();
+    return await Promise.race([read, new Promise((_, reject) => {
+      timer = window.setTimeout(() => {
+        reject(new Error('读取 Cindy 插件状态超时'));
+        controller?.abort();
+      }, 1200);
+    })]);
+  } finally { window.clearTimeout(timer); }
+}
+
 async function syncSessionFromKV(receipt) {
-  if (sessionSyncBusy) { acknowledgeRefresh([receipt], 'skipped_sync_busy'); return; }
+  if (sessionSyncBusy) {
+    sessionSyncQueued = true;
+    if (receipt) {
+      acknowledgeRefresh([sessionSyncQueuedReceipt], 'skipped_sync_busy');
+      sessionSyncQueuedReceipt = receipt;
+    }
+    return;
+  }
   sessionSyncBusy = true;
   try {
-    const response = await fetch('/kv');
-    if (!response.ok) throw new Error(`读取 Cindy 插件状态失败（HTTP ${response.status}）`);
-    const settings = await response.json();
+    const settings = await readPanelSessionSettings();
+    if (sessionSyncQueued || disposed) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Cindy 插件状态格式无效');
     activeHostSessionId = settings.taskProgressActiveHostSessionId;
+    if(typeof activeHostSessionId==='string' && activeHostSessionId)
+      panelBus.postMessage({type:'panel-review-state-request',host_session_id:activeHostSessionId});
     if(autoReviewStates.has(activeHostSessionId))applyAutoReviewStatus(autoReviewStates.get(activeHostSessionId));
     else if(panelStatus.textContent.startsWith('自动验收'))setPanelStatus('');
     let nextSession = '';
@@ -149,11 +179,19 @@ async function syncSessionFromKV(receipt) {
     }
     bindSession(nextSession, diagnostic, receipt);
   } catch (error) {
+    if (sessionSyncQueued || disposed) { acknowledgeRefresh([receipt], 'skipped_session_changed'); return; }
     acknowledgeRefresh([receipt], 'read_failed');
     setPanelStatus(`读取任务会话失败：${String(error.message || error)}`);
     applyPanelDiagnostic({ kind: 'panel-error', message: String(error.message || error) });
   } finally {
     sessionSyncBusy = false;
+    if (sessionSyncQueued) {
+      const nextReceipt = sessionSyncQueuedReceipt;
+      sessionSyncQueued = false;
+      sessionSyncQueuedReceipt = null;
+      if (disposed) acknowledgeRefresh([nextReceipt], 'skipped_session_changed');
+      else void syncSessionFromKV(nextReceipt);
+    }
   }
 }
 
@@ -290,11 +328,14 @@ panelBus.onmessage = event => {
   } else if (message.type === 'auto-review-state') {
     if(typeof message.host_session_id!=='string' || !message.host_session_id)return;
     const host=message.host_session_id;
+    if(message.status==='disable_unconfirmed')unconfirmedReviewStops.add(host);
+    if(['disabled','association_verified'].includes(message.status))unconfirmedReviewStops.delete(host);
     if(message.status==='association_unverified')unverifiedReviewAssociations.add(host);
     if(['disabled','association_verified','dispatched','dispatched_with_pending'].includes(message.status))unverifiedReviewAssociations.delete(host);
-    const status=['empty','recovered'].includes(message.status) && unverifiedReviewAssociations.has(host) ? 'association_unverified' : message.status;
+    const status=unconfirmedReviewStops.has(host) ? 'disable_unconfirmed' :
+      ['empty','recovered'].includes(message.status) && unverifiedReviewAssociations.has(host) ? 'association_unverified' : message.status;
     autoReviewStates.set(host,status);
-    while(autoReviewStates.size>100){const oldest=autoReviewStates.keys().next().value;autoReviewStates.delete(oldest);unverifiedReviewAssociations.delete(oldest);}
+    while(autoReviewStates.size>100){const oldest=autoReviewStates.keys().next().value;autoReviewStates.delete(oldest);unverifiedReviewAssociations.delete(oldest);unconfirmedReviewStops.delete(oldest);}
     if(host===activeHostSessionId)applyAutoReviewStatus(status);
   } else if (message.type === 'refresh-mapped-session') {
     if (message.session_id !== sessionId || !sessionId) {

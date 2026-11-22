@@ -125,6 +125,34 @@ async function main() {
   await app.locator('#step-list .plan-row').first().waitFor();
   await page.locator('#panel-status').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#progress-app').evaluate(el => getComputedStyle(el).visibility), 'visible', 'the task is shown after loading completes');
+  const timeoutRecovery = await page.evaluate(async expectedSession => {
+    const originalFetch = window.fetch;
+    let releaseLate, readCount = 0;
+    window.fetch = (input, ...args) => {
+      if (String(input) !== '/kv') return originalFetch(input, ...args);
+      if (++readCount === 1) return new Promise(resolve => {
+        releaseLate = () => resolve(new Response(JSON.stringify({taskProgressActiveHostSessionId:'old-host',
+          taskProgressSessionsByHostSession:{'old-host':'stale-session'}}), {status:200}));
+      });
+      return originalFetch(input, ...args);
+    };
+    try {
+      const first = syncSessionFromKV();
+      await new Promise(resolve=>setTimeout(resolve,30));
+      const channel = new BroadcastChannel('task-progress-panel');
+      channel.postMessage({type:'bind-session',session_id:expectedSession});
+      await new Promise(resolve=>setTimeout(resolve,30));
+      await first;
+      const deadline=Date.now()+4000;
+      while ((sessionSyncBusy || readCount < 2) && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,20));
+      releaseLate();
+      await new Promise(resolve=>setTimeout(resolve,50));
+      channel.close();
+      return {binding:sessionId,readCount,busy:sessionSyncBusy};
+    } finally { window.fetch = originalFetch; }
+  }, binding.session_id);
+  assert.equal(timeoutRecovery.binding, binding.session_id, 'a late KV response cannot replace the recovered active session');
+  assert.ok(timeoutRecovery.readCount >= 2 && !timeoutRecovery.busy, 'a queued switch rereads KV after the timeout');
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'other-chat',status:'uncertain'}));
   await page.waitForTimeout(100);assert.equal(await page.locator('#panel-status').isHidden(),true,'other sessions cannot surface auto-review state');
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'uncertain'}));
@@ -133,6 +161,26 @@ async function main() {
   await page.locator('#panel-status').filter({hasText:'可能正在排队或检查中'}).waitFor();
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'host_suspended'}));
   await page.locator('#panel-status').filter({hasText:'自动验收暂缓'}).waitFor();
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'disable_unconfirmed'}));
+  await page.locator('#panel-status').filter({hasText:'关闭设置尚未确认保存'}).waitFor();
+  for (const status of ['empty','recovered','dispatched']) {
+    await page.evaluate(status => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status}),status);
+    await page.waitForTimeout(50);
+    assert.match(await page.locator('#panel-status').innerText(),/关闭设置尚未确认保存/,'unconfirmed disable survives stale status');
+  }
+  await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'disabled'}));
+  await page.locator('#panel-status').waitFor({state:'hidden'});
+  await page.evaluate(() => {
+    window.__reviewReplayChannel=new BroadcastChannel('task-progress-panel');
+    window.__reviewReplayChannel.onmessage=event=>{
+      if(event.data?.type==='panel-review-state-request' && event.data.host_session_id==='cindy-session-current')
+        window.__reviewReplayChannel.postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'disable_unconfirmed'});
+    };
+    return syncSessionFromKV();
+  });
+  await page.locator('#panel-status').filter({hasText:'关闭设置尚未确认保存'}).waitFor();
+  await page.evaluate(() => {window.__reviewReplayChannel.close();new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'disabled'});});
+  await page.locator('#panel-status').waitFor({state:'hidden'});
   await page.evaluate(() => new BroadcastChannel('task-progress-panel').postMessage({type:'auto-review-state',host_session_id:'cindy-session-current',status:'association_unverified'}));
   await page.locator('#panel-status').filter({hasText:'会话授权尚未确认'}).waitFor();
   await app.locator('html').evaluate((_,session)=>window.parent.postMessage({jsonrpc:'2.0',method:'task-progress/rendered',params:{session_id:session}},'*'),binding.session_id);

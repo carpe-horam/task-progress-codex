@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -37,7 +37,7 @@
     },
     {
       "name": "repair_session_binding",
-      "description": "仅在用户明确要求修复指定 Cindy 会话的任务绑定时使用；对旧绑定做比较后原子切换到已核验的任务实例，不修改任务内容。",
+      "description": "仅在用户明确要求修复指定 Cindy 会话的任务绑定时使用；先检查旧绑定并核验目标实例，再保存新绑定，不修改任务内容。当前 KV 不保证跨实例原子比较写入；修复时应避免其他实例同时更改绑定，并在保存后核对。",
       "parameters": {
         "type": "object",
         "properties": {

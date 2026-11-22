@@ -2,16 +2,55 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const source=fs.readFileSync(path.resolve('plugins/task-progress/cindy/main.js'),'utf8');
 const key='a'.repeat(64), host='host', sid='session', iid='instance';
-function setup({enabled=true,agentResult={ok:true,sessionId:host,mode:'continue'},collectError=false,failWrite=false,switchAfterReservation=false,failAfterDispatch=false,noAgent=false,reconcileObserved=[],reconcileComplete=true,confirmComplete=true,hangAgent=false,suspendAfterReservation=false,staleConfirm=false,suspendDuringConfirmation=false,reconcileErrorAfterFirst=false,queueHandler=null}={}){
- let kv={taskProgressSessionsByHostSession:{[host]:sid},taskProgressContextsByHostSession:{[host]:{session_id:sid,task_instance_id:iid}},taskProgressAutoReview:{[host]:{enabled,session_id:sid,ledger:{}}}},calls=[],confirmations=0;
+function setup({enabled=true,agentResult={ok:true,sessionId:host,mode:'continue'},collectError=false,failWrite=false,switchAfterReservation=false,failAfterDispatch=false,noAgent=false,reconcileObserved=[],reconcileComplete=true,confirmComplete=true,hangAgent=false,suspendAfterReservation=false,staleConfirm=false,suspendDuringConfirmation=false,reconcileErrorAfterFirst=false,queueHandler=null,beforePut=null,beforeGet=null,beforeJson=null,fastReviewRead=false,fastReviewTool=false}={}){
+ let kv={taskProgressSessionsByHostSession:{[host]:sid},taskProgressContextsByHostSession:{[host]:{session_id:sid,task_instance_id:iid}},taskProgressAutoReview:{[host]:{enabled,session_id:sid,ledger:{}}}},calls=[],messages=[],confirmations=0,handler,reads=0;
  const batch={session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt',actionable:true}]};
- const sandbox={BroadcastChannel:class{postMessage(){}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout:(fn,ms)=>setTimeout(fn,hangAgent&&ms===15000?5:ms),clearTimeout,
-  fetch:async(_url,opt)=>{if(opt?.method==='PUT'){if(failWrite)throw Error('write fail');kv=JSON.parse(opt.body);if(switchAfterReservation&&kv.taskProgressAutoReview?.[host]?.reservation){kv.taskProgressSessionsByHostSession[host]='switched';switchAfterReservation=false;}if(suspendAfterReservation&&kv.taskProgressAutoReview?.[host]?.reservation){suspendAfterReservation=false;sandbox.testSuspend({data:{sessionId:host,state:{activity:{gracefulStopState:'requested'}}}});}}return {ok:true,json:async()=>structuredClone(kv)}},
-  cindy:{onHostMessage(){},send:async()=>{},node:{request:async req=>{calls.push(req);if(collectError)return {ok:false};if(queueHandler){const result=await queueHandler(req);return result.error?{ok:false}:{ok:true,result:result.result};}if(req.params.name==='cindy_review_reconcile'){confirmations++;if(confirmations>1&&reconcileErrorAfterFirst)return {ok:false};if(confirmations===1&&suspendDuringConfirmation)sandbox.testSuspend({data:{sessionId:host,state:{activity:{gracefulStopState:'requested'}}}});return {ok:true,result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:2,state_revision:staleConfirm&&confirmations===1?8:7,observation_complete:confirmations===1?confirmComplete:reconcileComplete,observed_keys:confirmations===1?[key]:reconcileObserved}}};}return {ok:true,result:{structuredContent:batch}}}},...(noAgent?{}:{agent:{run:async args=>{calls.push(args);if(hangAgent)return new Promise(()=>{});if(failAfterDispatch)failWrite=true;if(agentResult instanceof Error)throw agentResult;return agentResult}}})}};
- vm.runInNewContext(source+'\nglobalThis.testDispatch=dispatchDueReviews;globalThis.testRecover=reconcileUncertainReviews;globalThis.testSuspend=observeReviewHostActivity;globalThis.testAssociation=reviewHostAssociations;',sandbox);
- return {run:()=>sandbox.testDispatch(host),recover:(include=false)=>sandbox.testRecover(host,include),get:()=>kv,association:sandbox.testAssociation,calls};
+ const sandbox={BroadcastChannel:class{postMessage(message){messages.push(message);}},Date,Promise,Map,Set,Object,JSON,Error,setTimeout:(fn,ms)=>setTimeout(fn,hangAgent&&ms===15000?5:fastReviewRead&&ms===3000?10:fastReviewTool&&ms===120000?10:ms),clearTimeout,
+  fetch:async(_url,opt)=>{if(opt?.method==='PUT'){if(beforePut)await beforePut(opt);if(failWrite)throw Error('write fail');kv=JSON.parse(opt.body);if(switchAfterReservation&&kv.taskProgressAutoReview?.[host]?.reservation){kv.taskProgressSessionsByHostSession[host]='switched';switchAfterReservation=false;}if(suspendAfterReservation&&kv.taskProgressAutoReview?.[host]?.reservation){suspendAfterReservation=false;sandbox.testSuspend({data:{sessionId:host,state:{activity:{gracefulStopState:'requested'}}}});}}else {reads++;if(beforeGet)await beforeGet();}return {ok:true,json:async()=>{if(beforeJson)await beforeJson();return structuredClone(kv);}}},
+  cindy:{onHostMessage(fn){handler=fn;},send:async()=>{},node:{request:async req=>{calls.push(req);if(collectError)return {ok:false};if(queueHandler){const result=await queueHandler(req);return result.error?{ok:false}:{ok:true,result:result.result};}if(req.params.name==='cindy_review_reconcile'){confirmations++;if(confirmations>1&&reconcileErrorAfterFirst)return {ok:false};if(confirmations===1&&suspendDuringConfirmation)sandbox.testSuspend({data:{sessionId:host,state:{activity:{gracefulStopState:'requested'}}}});return {ok:true,result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:2,state_revision:staleConfirm&&confirmations===1?8:7,observation_complete:confirmations===1?confirmComplete:reconcileComplete,observed_keys:confirmations===1?[key]:reconcileObserved}}};}return {ok:true,result:{structuredContent:batch}}}},...(noAgent?{}:{agent:{run:async args=>{calls.push(args);if(hangAgent)return new Promise(()=>{});if(failAfterDispatch)failWrite=true;if(agentResult instanceof Error)throw agentResult;return agentResult}}})}};
+ vm.runInNewContext(source+'\nglobalThis.testDispatch=dispatchDueReviews;globalThis.testRecover=reconcileUncertainReviews;globalThis.testSuspend=observeReviewHostActivity;globalThis.testAssociation=reviewHostAssociations;globalThis.testSchedule=scheduleDueReviews;globalThis.testWatchdog=scheduleReviewWatchdog;',sandbox);
+ return {run:()=>sandbox.testDispatch(host),recover:(include=false)=>sandbox.testRecover(host,include),update:(change,options)=>sandbox.updatePluginKv(change,options),deliver:event=>handler(event),schedule:ms=>sandbox.testSchedule(host,ms),watchdog:ms=>sandbox.testWatchdog(host,false,ms),reads:()=>reads,get:()=>kv,association:sandbox.testAssociation,calls,messages};
 }
 (async()=>{
+ let reads=0,releaseLateRead;
+ let stalled=setup({fastReviewRead:true,beforeGet:()=>{if(++reads===1)return new Promise(resolve=>{releaseLateRead=resolve;});}});
+ assert.equal(await stalled.run(),'read_retry','a hung initial read must release the dispatch lock');
+ assert.equal(stalled.calls.filter(x=>x.trigger==='background').length,0);
+ releaseLateRead();
+ stalled.get().taskProgressAutoReview[host].retry_after=0;
+ assert.equal(await stalled.run(),'dispatched','a later dispatch can proceed after the timed out read');
+ let bodies=0;
+ stalled=setup({fastReviewRead:true,beforeJson:()=>{if(++bodies===1)return new Promise(()=>{});}});
+ assert.equal(await stalled.run(),'read_retry','a hung response body must also time out');
+ assert.equal(stalled.calls.filter(x=>x.trigger==='background').length,0);
+ reads=0;
+ stalled=setup({fastReviewRead:true,beforeGet:()=>{if(++reads===3)return new Promise(()=>{});}});
+ assert.equal(await stalled.run(),'unavailable','a hung post-reservation read terminates');
+ assert.ok(stalled.get().taskProgressAutoReview[host].reservation,'a reserved batch stays protected after a read timeout');
+ assert.equal(stalled.calls.filter(x=>x.trigger==='background').length,0,'late reads cannot dispatch');
+ assert.equal(await stalled.run(),'recovery_required');
+ let watchdog=setup({fastReviewRead:true,beforeGet:()=>new Promise(()=>{})});
+ watchdog.watchdog(0);
+ await new Promise(resolve=>setTimeout(resolve,50));
+ assert.ok(watchdog.messages.some(message=>message.status==='recovery_retry'),'watchdog schedules a retry when its settings read hangs');
+ assert.equal(watchdog.calls.filter(x=>x.trigger==='background').length,0);
+ let settingsReads=0;
+ const scheduled=setup({fastReviewRead:true,collectError:true,beforeGet:()=>{if(++settingsReads===3)return new Promise(()=>{});}});
+ scheduled.schedule(0);
+ await new Promise(resolve=>setTimeout(resolve,50));
+ assert.ok(scheduled.messages.some(message=>message.status==='recovery_retry'),'the post-dispatch settings read also retries after a timeout');
+ assert.equal(scheduled.calls.filter(x=>x.trigger==='background').length,0);
+ let releaseQueue;
+ const waitingQueue=setup({fastReviewTool:true,queueHandler:async()=>new Promise(resolve=>{releaseQueue=resolve;})});
+ assert.equal(await waitingQueue.run(),'read_retry','a hung review queue must release the dispatch lock');
+ releaseQueue({result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt'}]}}});
+ await new Promise(resolve=>setTimeout(resolve,5));
+ assert.equal(waitingQueue.calls.filter(x=>x.trigger==='background').length,0,'a late queue result must not dispatch');
+ const waitingRecovery=setup({fastReviewTool:true,queueHandler:async()=>new Promise(()=>{})});
+ waitingRecovery.get().taskProgressAutoReview[host].ledger[key]={state:'uncertain',session_id:sid,task_instance_id:iid};
+ assert.equal(await waitingRecovery.recover(),'recovery_unavailable','a hung recovery query must terminate');
+ assert.equal(waitingRecovery.get().taskProgressAutoReview[host].ledger[key].state,'uncertain','timeout cannot clear uncertainty');
+ assert.equal(waitingRecovery.calls.filter(x=>x.trigger==='background').length,0);
  let h=setup({enabled:false});assert.equal(await h.run(),'disabled');assert.equal(h.calls.length,0);
  h=setup();h.get().taskProgressAutoReview[host].host_suspended=true;assert.equal(await h.run(),'host_suspended');assert.equal(h.calls.length,0,'persisted stop remains effective after a runtime restart');
  h=setup();const pair=await Promise.all([h.run(),h.run()]);assert(pair.includes('dispatched')&&pair.includes('skipped'));assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
@@ -20,6 +59,8 @@ function setup({enabled=true,agentResult={ok:true,sessionId:host,mode:'continue'
  assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'dispatched');assert.equal(await h.run(),'awaiting_completion');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
  h=setup({reconcileObserved:[key]});assert.equal(await h.run(),'dispatched');assert.equal(await h.recover(true),'awaiting_completion');h.get().taskProgressAutoReview[host].ledger[key].at-=61000;assert.equal(await h.recover(true),'review_pending');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'review_pending');assert.equal(await h.run(),'superseded');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
  h=setup({reconcileObserved:[key]});assert.equal(await h.run(),'dispatched');h.get().taskProgressAutoReview[host].last_error='REVIEW_PENDING';assert.equal(await h.recover(true),'awaiting_completion');assert.equal(h.get().taskProgressAutoReview[host].last_error,null,'unchanged active records clear a stale pending warning');
+ h=setup({queueHandler:async req=>{assert.equal(req.params.name,'cindy_review_reconcile');h.get().taskProgressAutoReview[host].ledger[key].at=99;return {result:{structuredContent:{session_id:sid,task_instance_id:iid,observation_complete:true,observed_keys:[]}}};}});h.get().taskProgressAutoReview[host].ledger[key]={state:'uncertain',session_id:sid,task_instance_id:iid,at:1};
+ assert.equal(await h.recover(),'recovery_required');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'uncertain');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].at,99,'a newer ledger entry cannot be cleared by a stale observation');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0);
  h=setup();assert.equal(await h.run(),'dispatched');assert.equal(await h.recover(true),'cleared');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'no_longer_due');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
  h=setup({agentResult:new Error('response lost')});assert.equal(await h.run(),'uncertain');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'uncertain');assert.equal(await h.run(),'recovery_required');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
  h=setup({hangAgent:true});assert.equal(await h.run(),'uncertain');assert.equal(h.get().taskProgressAutoReview[host].last_error,'DELIVERY_UNKNOWN');assert.equal(await h.run(),'recovery_required');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1,'a timed out host request must never be resent');
@@ -31,13 +72,65 @@ function setup({enabled=true,agentResult={ok:true,sessionId:host,mode:'continue'
  h=setup({agentResult:{ok:true,sessionId:'other',mode:'continue'}});assert.equal(await h.run(),'uncertain');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'uncertain');
  h=setup({agentResult:{ok:true,sessionId:host,mode:'new'}});assert.equal(await h.run(),'uncertain');assert.equal(h.get().taskProgressAutoReview[host].ledger[key].state,'uncertain');
  h=setup({agentResult:{ok:false,errorCode:'PERMISSION_DENIED'}});h.association.add(host);assert.equal(await h.run(),'consent_required');assert.equal(h.association.has(host),false,'host denial invalidates any remembered association');assert.equal(h.get().taskProgressAutoReview[host].enabled,false);assert.equal(h.get().taskProgressAutoReview[host].reservation,null);assert.equal(Object.keys(h.get().taskProgressAutoReview[host].ledger).length,0);
+ let releaseOldDenial;
+ const oldDenial=new Promise(resolve=>{releaseOldDenial=resolve;});
+ h=setup({agentResult:oldDenial});h.get().taskProgressAutoReview[host].settings_generation=1;
+ const oldAttempt=h.run();
+ for(let attempt=0;attempt<100 && !h.calls.some(call=>call.trigger==='background');attempt++)await new Promise(resolve=>setTimeout(resolve,1));
+ assert(h.calls.some(call=>call.trigger==='background'),'the old host request must be in flight');
+ h.get().taskProgressAutoReview[host].settings_generation=3;
+ h.get().taskProgressAutoReview[host].enabled=true;
+ releaseOldDenial({ok:false,errorCode:'PERMISSION_DENIED'});
+ assert.equal(await oldAttempt,'superseded');
+ assert.equal(h.get().taskProgressAutoReview[host].enabled,true,'a late denial must not undo a newer enable');
+ assert.equal(h.get().taskProgressAutoReview[host].reservation,null,'a definitely denied old reservation is cleared');
  h=setup({agentResult:{ok:false,errorCode:'RATE_LIMITED'}});assert.equal(await h.run(),'rate_limited');assert.equal(h.get().taskProgressAutoReview[host].reservation,null);assert.equal(Object.keys(h.get().taskProgressAutoReview[host].ledger).length,0);assert.equal(await h.run(),'retry_wait');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1);
  h=setup({failWrite:true});assert.equal(await h.run(),'unavailable');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'failed reservation cannot dispatch');
+ let releaseDisable,signalDisable,disableCall;
+ const disableGate=new Promise(resolve=>{releaseDisable=resolve;});
+ const disableStarted=new Promise(resolve=>{signalDisable=resolve;});
+ h=setup({beforePut:async opt=>{if(JSON.parse(opt.body).taskProgressAutoReview?.[host]?.enabled===false){signalDisable();await disableGate;}},queueHandler:async req=>{
+   if(req.params.name==='cindy_review_reconcile'){
+     disableCall=h.update(value=>({...value,taskProgressAutoReview:{...value.taskProgressAutoReview,[host]:{...value.taskProgressAutoReview[host],enabled:false}}}),{diagnostic:true}).catch(()=>{});
+     await disableStarted;
+     return {result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:2,state_revision:7,observation_complete:true,observed_keys:[key]}}};
+   }
+   return {result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt',actionable:true}]}}};
+ }});
+ assert.equal(await h.run(),'unavailable');
+ assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'pending disable must block a background dispatch');
+ releaseDisable();await disableCall;
+ let interruptRead=false,releaseCard,signalCard,cardCall;
+ const cardGate=new Promise(resolve=>{releaseCard=resolve;});
+ const cardStarted=new Promise(resolve=>{signalCard=resolve;});
+ h=setup({beforePut:async opt=>{if(JSON.parse(opt.body).taskProgressAutoReview?.[host]?.enabled===false){signalCard();await cardGate;}},
+   beforeGet:async()=>{if(interruptRead){interruptRead=false;cardCall=h.deliver({type:'event',name:'card-action',actionId:'auto-review-disable',sessionId:host,userActionToken:'test-token',callId:'disable'});await cardStarted;setTimeout(releaseCard,20);}},
+   queueHandler:async req=>{if(req.params.name==='cindy_review_reconcile'){interruptRead=true;return {result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:2,state_revision:7,observation_complete:true,observed_keys:[key]}}};}return {result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt',actionable:true}]}}};}});
+ assert.equal(await h.run(),'binding_changed');await cardCall;
+ assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'disable clicked during final read must invalidate the dispatch');
+ assert.equal(h.get().taskProgressAutoReview[host].enabled,false);
+ let failDisableRead=true;
+ h=setup({beforeGet:async()=>{if(failDisableRead){failDisableRead=false;throw Error('temporary read failure');}}});
+ h.schedule(40);h.watchdog(40);
+ await h.deliver({type:'event',name:'card-action',actionId:'auto-review-disable',sessionId:host,userActionToken:'test-token',callId:'failed-disable'});
+ assert.equal(h.get().taskProgressAutoReview[host].enabled,true,'failed save leaves persisted state unchanged');
+ assert.equal(await h.run(),'disabled','failed disable still pauses this runtime');
+ assert.equal(h.calls.filter(x=>x.trigger==='background').length,0);
+ const readsWhilePaused=h.reads();
+ h.schedule(1);h.watchdog(1);
+ await new Promise(resolve=>setTimeout(resolve,80));
+ assert.equal(h.reads(),readsWhilePaused,'pending and new timers do not inspect stale enabled settings while paused');
+ await h.deliver({type:'event',name:'card-action',actionId:'auto-review-enable',sessionId:host,userActionToken:'test-token',callId:'resume'});
+ assert.equal(await h.run(),'dispatched','only a confirmed enable resumes dispatch');
+ h=setup({queueHandler:async()=>{h.get().taskProgressAutoReview[host].reservation={id:'peer',session_id:sid,task_instance_id:iid,keys:[key]};return {result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt'}]}}};}});
+ assert.equal(await h.run(),'superseded');assert.equal(h.get().taskProgressAutoReview[host].reservation.id,'peer');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'another reservation must never be treated as ours');
  h=setup({switchAfterReservation:true});assert.equal(await h.run(),'binding_changed');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'changed binding cannot dispatch');
  h=setup({staleConfirm:true});assert.equal(await h.run(),'queue_changed');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'stale queue cannot dispatch');assert.equal(h.get().taskProgressAutoReview[host].reservation,null);assert.equal(await h.run(),'retry_wait');
+ h=setup({queueHandler:async req=>{if(req.params.name==='cindy_review_collect_session')return {result:{structuredContent:{session_id:sid,task_instance_id:iid,foreground_task_instance_id:iid,epoch:2,state_revision:7,items:[{key,kind:'submission_review',task_id:'work',attempt_id:'attempt'}]}}};h.get().taskProgressAutoReview[host].reservation={id:'peer',session_id:sid,task_instance_id:iid,keys:[key]};return {result:{structuredContent:{session_id:sid,task_instance_id:iid,epoch:2,state_revision:8,observed_keys:[key]}}};}});
+ assert.equal(await h.run(),'superseded');assert.equal(h.get().taskProgressAutoReview[host].reservation.id,'peer');assert.equal(h.get().taskProgressAutoReview[host].retry_count,undefined,'stale confirmation must not modify another reservation');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0);
  h=setup({suspendAfterReservation:true});assert.equal(await h.run(),'host_suspended');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'stop during reservation cannot dispatch');assert.equal(h.get().taskProgressAutoReview[host].reservation,null);
  h=setup({suspendDuringConfirmation:true});assert.equal(await h.run(),'host_suspended');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0,'stop during queue confirmation cannot dispatch');assert.equal(h.get().taskProgressAutoReview[host].reservation,null);
- h=setup({failAfterDispatch:true});assert.equal(await h.run(),'unavailable');assert(h.get().taskProgressAutoReview[host].reservation);assert.equal(await h.run(),'recovery_required');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1,'unpersisted result cannot trigger a duplicate dispatch');
+ h=setup({failAfterDispatch:true});assert.equal(await h.run(),'unavailable');assert(h.get().taskProgressAutoReview[host].reservation);assert.equal(h.association.has(host),false,'an unconfirmed write cannot establish a host association');assert.equal(await h.run(),'unavailable','an unconfirmed PUT keeps subsequent reads and writes quarantined');assert.equal(h.calls.filter(x=>x.trigger==='background').length,1,'unpersisted result cannot trigger a duplicate dispatch');
  h=setup({collectError:true});assert.equal(await h.run(),'read_retry');assert.equal(h.calls.filter(x=>x.trigger==='background').length,0);assert.equal(h.get().taskProgressAutoReview[host].last_error,'QUEUE_UNAVAILABLE');assert.equal(await h.run(),'retry_wait');
  h=setup({noAgent:true});assert.equal(await h.run(),'host_unsupported');assert.equal(h.get().taskProgressAutoReview[host].last_error,'HOST_UNSUPPORTED');assert.equal(h.get().taskProgressAutoReview[host].reservation,undefined);
  const {createReviewQueueHandler,keyFor}=require('../plugins/task-progress/cindy/node/review-queue.cjs');
