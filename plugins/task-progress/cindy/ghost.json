@@ -6,13 +6,20 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
   "taskView": { "title": "Task Progress", "html": "panel.html" },
   "card": {},
   "agent": { "background": true },
+  "skill": {
+    "items": [{
+      "dir": "skills/track-progress",
+      "name": "track-progress",
+      "description": "在主会话与执行者开始实质工作前先做粗粒度规划；适用于实现、修复、研究、审查、合并 worktree、验证和提交 PR。多阶段任务先建 HTN 计划，执行中动态拆分和补充。"
+    }]
+  },
   "subscribe": {
     "topics": [
       "session",
@@ -3600,5 +3607,5 @@
       }
     }
   },
-  "releaseNotes": "新增 Cindy Orca Worker 协同指引：明确 Lead 主账本、Worker 辅助任务树、持久 Worker 与一次性子智能体的边界，以及创建、派发和回报的实际步骤。主 Skill 保留宿主通用流程。"
+  "releaseNotes": "修复随包 Skill 未注册的问题：将 Track Progress Skill 及其 Cindy Orca Worker 参考文档放入包根技能目录，并在清单中声明。Orca 协同流程和任务服务端行为不变。"
 }

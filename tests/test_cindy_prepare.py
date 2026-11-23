@@ -43,6 +43,15 @@ class CindyPrepareTest(unittest.TestCase):
                              json.loads((core / ".codex-plugin/plugin.json").read_text())["version"])
             self.assertEqual(json.loads((stage / "ghost.json").read_text())["id"], "task-progress")
             self.assertEqual((stage / "ghost.json").read_bytes(), (core / "ghost.json").read_bytes())
+            skill = json.loads((stage / "ghost.json").read_text())["skill"]["items"][0]
+            self.assertEqual(skill["dir"], "skills/track-progress")
+            skill_file = stage / skill["dir"] / "SKILL.md"
+            self.assertTrue(skill_file.is_file())
+            frontmatter = skill_file.read_text().split("---", 2)[1]
+            self.assertIn(f"name: {skill['name']}", frontmatter)
+            self.assertIn(f"description: {skill['description']}", frontmatter)
+            self.assertEqual((stage / skill["dir"] / "references/cindy-orca-worker.md").read_bytes(),
+                             (core / "skills/track-progress/references/cindy-orca-worker.md").read_bytes())
             self.assertEqual((core / "execution_lifecycle.py").read_bytes(),
                              (SHARED / "execution_lifecycle.py").read_bytes())
             self.assertIn('Path(__file__).with_name("ghost.json")', (core / "server.py").read_text())
