@@ -66,6 +66,14 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
     assert.equal(client.sent.filter(item=>item.callId==='diagnostic-read-timeout').length,1);
   }
   await assert.rejects(harness({},null,{kv:true}).readReviewState(50),/验收设置暂不可读取/);
+  const diagnosticBinding = harness(current);
+  await diagnosticBinding.dispatch({type:'tool-call',tool:'get_hook_diagnostics',callId:'diagnostics-binding',
+    args:{session_context:{session_id:'host'}}});
+  const diagnosticBindingResult = diagnosticBinding.sent.find(item=>item.callId==='diagnostics-binding').result.structuredContent;
+  assert.equal(diagnosticBindingResult.task_progress.session_bound,true);
+  assert.equal(diagnosticBindingResult.task_progress.task_instance_bound,true);
+  assert.equal(diagnosticBindingResult.task_progress.session_id,session);
+  assert.equal(diagnosticBindingResult.task_progress.task_instance_id,instance);
   {
     let client;
     client=harness({nested:{value:'stored'}},null,{afterFetch:async()=>({ok:true,json:async()=>structuredClone(client.getKv())})});
@@ -199,6 +207,8 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
   assert.equal(unknown.sent[0].action, 'context');
   assert.equal(unknown.sent[0].blocks[0].id, 'task-progress-startup');
   assert.match(unknown.sent[0].blocks[0].text, /init_task_network/);
+  assert.match(unknown.sent[0].blocks[0].text, /不要把查看 Hook 诊断或插件可用性当成任务已初始化/);
+  assert.match(unknown.sent[0].blocks[0].text, /验收条件/);
   assert.match(unknown.sent[0].blocks[0].text, /复用原实例/);
   assert.match(unknown.sent[0].blocks[0].text, /无需建树/);
   assert.equal(unknown.calls.length, 0);
@@ -534,7 +544,19 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
   const emptyRead = harness({}, {ok:true,result:{structuredContent:{session_id:session,progress:null}}});
   await emptyRead.dispatch({type:'tool-call',tool:'get_progress',callId:'untrusted-instance',
     args:{session_id:session,task_instance_id:'from-request',session_context:{session_id:'host'}}});
+  assert.equal(emptyRead.getKv().taskProgressSessionsByHostSession?.host,undefined,
+    'a confirmed empty progress read must not claim the host-session mapping');
   assert.equal(emptyRead.getKv().taskProgressContextsByHostSession?.host,undefined);
+  const initializedAfterEmptyRead = harness({}, request => request.params.name === 'get_progress'
+    ? {ok:true,result:{structuredContent:{session_id:session,progress:null}}}
+    : {ok:true,result:{content:[],structuredContent:{session_id:session,task_instance_id:instance}}});
+  await initializedAfterEmptyRead.dispatch({type:'tool-call',tool:'get_progress',callId:'empty-before-init',
+    args:{session_id:session,session_context:{session_id:'host'}}});
+  await initializedAfterEmptyRead.dispatch({type:'tool-call',tool:'init_task_network',callId:'init-after-empty',
+    args:{session_context:{session_id:'host'}}});
+  assert.equal(initializedAfterEmptyRead.getKv().taskProgressSessionsByHostSession.host,session,
+    'the first successful initialization must bind after an earlier empty read');
+  assert.equal(initializedAfterEmptyRead.getKv().taskProgressContextsByHostSession.host.task_instance_id,instance);
 
   for (const result of [{isError:true}, {result:{isError:true}}]) {
     const panel = harness(current,{ok:true,result});

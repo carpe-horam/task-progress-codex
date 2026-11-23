@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3553,7 +3553,7 @@
     },
     {
       "name": "get_hook_diagnostics",
-      "description": "只读查看当前 Cindy 会话四类 Task Progress Hook 的触发计数、最后事件序号、侧栏重读请求与完成回执；不返回消息正文或其它会话诊断。仅用于验证 Hook 投递和侧栏读取，不代表任务完成。",
+      "description": "只读查看当前 Cindy 会话四类 Task Progress Hook 的触发计数、最后事件序号、侧栏重读请求与完成回执，并单独报告任务会话/实例是否已绑定；不返回消息正文或其它会话诊断。Hook 收到或提示发送成功不代表任务已初始化，诊断调用本身不会创建任务。",
       "parameters": {
         "type": "object",
         "properties": {},
