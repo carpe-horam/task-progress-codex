@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.5 — 2026-11-23
+
+[发布说明](docs/releases/0.3.5.md)
+
+- 在 Cindy 场景新增 Orca Worker 协同指引，明确 Lead 主账本、Worker 辅助任务树和实际派发回执的边界。
+- 主 Track Progress Skill 保留宿主通用流程；Cindy 的创建、派发、权限、目录和回报细节移至参考文档。
+- 三端版本同步更新为 0.3.5；任务服务端状态和公开工具契约不变。
+
 ## 0.3.4 — 2026-11-23
 
 [发布说明](docs/releases/0.3.4.md)
