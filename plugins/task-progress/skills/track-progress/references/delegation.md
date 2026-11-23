@@ -1,5 +1,7 @@
 ## 协作原则
 
+在 Cindy 里需要持久的工作包负责人时，先按 [Cindy Orca Worker 协同](cindy-orca-worker.md) 由 Lead 创建或复用 Orca Worker，再由 Worker 使用本文件的原生子智能体派发流程。Orca Worker 是独立会话，不属于下文 `execution_mode=subagent`；不要把它的创建回执写成原生 spawn 或 bind 回执。
+
 ### 主会话与子智能体的职责边界
 
 - **主会话是任务负责人和验收者。**主会话负责目标、计划与拆分、选择和派发执行者、协调依赖与文件归属、跨任务决策、接受或退回结果、综合验收与用户汇报。集成责任包括判断接口和冲突处理方案；复杂集成实现和专门验证仍默认委派。分组/root 的综合验收只能声明 `assignment.execution_mode=main_session`，并提供非空摘要与可复核证据。

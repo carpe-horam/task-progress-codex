@@ -1,6 +1,6 @@
 ---
 name: track-progress
-description: 在 Codex 主会话与 agent 开始实质工作前先做粗粒度规划；适用于实现、修复、研究、审查、合并 worktree、验证和提交 PR。多阶段任务先建 HTN 计划，执行中动态拆分和补充。
+description: 在主会话与执行者开始实质工作前先做粗粒度规划；适用于实现、修复、研究、审查、合并 worktree、验证和提交 PR。多阶段任务先建 HTN 计划，执行中动态拆分和补充。
 ---
 
 # Track Progress — 任务进度跟踪与展示
@@ -33,7 +33,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 
 ### 身份与失败处理
 
-- 所有 ID 都是 opaque 值，只能逐字复用插件成功回执或本会话已确认记录中的值。`session_id`、`task_instance_id`、`epoch`、`task_id`、`attempt_id` 和执行 ID 含义不同；不得用 Codex thread ID、另一个会话的 ID、UUID 片段、递增/补齐字符或猜测值相互替代。首次初始化可以省略 `session_id` 让工具生成；收到回执后立即保存并在后续调用中原样传回。
+- 所有 ID 都是 opaque 值，只能逐字复用插件成功回执或本会话已确认记录中的值。`session_id`、`task_instance_id`、`epoch`、`task_id`、`attempt_id` 和执行 ID 含义不同；不得用宿主会话 ID、另一个会话的 ID、UUID 片段、递增/补齐字符或猜测值相互替代。首次初始化可以省略 `session_id` 让工具生成；收到回执后立即保存并在后续调用中原样传回。
 - 继续既有任务但找不到准确的 `session_id` 或当前 `task_instance_id` 时，不要试探候选值或反复初始化。先从本会话最近一次成功回执、已保存的任务上下文或明确的宿主记录中恢复；仍无法确认时，说明缺少哪个 ID 并暂停依赖该 ID 的操作。只有确认是新的独立目标时才初始化新实例。
 - 每次工具失败后，先读该次确切错误，核对最近一次成功回执里的 ID、epoch、task 和 attempt，再决定是否能按错误信息做一次有依据的更正。禁止原样重试失败调用、轮换或篡改 ID 碰运气；一次有依据的更正仍失败，就停止该调用路径，保留错误并检查适用的 skill/工具契约，或报告缺少的信息。不要把失败查询当作状态证据。
 - 写操作成功后先保存回执中的身份与状态；仅在需要核实具体任务内容、证据、依赖或下一步时调用对应只读查询。不要因收到成功回执就查询 full，也不要在没有状态变化或新问题时重复刷新。
@@ -46,7 +46,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 - 主会话自执行叶任务时记录具体 `self_execution_reason`；已记录 `atomic_reason` 的原子 root 除外。共享文件先明确 owner 并串行交接。分工与改派规则见 [协作与职责](references/delegation.md)。
 - 实际派发前，读取 [协作与职责](references/delegation.md)、[模型选择](references/model-selection.md) 和 [HTN 派发](references/htn-dispatch.md)。遵守宿主允许的模型、强度和委派规则；不能获得的配置不得虚构。
 - 子智能体启动先读 overview 的 `protocol_capabilities`。当含 `assignment_sources_v1` 时，模型与强度来源可分别记录为 `explicit`、`inherited` 或 `unknown`；继承/未知不带具体值，也不阻止宿主已支持的委派。没有能力标志时沿用旧服务端流程，不发送新字段。不要猜测模型或配置值。
-- 展示派发信息并提供自包含的背景、目标、约束、路径及验收条件。执行顺序是：`update_task` 启动 attempt → 调用实际协作工具 → `bind_task_agent` 绑定返回的真实 ID。`send_message` 只投递上下文，不证明 idle worker 被唤醒；要启动/唤醒 owner 使用 `followup_task`。记录 assignment 不等于实际派发或宿主执行回执。
+- 派发时展示执行者与自包含的背景、目标、约束、路径及验收条件。使用宿主实际支持的创建或唤醒工具；消息投递本身不证明工作开始。原生子智能体的顺序是：`update_task` 启动 attempt → 实际派发 → `bind_task_agent` 绑定返回的真实 ID。其他协作形态按 [协作与职责](references/delegation.md) 的宿主分支记录，不冒用子智能体绑定。记录 assignment 不等于实际派发或宿主执行回执。
 - 每次 attempt 记录执行角色。主会话模型、强度及宿主 ID 未明确提供时保持未知，不从配置或目录猜测；详见 [会话元数据](references/session-metadata.md)。
 
 ## 4. 执行、复核和调整
