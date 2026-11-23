@@ -354,7 +354,7 @@ async function composeTaskProgressContext(msg) {
     let expectedInstanceId = context?.task_instance_id;
     let candidate;
     if (context == null) {
-      candidate = { kind: 'startup', text: 'Task Progress 开工指引：当前 Cindy 会话尚未确认任务实例绑定，这不表示没有已有任务。先判断本次请求：简单问答或单步查询无需建树；多阶段实质工作在执行前调用 init_task_network 建立粗粒度计划，再启动 ready 叶任务。若是继续已有任务或压缩恢复，先从本会话成功回执恢复准确身份，调用 get_progress(view="overview") 和 get_progress(view="context")，复用原实例；身份不明时不要猜测 ID 或重复初始化。遵从用户明确停止或取消的指令。这份附加资料不代表用户原话，也不自动创建任务或修改状态。' };
+      candidate = { kind: 'startup', text: 'Task Progress 开工指引：当前 Cindy 会话尚未确认任务实例绑定，这不表示没有已有任务。先判断本次请求：简单问答无需建树；单步工作用 init_task_network 填写 atomic_reason；多阶段实质工作必须在任何修改、命令或委派前调用 init_task_network，提交至少两个有独立结果边界的初始任务，并写清验收条件。不要把查看 Hook 诊断或插件可用性当成任务已初始化。若是继续已有任务或压缩恢复，先从本会话成功回执恢复准确身份，调用 get_progress(view="overview") 和 get_progress(view="context")，复用原实例；身份不明时不要猜测 ID 或重复初始化。遵从用户明确停止或取消的指令。这份附加资料不代表用户原话，也不自动创建任务或修改状态。' };
     } else {
       if (typeof mapped !== 'string' || !mapped.trim() || mapped !== context.session_id ||
           typeof expectedInstanceId !== 'string' || !expectedInstanceId.trim()) return {reason:'binding_invalid'};
@@ -1171,9 +1171,13 @@ cindy.onHostMessage(async function (msg) {
       await waitForPluginKvWrites();
       const current = await readReviewState();
       const diagnostics = current.taskProgressHookDiagnostics?.[hostSessionId] || { events: {}, pending: [] };
+      const taskSessionId = current.taskProgressSessionsByHostSession?.[hostSessionId] || null;
+      const taskContext = current.taskProgressContextsByHostSession?.[hostSessionId] || null;
       const result = { content: [{ type: 'text', text: JSON.stringify(diagnostics) }],
         structuredContent: { schema_version: 1, scope: 'current_cindy_session',
-          events: diagnostics.events || {}, pending_refresh_count: diagnostics.pending?.length || 0 } };
+          events: diagnostics.events || {}, pending_refresh_count: diagnostics.pending?.length || 0,
+          task_progress: { session_bound: Boolean(taskSessionId), task_instance_bound: Boolean(taskSessionId && taskContext?.session_id === taskSessionId && taskContext?.task_instance_id),
+            session_id: taskSessionId, task_instance_id: taskContext?.session_id === taskSessionId ? taskContext.task_instance_id || null : null } } };
       await cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result });
     } catch (_) {
       await cindy.send({ type: 'tool-result', callId: msg.callId, ok: false,
@@ -1228,14 +1232,18 @@ cindy.onHostMessage(async function (msg) {
     const resultData = response.result?.structuredContent || response.result?.result?.structuredContent || {};
     const sessionId = toolArgs.session_id || resultData.session_id || resultData.progress?.session_id;
     const readsProgress = msg.tool === 'get_progress' || msg.tool === 'get_progress_view';
-    const taskInstanceId = readsProgress && resultData.progress === null ? null :
+    const emptyProgressRead = readsProgress && resultData.progress === null;
+    const taskInstanceId = emptyProgressRead ? null :
       resultData.task_instance_id || resultData.progress?.task_instance_id || (!readsProgress && toolArgs.task_instance_id);
     const diagnostic = {
       kind: 'tool-call', tool: msg.tool, hasHostSession: typeof hostSessionId === 'string' && Boolean(hostSessionId),
       mapped: typeof hostSessionId === 'string' && Boolean(hostSessionId) && typeof sessionId === 'string' && Boolean(sessionId),
       hasTaskSession: typeof sessionId === 'string' && Boolean(sessionId), at: Date.now()
     };
-    if (typeof sessionId === 'string' && sessionId) {
+    // A confirmed empty read carries no evidence that this host session owns
+    // the requested task session. In particular, it must not race and claim
+    // the mapping before the first successful init_task_network response.
+    if (typeof sessionId === 'string' && sessionId && !emptyProgressRead) {
       try {
         const bindingUpdate = await updateBestEffortDiagnostic(current => {
         const sessions = { ...(current.taskProgressSessionsByHostSession || {}) };
