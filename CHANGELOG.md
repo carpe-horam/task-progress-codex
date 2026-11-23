@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 — 2026-11-23
+
+[发布说明](docs/releases/0.3.7.md)
+
+- 修复 Cindy 包的 Track Progress Skill 未注册：在包根声明并包含 Skill 与 Orca Worker 参考文档。
+- 三端版本同步更新至 0.3.7；任务服务端状态和公开工具契约不变。
+
 ## 0.3.6 — 2026-11-23
 
 [发布说明](docs/releases/0.3.6.md)

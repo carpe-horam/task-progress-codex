@@ -74,6 +74,9 @@ def main() -> None:
             shutil.copytree(CINDY / "assets", stage / "assets")
             shutil.copytree(CINDY / "node", stage / "node")
             shutil.copytree(generated, stage / "core")
+            skill_dir = stage / "skills" / "track-progress"
+            skill_dir.parent.mkdir()
+            shutil.copytree(generated / "skills" / "track-progress", skill_dir)
             print(f"Prepared self-contained Cindy Forge source: {stage}")
         elif args.check:
             if not core.is_dir() or files(core) != files(generated):
