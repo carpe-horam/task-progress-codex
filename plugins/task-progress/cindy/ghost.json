@@ -6,8 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.5",
-  "releaseNotes": "新增 Cindy Orca Worker 协同指引：明确 Lead 主账本、Worker 辅助任务树、持久 Worker 与一次性子智能体的边界，以及创建、派发和回报的实际步骤。主 Skill 保留宿主通用流程。",
+  "version": "0.3.6",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3601,5 +3600,5 @@
       }
     }
   },
-  "releaseNotes": "放大进度百分比，新增多色渐变、细刻度与端点光晕；进度条和数字同步缓动，变化时扫光，连续更新平滑衔接。优化暗色对比度，支持减少动态效果。"
+  "releaseNotes": "新增 Cindy Orca Worker 协同指引：明确 Lead 主账本、Worker 辅助任务树、持久 Worker 与一次性子智能体的边界，以及创建、派发和回报的实际步骤。主 Skill 保留宿主通用流程。"
 }
