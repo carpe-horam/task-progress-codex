@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8 — 2026-11-24
+
+[发布说明](docs/releases/0.3.8.md)
+
+- Cindy Lead 的一次性委派和跨阶段工作包统一创建或复用 Orca Worker，保留派发证据及 Lead 独立验收。
+- Cindy、Codex 和 DeepSeekRuntime 统一更新至 0.3.8。
+
 ## 0.3.7 — 2026-11-23
 
 [发布说明](docs/releases/0.3.7.md)

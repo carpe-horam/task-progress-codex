@@ -1,5 +1,7 @@
 ### 1. 初始化与分解
 
+规划时先按 [协作与职责](delegation.md) 选定宿主路由。以下 `subagent` 示例只适用于原生派发；Cindy Lead 的 Orca 协调叶按 [Cindy Orca Worker 路由](cindy-orca-worker.md) 规划。
+
 首次建立任务，或原任务已收尾且没有待处理独立请求时，调用 `init_task_network`；本会话已有 ID 则传入 `session_id`，同时传 `task_title`，保存响应 `structuredContent` 顶层的 `session_id`、`task_instance_id`、`epoch` 和 `root_id`。只附加当前上下文明确提供的 `main_session` 字段；未知字段省略。处理中收到独立请求改用 `route_request`，队列项用 `activate_request`；两者都复用本会话 ID。用实际返回的根 ID 分解；以下以首轮 `root` 为例：
 
 <!-- delegation-example:plan -->

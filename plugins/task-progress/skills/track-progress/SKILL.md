@@ -40,11 +40,13 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 
 ## 3. 分工和派发
 
+规划执行者前先识别宿主角色。**Cindy Lead 发起的委派统一走 [Cindy Orca Worker 路由](references/cindy-orca-worker.md)**，一次性子任务和跨阶段工作包均适用。Cindy Orca Worker 在获派范围内及非 Cindy 宿主可按授权使用原生子智能体。角色或能力不明时先核实，Cindy Lead 不以原生派发补位。
+
 主会话负责目标、计划、协调、复核和根任务验收。获派子智能体只更新自己的节点，不建立重复 root，也不验收自己的结果。
 
 - 在用户和宿主允许委派时，复杂分析、实现、专门验证及独立评审默认委派。紧密耦合的一条结果链优先复用同一 worker 完成调查、实现与局部核验；阶段切换本身不要求新 agent。主会话设定结果边界、依赖、资源与最终验收，worker 自主安排范围内步骤，发现新独立结果或范围变化时回主会话调整。串行依赖本身不是主会话包办的理由。
 - 主会话自执行叶任务时记录具体 `self_execution_reason`；已记录 `atomic_reason` 的原子 root 除外。共享文件先明确 owner 并串行交接。分工与改派规则见 [协作与职责](references/delegation.md)。
-- 实际派发前，读取 [协作与职责](references/delegation.md)、[模型选择](references/model-selection.md) 和 [HTN 派发](references/htn-dispatch.md)。遵守宿主允许的模型、强度和委派规则；不能获得的配置不得虚构。
+- 实际派发前，读取 [协作与职责](references/delegation.md) 和所选路由的流程。使用原生子智能体时另读 [模型选择](references/model-selection.md) 和 [HTN 派发](references/htn-dispatch.md)。遵守宿主允许的模型、强度和委派规则；不能获得的配置不得虚构。
 - 子智能体启动先读 overview 的 `protocol_capabilities`。当含 `assignment_sources_v1` 时，模型与强度来源可分别记录为 `explicit`、`inherited` 或 `unknown`；继承/未知不带具体值，也不阻止宿主已支持的委派。没有能力标志时沿用旧服务端流程，不发送新字段。不要猜测模型或配置值。
 - 派发时展示执行者与自包含的背景、目标、约束、路径及验收条件。使用宿主实际支持的创建或唤醒工具；消息投递本身不证明工作开始。原生子智能体的顺序是：`update_task` 启动 attempt → 实际派发 → `bind_task_agent` 绑定返回的真实 ID。其他协作形态按 [协作与职责](references/delegation.md) 的宿主分支记录，不冒用子智能体绑定。记录 assignment 不等于实际派发或宿主执行回执。
 - 每次 attempt 记录执行角色。主会话模型、强度及宿主 ID 未明确提供时保持未知，不从配置或目录猜测；详见 [会话元数据](references/session-metadata.md)。
@@ -74,7 +76,7 @@ Task Progress 是会话的计划与执行账本，不代替实际工作、派发
 - **继续已有任务或压缩后恢复** → 先读 `get_progress(view="overview")`，再读 `view="context"` 和全部请求分页；按需查询 tree/tasks。复用现有实例，不要重新初始化来恢复。
 - **新消息补充或修正原目标** → 更新上下文，按需调整计划，继续原任务。
 - **新消息是状态询问或简短问答** → 回答后继续原任务，通常不另建任务树。
-- **新消息是独立请求，而当前任务尚未收束** → 用 `route_request` 排队；只有资源可隔离、宿主允许且有合适的子智能体容量时，才考虑隔离并行实例。并行实例的叶任务须由子智能体执行；没有合适执行者时排队。不要覆盖原任务。队列、压缩恢复和移交详见 [请求分流与压缩恢复](references/request-routing.md)。
+- **新消息是独立请求，而当前任务尚未收束** → 用 `route_request` 排队；只有资源可隔离、宿主允许且有合适的子智能体容量时，才考虑隔离并行实例。并行实例的叶任务须由原生子智能体执行。Cindy Lead 及没有合适原生执行者的会话使用排队。不要覆盖原任务。队列、压缩恢复和移交详见 [请求分流与压缩恢复](references/request-routing.md)。
 - **用户明确停止、取消或替换目标** → 服从用户指令，协调在途执行并如实收束；不要因队列要求继续工作。
 - **准备最终收尾** → 查询根结果和全部请求分页，检查剩余工作并如实汇报。未解决任务不能伪装成成功；收尾与验收见 [HTN 验收](references/htn-review.md)。
 - **任务完成或视图关闭** → 保留进度，不自动清理。展示、历史和会话身份细节见 [展示、恢复与清理](references/session-display-cleanup.md)。

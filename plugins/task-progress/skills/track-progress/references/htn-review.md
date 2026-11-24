@@ -52,7 +52,7 @@
 
 若旧版本已经启动带有必需 `independent_review` 的叶任务，先用一次 `get_progress(view="tasks")` 确认当前 attempt 的冻结契约。叶节点不能同时包含目标和 verifier，换 ID 或追加同级核验任务都无法让该叶的验收通过。已有待验收提交时，用 `review_task(decision="reject")` 记录契约错配，对应 criterion 标记 `not_run` 并说明原因，保留原报告和证据。用 `rebuild_task_network` 保留旧计划后重建受影响的验收结构。若剩下的工作只是主会话查阅报告，使用 `inspection` 并引用原证据；若确实需要跨任务独立核验，在包含目标和 verifier 的分组上设置契约。
 
-继续执行时按需读取 context、tree/tasks 或 ready 列表核对实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按自执行原因处理；pending dispatch 先绑定真实 ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
+继续执行时按需读取 context、tree/tasks 或 ready 列表核对实际状态：ready 的 subagent 叶任务由主会话派发，ready 的 main_session 叶任务按计划自行执行或由 Cindy Lead [协调 Orca 并验收](cindy-orca-worker.md)；原生 pending dispatch 绑定真实 agent ID，pending review 先复核，running 则等待或记录有意义进展。ready 列表为空且分组已可验收时提交综合验收，不反复尝试启动空列表；完成状态仍须核对根结果及剩余 open 项。
 
 `pending` 是新节点初始状态，`update_task` 不接受 pending。叶任务必须先启动再完成。只有 `finished` 须传 `outcome=resolved|open`，也只有该状态可提交 `acceptance_checks`、`artifacts` 和 `verified_artifacts`。提交 `running`、`failed` 或 `cancelled` 时省略这四个字段；失败或取消仍用 `summary` 和 `evidence` 记录原因及证据。主会话自执行叶任务可直接结束，但要保留自执行原因。结果复核后再次 `get_ready_tasks`，将未解决前驱的证据传给能够处理它的后继。
 

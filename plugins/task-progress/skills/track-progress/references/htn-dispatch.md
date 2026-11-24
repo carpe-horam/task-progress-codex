@@ -1,6 +1,6 @@
 ### 2. 获取 ready 任务并实际派发
 
-本节的 `collaboration.spawn_agent` 是宿主原生子智能体调用。Cindy Lead 若要先设立持续负责的 Orca Worker，按 [Cindy Orca Worker 协同](cindy-orca-worker.md) 操作；Worker 在自己的会话里再执行本节。`mcp__cindy_orca__create_worker` 的回执不能充当 `bind_task_agent` 所需的原生 subagent ID。
+本节适用于非 Cindy 宿主及 Orca Worker 在获派范围内的原生子智能体派发。Cindy Lead 的一次性委派、工作包及后续轮次均按 [Cindy Orca Worker 路由](cindy-orca-worker.md) 创建或复用 Worker。Orca ID 仅记入回执证据，`bind_task_agent` 只接受原生 subagent ID。
 
 实际调用 `collaboration.spawn_agent` 前，先将任务挂到父节点、分配 `subagent`，再调用 `get_ready_tasks`；只启动 ready 叶节点。复杂工作即使只能串行仍委派，同一依赖链可顺序交给同一 agent；共享文件明确 owner 并串行交接。Task Progress 不会自动创建子智能体。
 

@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3607,5 +3607,5 @@
       }
     }
   },
-  "releaseNotes": "修复随包 Skill 未注册的问题：将 Track Progress Skill 及其 Cindy Orca Worker 参考文档放入包根技能目录，并在清单中声明。Orca 协同流程和任务服务端行为不变。"
+  "releaseNotes": "Cindy Lead 的一次性委派与跨阶段工作包统一创建或复用 Orca Worker，保留 Lead 主账本、派发证据和独立验收。"
 }

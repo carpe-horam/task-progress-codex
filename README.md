@@ -108,7 +108,7 @@ codex plugin add task-progress@task-progress-codex
 | **临时插入工作** | “把整理使用文档加入队列，当前任务完成后再做。” |
 | **交付与复盘** | “检查是否还有未解决任务，汇总验收结果，然后打开进度面板供我导出报告。” |
 
-在 Cindy 中需要持续协作时，可由 Lead 创建或复用 Orca Worker 负责工作包；Worker 在自己的会话里用原生子智能体拆分执行。Lead 的 Task Progress 任务树保留为主账本，Worker 的内部记录仅作辅助证据。Orca Worker 是持久会话，和一次性子智能体分别记录。具体步骤见 [Cindy Orca Worker 协同](plugins/task-progress/skills/track-progress/references/cindy-orca-worker.md)。
+Cindy Lead 获准委派时，为一次性子任务和跨阶段工作包创建或复用 Orca Worker。Worker 可在获派范围内按授权使用原生子智能体。Lead 的 Task Progress 任务树保留为主账本，Worker 的回报与内部记录作为验收证据。具体步骤见 [Cindy Orca Worker 路由](plugins/task-progress/skills/track-progress/references/cindy-orca-worker.md)。
 
 ## 它如何与你的 Codex 配合
 
