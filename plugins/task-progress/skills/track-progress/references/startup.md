@@ -18,7 +18,7 @@
 
 - `SessionStart`（包括 startup、resume、clear、compact、fork）和 `UserPromptSubmit`：规划、恢复和请求分流。
 - `PreToolUse`：工具推进实质工作前确认计划、ready 叶节点和有效 attempt；派发前确认先启动 attempt。
-- `PostToolUse`：工具返回后记录重要状态变化和证据；派发返回后绑定真实 agent ID，子任务提交后由主会话独立验收。运行句柄、排队或局部输出不能当成完成。
+- `PostToolUse`：工具返回后记录重要状态变化和证据；原生派发返回后绑定真实 agent ID。Cindy Lead 按 [Orca 路由](cindy-orca-worker.md) 记录 Worker 回执。子任务提交后由负责派发的会话独立验收。运行句柄、排队或局部输出不能当成完成。
 - `SubagentStart`：子智能体只读取和执行获派节点，使用已有身份提交结果，由主会话验收。
 
 执行过程使用短提示，工具事件去重与语义提醒预算分开；等待、轮询、已知查询和控制操作静默。日常用户更新突出目标、当前 owner、重要约束和决策；完整派发文本、工具配置和执行回执保存在任务账本，需要时再查询，避免每次进度都重复展示长参数。Task Progress 成功写回执会提供版本、操作名和服务端推导的 `context_effect`，hook 可将其与实际收到的宿主 session/agent 字段关联，再按插件的 session、instance、epoch、task 和 attempt 读取有界状态。只有显式 `agent_id` 可用于 actor scope；缺失身份、缓存/状态不可读或旧 epoch/attempt 都降级为 unknown/stale，不推断角色或认证。spawn 关联要求单个明确的待派发 attempt 与成功返回的结构化 host `agent_id`；`agent_name` 仍是调用方声明。

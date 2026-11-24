@@ -8,6 +8,8 @@
 
 将以上对象传给 `init_progress`，保存响应 `structuredContent` 顶层的 `session_id` 和 `task_instance_id`。首次初始化尚无会话 ID 时可省略 `session_id`；已有 ID 时必须复用。重复调用会归档当前任务并创建新任务；恢复旧版清单只调用 `get_progress`。
 
+Cindy Lead 委派线性步骤时按 [Cindy Orca Worker 路由](cindy-orca-worker.md) 创建或复用 Worker，以 `update_step` 的 `main_session` 步骤和 attempt 记录协调，在备注保留 Orca 回执和 Lead 验收证据。下文 `subagent` 配置只适用于原生派发。
+
 开始主会话步骤时至少传 `assignment: {"execution_mode":"main_session"}`；只有当前上下文明确提供的模型、思维强度、thread ID 和 turn ID 才附加，不能从初始化快照或旧任务复制。子智能体步骤将 `execution_mode` 设为 `subagent`，并记录实际使用的派发工具与自包含 `dispatch_text`。先从 `get_progress(view="overview")` 读取 `protocol_capabilities`：支持 `assignment_sources_v1` 的服务端要求 model 与 reasoning effort 分别标注 `explicit`、`inherited` 或 `unknown`；继承或未知来源不填猜测值，也不阻止受支持宿主派发。`fork_context_v1` 支持 `fork_turns: "none"|"all"`，仅在实际明确选择时记录，省略表示未记录。未公布这些能力的旧服务端继续使用其原有显式配置约束。未知的主会话元数据不阻止步骤启动。
 
 开始步骤后，保存响应 `structuredContent` 顶层的 `attempt_id`（步骤索引为 `step_index`）；运行中的备注更新、完成、重置和重开都须传回当前 ID。完成步骤：`update_step({"session_id":"<本会话 ID>","task_instance_id":"<当前任务实例 ID>","step_index":0,"attempt_id":"<当前尝试 ID>","status":"completed","note":"验收结果"})`；执行元数据会保留，无需重复传入。

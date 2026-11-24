@@ -50,8 +50,23 @@ class CindyPrepareTest(unittest.TestCase):
             frontmatter = skill_file.read_text().split("---", 2)[1]
             self.assertIn(f"name: {skill['name']}", frontmatter)
             self.assertIn(f"description: {skill['description']}", frontmatter)
-            self.assertEqual((stage / skill["dir"] / "references/cindy-orca-worker.md").read_bytes(),
-                             (core / "skills/track-progress/references/cindy-orca-worker.md").read_bytes())
+            packaged_skill = stage / skill["dir"]
+            shared_skill = SHARED / "skills/track-progress"
+            self.assertIn("Cindy Lead 发起的委派统一走", skill_file.read_text())
+            route = Path("references/cindy-orca-worker.md")
+            self.assertIn("一次性子任务和跨阶段工作包均使用 Orca Worker",
+                          (packaged_skill / route).read_text())
+            entrypoints = ("delegation", "htn-planning", "htn-dispatch", "htn-retry",
+                           "htn-review", "legacy-linear", "request-routing", "startup")
+            self.assertIn("(references/cindy-orca-worker.md)", skill_file.read_text())
+            for name in entrypoints:
+                reference = Path("references") / f"{name}.md"
+                with self.subTest(reference=reference):
+                    self.assertIn("(cindy-orca-worker.md)", (packaged_skill / reference).read_text())
+                    self.assertEqual((packaged_skill / reference).read_bytes(),
+                                     (shared_skill / reference).read_bytes())
+            self.assertEqual((packaged_skill / route).read_bytes(),
+                             (core / "skills/track-progress" / route).read_bytes())
             self.assertEqual((core / "execution_lifecycle.py").read_bytes(),
                              (SHARED / "execution_lifecycle.py").read_bytes())
             self.assertIn('Path(__file__).with_name("ghost.json")', (core / "server.py").read_text())
