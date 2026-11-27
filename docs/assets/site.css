@@ -57,3 +57,23 @@
  .demo-section .real-panel-label{display:none}
  .demo-section .playground-controls{padding-top:7px;padding-bottom:7px}
 }
+
+.install-steps .requirements {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.install-steps .requirements summary {
+  align-items: center;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+}
+.install-steps .requirements[open] summary span { transform: rotate(45deg); }
+.install-steps .requirements a { color: var(--blue); }
+.install-steps .requirements .install-step { margin-top: 14px; }
