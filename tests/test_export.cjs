@@ -17,17 +17,28 @@ readline.createInterface({input:python.stdout}).on('line',line=>{const r=JSON.pa
 const rpc = require('./snapshot_rpc.cjs').snapshotRpc(rawRpc);
 function rawRpc(name,args){const id=++seq;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(name+' timeout')),5000);pending.set(id,{resolve,reject,timer});python.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});}
 const assignment={execution_mode:'main_session',self_execution_reason:'Short isolated browser fixture operation',model:'fixture',reasoning_effort:'high'};
-async function exportSnapshot(snapshot){
+async function exportSnapshot(snapshot,hostRejectsDownload=false){
  const page=await browser.newPage({viewport:{width:1000,height:900}});page.setDefaultTimeout(5000);await page.exposeFunction('auditRpc',rawRpc);
  await page.setContent('<iframe id="app" style="width:950px;height:850px"></iframe>');
- await page.evaluate(({snapshot,html})=>{
+ await page.evaluate(({snapshot,html,hostRejectsDownload})=>{
+   window.exportMethods=[];
    addEventListener('message',async e=>{const m=e.data;if(m?.jsonrpc!=='2.0')return;const reply=result=>e.source.postMessage({jsonrpc:'2.0',id:m.id,result},'*');
-   if(m.method==='ui/initialize')reply({protocolVersion:'2026-01-26',hostCapabilities:{},hostContext:{displayMode:'inline'}});
+   if(m.method==='ui/initialize')reply({protocolVersion:'2026-01-26',hostCapabilities:hostRejectsDownload?{downloadFile:{}}:{},hostContext:{displayMode:'inline'}});
    if(m.method==='ui/notifications/initialized')e.source.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:snapshot},'*');
+   if(m.method==='ui/download-file'){window.exportMethods.push(m.method);reply({isError:true});}
+   if(m.method==='tools/call'&&m.params.name==='save_export_files')window.exportMethods.push(m.params.name);
    if(m.method==='tools/call')try{reply(await window.auditRpc(m.params.name,m.params.arguments));}catch(err){e.source.postMessage({jsonrpc:'2.0',id:m.id,error:{code:-32603,message:err.message}},'*');}});
    document.getElementById('app').srcdoc=html;
- },{snapshot,html});
+ },{snapshot,html,hostRejectsDownload});
  const f=page.frameLocator('#app');await f.locator('#export-all:not(.hidden)').waitFor();await f.locator('#export-all').click();await f.locator('#export-all:not([disabled])').waitFor();
+ if(hostRejectsDownload){
+  assert.match(await f.locator('#export-feedback').textContent(),/宿主未确认下载/);
+  assert.deepEqual(await page.evaluate(()=>window.exportMethods),['ui/download-file']);
+  await f.getByRole('button',{name:'保存到本机',exact:true}).click();
+  await f.locator('#export-all:not([disabled])').waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.exportMethods),['ui/download-file','save_export_files']);
+  assert.equal(await f.locator('#export-local').isVisible(),false);
+ }
  if(!feedbackCaptured){
   const geometry=await f.locator('#export-feedback').evaluate(e=>({top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,height:innerHeight}));
   assert(geometry.top>=0 && geometry.bottom<=geometry.height,'export result stays visible beside the initiating action');
@@ -94,6 +105,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  results.push({case:'emoji_title_at_utf16_truncation_boundary',feedback:await exportSnapshot(r)});
  r=await rpc('init_task_network',{task_title:'中文😀正常标题'});
  results.push({case:'ordinary_unicode_title',feedback:await exportSnapshot(r)});
+ r=await rpc('init_task_network',{task_title:'host rejects download'});
+ results.push({case:'host_rejection_requires_explicit_local_save',feedback:await exportSnapshot(r,true)});
+ const recoveredFiles=fs.readdirSync(exportDir).filter(name=>name.includes('host rejects download'));
+ assert.deepEqual(recoveredFiles.map(name=>path.extname(name)).sort(),['.html','.xlsx']);
+ assert(recoveredFiles.every(name=>fs.statSync(path.join(exportDir,name)).size>0));
  for(const result of results)assert(result.feedback.startsWith('已导出 Excel'),result.feedback);
  assert.deepEqual(results[0].rows,[{taskId:'build',title:'Build leaf',attemptCount:1},{taskId:'test',title:'Test leaf',attemptCount:1}]);
  console.log(JSON.stringify(results,null,2));
