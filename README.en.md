@@ -34,7 +34,7 @@ Building a feature, tracking down a stubborn bug, or coordinating several agents
 
 ### 1. Install for your host
 
-[Download or check out the v0.3.8 source](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.8). This release contains source code and has no attached installer. Paths below are relative to the extracted or cloned repository.
+[Download or check out the v0.3.9 source](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.9). This release contains source code and has no attached installer. Paths below are relative to the extracted or cloned repository.
 
 - **Cindy**: follow the [build guide](plugins/task-progress/cindy/README.md) to stage with `prepare.py --stage`, package the staged directory with Cindy Forge, then install the resulting plugin in Cindy.
 - **Codex**: requires plugin and stdio MCP support and Python 3 available as `python` on PATH. Run:
@@ -61,6 +61,14 @@ with supporting evidence when the work is finished.
 ### 3. Check in whenever you need to
 
 Ask your agent to **“Open Task Progress.”** The panel refreshes automatically. Expand a task for details, then use **Export** to save Excel and HTML reports.
+
+For CLI agents on macOS, use `/open-progress-widget` to open a native window that stays on top and selects the current conversation's task. From the source directory, you can also run:
+
+```sh
+python3 plugins/task-progress/progress_widget.py --ensure-service
+```
+
+The terminal command without selection arguments shows the local task catalogue. The widget reuses the existing progress panel, starts in dark mode and supports up to eight tiled tasks. Only the selected tile scrolls internally; the sidebar folds only when you choose to fold it. It requires Python 3 and Xcode Command Line Tools. It reads tasks from the same local Task Progress service, saves Excel/HTML exports to `Downloads/Task Progress Exports`, and leaves tasks running when closed.
 
 ## From planning to delivery
 

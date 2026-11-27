@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.9 — 2026-11-27
+
+[发布说明](docs/releases/0.3.9.md)
+
+- 新增 macOS 原生置顶进度浮窗与 `/open-progress-widget`，默认定位当前会话的任务并复用原版面板。
+- 左侧任务切换，最多8项平铺；默认黑色、仅选中页面可内部滚动、侧栏只由用户手动折叠，移除重复标题。
+- 提供只读本机任务目录、固定实例读取及原生 Excel/HTML 导出，关闭浮窗不停止任务。
+- Worker 双向通信显式使用 `delivery="steer"` 并核对排队回执；单一工作包不再增加冗余编号层级。
+- Cindy、Codex 和 DeepSeekRuntime 统一更新至 0.3.9，Cindy 包包含新 Skill 和所需运行资产。
+
 ## 0.3.8 — 2026-11-24
 
 [发布说明](docs/releases/0.3.8.md)

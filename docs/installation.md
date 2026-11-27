@@ -27,11 +27,11 @@ codex plugin add task-progress@task-progress-codex
 
 ### 从旧版本升级
 
-已有同名 Marketplace 时，重新登记目标发布标签（以下以 v0.3.8 为例），再重新安装插件。固定旧标签的 Marketplace 执行 upgrade 仍会停留在该标签：
+已有同名 Marketplace 时，重新登记目标发布标签（以下以 v0.3.9 为例），再重新安装插件。固定旧标签的 Marketplace 执行 upgrade 仍会停留在该标签：
 
 ```sh
 codex plugin marketplace remove task-progress-codex
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.3.8
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.3.9
 codex plugin add task-progress@task-progress-codex
 ```
 
@@ -64,7 +64,7 @@ codex plugin add task-progress@task-progress-codex
 安装后的差异只在包装层，运行期行为与 Codex 一致：
 
 - 工具：插件在挂载时读取 `tools/list`，用**相同工具名**（`render_progress`、`get_progress` 等）注册到 `ctx.tools`，因此 skill 正文与示例命令在两个宿主中都有效。
-- skill：`track-progress` 与 `cleanup-task-progress-history` 通过 `ctx.skills` 注册，无需 `.dsh/skills` 链接或复制。
+- skill：`track-progress`、`cleanup-task-progress-history` 与 `open-progress-widget` 通过 `ctx.skills` 注册，无需 `.dsh/skills` 链接或复制。
 - 交互卡片：`render_progress` 在会话内渲染 `app.html`；插件侧补上了 DeepSeekRuntime 缺失的 MCP Apps 宿主（握手 + `tools/call` 转发）。
 - 生命周期 hooks：`hooks/hooks.json` 尚未适配，DeepSeekRuntime 中的规划提醒只来自 skill 正文。
 

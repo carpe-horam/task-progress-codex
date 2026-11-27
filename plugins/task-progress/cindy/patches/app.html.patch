@@ -99,7 +99,7 @@
 +      return;
 +    }
 +  });
-   $('export-all').addEventListener('click', exportCurrentProgress);
+   $('export-all').addEventListener('click', () => exportCurrentProgress());
    function receiveResult(result, fromRefresh = false) {
      if ((isInlineStale() && fromRefresh) || disposed) return;
 @@ -3955,6 +3999,7 @@

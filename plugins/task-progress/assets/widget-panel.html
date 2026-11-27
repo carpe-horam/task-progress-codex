@@ -1,0 +1,481 @@
+<!doctype html>
+<!-- Source template. Regenerate the standalone preview with: python3 docs/prototypes/build-widget-ux.py -->
+<html lang="zh-CN" data-theme="dark" data-runtime="true">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="查看本机任务进度，切换任务或最多八项平铺。">
+<meta name="page-type" content="software">
+<meta name="site-kind" content="software">
+<title>Task Progress</title>
+<style>
+:root{color-scheme:light;--desk:#e8eae9;--surface:#fff;--sidebar:#f5f6f5;--canvas:#f8f9f8;--hover:#eff1ef;--line:#e4e7e4;--ink:#202922;--muted:#717a73;--faint:#969e98;--accent:#28694c;--tint:#e9f2ec;--running:#467665;--review:#9b741e;--review-bg:#f8f1df;--danger:#ba654c;--danger-bg:#fbefe9;--shadow:0 24px 70px #16251a18,0 2px 8px #16251a0b;--radius:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+:root[data-theme=dark]{color-scheme:dark;--desk:#101614;--surface:#1a211e;--sidebar:#171d1a;--canvas:#141b17;--hover:#27312a;--line:#303c33;--ink:#e3ebe5;--muted:#a1ada4;--faint:#78877c;--accent:#94c8a7;--tint:#243a2b;--running:#94c8a7;--review:#e2c37a;--review-bg:#3d3421;--danger:#e5a18c;--danger-bg:#3e2a24;--shadow:0 24px 80px #0005}
+*{box-sizing:border-box}body{margin:0;background:var(--desk);color:var(--ink);font:14px/1.5 var(--font);padding:22px 28px 18px}button,input{font:inherit}button{border:0;cursor:pointer;color:inherit;background:transparent}button,input{outline-offset:3px}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}button{transition:background .15s,transform .12s,color .15s}button:active{transform:translateY(1px)}button:disabled{cursor:not-allowed;opacity:.5}svg{width:17px;height:17px;flex-shrink:0;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}h1,h2,h3,p{margin:0}button svg{pointer-events:none}input{color:var(--ink)}.mono{font-variant-numeric:tabular-nums}.muted{color:var(--muted)}.prototype-label{max-width:1540px;margin:0 auto 12px;display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:1.3px;color:var(--muted)}.prototype-label span:last-child{letter-spacing:0}.shell{max-width:1540px;margin:auto;height:calc(100dvh - 76px);min-height:560px;border:1px solid var(--line);border-radius:13px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;position:relative;transition:max-width .25s,height .25s}.shell.compact{max-width:480px}.titlebar{height:35px;min-height:35px;background:var(--sidebar);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;position:relative;color:var(--muted);font-size:11px}.traffic{position:absolute;left:15px;display:flex;gap:7px}.traffic i{width:10px;height:10px;border-radius:50%;background:#ed786d;border:1px solid #0001}.traffic i:nth-child(2){background:#e7bc62}.traffic i:nth-child(3){background:#82b38b}.titlebar .demo-mark{position:absolute;right:14px;font-size:10px}.toolbar{min-height:67px;display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--surface)}.brand{display:flex;align-items:center;gap:10px;min-width:0}.brand-logo{display:flex;align-items:center;justify-content:center;width:29px;height:29px}.brand-logo svg{width:27px;height:27px;stroke:none}.brand h1{font-size:16px;letter-spacing:-.3px;font-weight:650;white-space:nowrap}.brand small{display:block;font-size:10px;color:var(--muted);letter-spacing:1.1px}.toolbar-spacer{flex:1}.segmented{display:flex;padding:3px;background:var(--sidebar);border:1px solid var(--line);border-radius:8px;gap:2px;flex-shrink:0}.segmented button{height:31px;padding:0 13px;display:flex;align-items:center;gap:6px;border-radius:5px;color:var(--muted);font-size:12px;white-space:nowrap}.segmented button.active{background:var(--surface);box-shadow:0 1px 4px #0000000c;color:var(--ink);font-weight:600}.toolbar-tools{display:flex;align-items:center;gap:5px}.icon-button{width:33px;height:33px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted);flex-shrink:0}.icon-button:hover{background:var(--hover);color:var(--ink)}.pin-button{width:auto;padding:0 9px;gap:5px;font-size:12px}.pin-button[aria-pressed=true]{color:var(--accent);background:var(--tint)}.sidebar-toggle{display:none}.workspace{display:flex;flex:1;min-height:0;position:relative;overflow:hidden}.sidebar{width:244px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;padding-top:19px;min-height:0;z-index:4}.sidebar-heading{display:flex;justify-content:space-between;align-items:center;padding:0 17px;margin-bottom:14px}.sidebar-heading h2{font-size:12px;font-weight:650}.counter{font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:0 6px}.search{height:33px;margin:0 13px 12px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:0 9px;background:var(--surface);color:var(--faint)}.search svg{width:14px}.search input{background:transparent;border:0;width:100%;min-width:0;font-size:12px;outline:0}.search:focus-within{border-color:var(--accent)}.search kbd{font:10px var(--font);border:1px solid var(--line);border-radius:3px;padding:0 4px}.filter-tabs{display:flex;gap:4px;padding:0 13px 13px;border-bottom:1px solid var(--line)}.filter-tabs button{padding:4px 10px;border-radius:5px;font-size:11px;color:var(--muted)}.filter-tabs button.active{background:var(--hover);color:var(--ink);font-weight:600}.task-list{overflow:auto;flex:1;padding:12px 8px}.section-label{display:flex;align-items:center;gap:7px;padding:0 9px;margin-bottom:6px;color:var(--muted);font-size:10px;letter-spacing:.7px}.section-label .count{margin-left:auto;letter-spacing:0}.task-row{display:flex;position:relative;align-items:center;border:1px solid transparent;border-radius:7px;margin:3px 0}.task-row:hover{background:var(--hover)}.task-row.active{background:var(--surface);border-color:var(--line);box-shadow:0 1px 3px #00000005}.task-row.active:before{content:"";position:absolute;width:3px;height:21px;background:var(--accent);border-radius:2px;left:-1px;top:13px}.task-select{display:flex;gap:9px;align-items:flex-start;padding:11px 10px;width:100%;text-align:left;min-width:0}.task-select .dot{margin-top:5px}.task-copy{min-width:0;flex:1}.task-title{font-size:12px;line-height:1.5;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-source{font-size:10px;color:var(--muted);display:flex;gap:5px;align-items:center;margin-top:4px}.task-source span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}.dot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex-shrink:0;display:inline-block}.dot.running{background:var(--running);box-shadow:0 0 0 3px var(--tint)}.dot.review{background:var(--review)}.dot.blocked{background:var(--danger)}.dot.done{background:var(--accent)}.tile-check{width:29px;height:40px;flex-shrink:0;display:none;align-items:center;justify-content:center}.tile-check .check-box{width:14px;height:14px;border:1px solid var(--faint);border-radius:4px;display:flex;align-items:center;justify-content:center}.tile-check svg{width:11px;height:11px;stroke-width:2}.tile-check[aria-checked=true] .check-box{background:var(--accent);border-color:var(--accent);color:var(--surface)}.tile-check[aria-disabled=true]{opacity:.38}.tile-mode .tile-check{display:flex}.tile-mode .task-select{padding-right:2px}.history-divider{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.history-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;font-size:11px;padding:6px 9px;color:var(--muted)}.history-toggle svg{width:13px;height:13px}.sidebar-bottom{border-top:1px solid var(--line);padding:12px 16px;background:var(--sidebar)}.selection-summary{display:flex;align-items:center;justify-content:space-between;font-size:11px}.selection-summary button{color:var(--accent);font-size:11px}.sidebar-footnote{font-size:10px;color:var(--muted);margin-top:5px}.main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface)}.main-heading{height:59px;flex-shrink:0;border-bottom:1px solid var(--line);padding:0 24px;display:flex;align-items:center;gap:10px}.breadcrumb{font-size:11px;display:flex;align-items:center;gap:7px;min-width:0}.breadcrumb>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.breadcrumb svg{height:12px;width:12px;color:var(--faint)}.view-note{margin-left:auto;font-size:10px;white-space:nowrap;color:var(--muted);display:flex;align-items:center;gap:6px}.live-dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}.main-body{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}.app-footer{height:28px;min-height:28px;border-top:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 16px;background:var(--sidebar);font-size:10px;color:var(--muted)}.app-footer .last{margin-left:auto;display:flex;gap:12px}.app-footer button{padding:0;font-size:10px;color:var(--accent)}.drawer-shade{display:none}.toast{position:absolute;z-index:20;left:50%;bottom:45px;transform:translate(-50%,10px);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:7px;font-size:12px;box-shadow:0 4px 20px #0002;max-width:calc(100% - 28px);opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;text-align:center;width:max-content}.toast.show{opacity:1;transform:translate(-50%,0)}.empty-search{padding:24px 12px;color:var(--muted);font-size:12px;text-align:center}.back-grid{font-size:11px;color:var(--accent);display:flex;gap:6px;align-items:center;white-space:nowrap}.back-grid svg{width:14px}.selection-chip{font-size:10px;color:var(--muted);padding:2px 7px;border:1px solid var(--line);border-radius:4px}.prototype-help{position:absolute;inset:0;z-index:15;background:#0c160f45;display:flex;align-items:center;justify-content:center;padding:20px}.help-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:25px;max-width:480px;box-shadow:var(--shadow)}.help-card h2{font-size:19px;margin-bottom:13px}.help-card p,.help-card li{font-size:12px;color:var(--muted);line-height:1.9}.help-card ul{padding-left:18px;margin:12px 0 20px}.solid-button{background:var(--accent);color:var(--surface);padding:9px 16px;border-radius:6px;font-size:12px}.prototype-help[hidden]{display:none}
+.tiles{grid-template-columns:repeat(var(--tile-cols,2),minmax(0,1fr));grid-auto-rows:var(--tile-height,350px)}.tile{height:100%}.group-count{margin-left:auto}.group-heading>span:nth-last-child(2){margin-left:0}
+.shell.compact .sidebar-toggle{display:inline-flex}.shell.compact .sidebar{position:absolute;top:0;bottom:0;transform:translateX(-100%);transition:transform .18s;width:250px;box-shadow:8px 0 24px #0001}.shell.compact.drawer-open .sidebar{transform:translateX(0)}.shell.compact.drawer-open .drawer-shade{display:block;position:absolute;inset:0;background:#081a1230;z-index:3}.shell.compact .toolbar{padding:10px;gap:8px;flex-wrap:wrap}.shell.compact .brand{flex:1}.shell.compact .brand small{display:none}.shell.compact .toolbar-spacer{display:none}.shell.compact .segmented{order:3;flex:1}.shell.compact .segmented button{flex:1;justify-content:center}.shell.compact .panel-content{padding:20px}.shell.compact .main-heading{padding:0 17px;height:49px}.shell.compact .view-note{display:none}.shell.compact .panel-heading h2{font-size:20px}.shell.compact .tiles{grid-template-columns:1fr}.shell.compact .app-footer .last span{display:none}
+@media(max-width:1000px){body{padding:16px}.prototype-label{margin-bottom:10px}.shell{height:calc(100dvh - 63px)}.sidebar{width:222px}.toolbar{gap:12px;padding:11px 16px}.toolbar-tools{gap:2px}.panel-content{padding:23px}.panel-heading h2{font-size:21px}.main-heading{padding:0 22px}.pin-button span{display:none}.pin-button{width:33px;padding:0}.tiles{padding:12px;gap:12px}}
+@media(max-width:700px){body{padding:0}.prototype-label{display:none}.shell{height:100dvh;min-height:0;border:0;border-radius:0;max-width:none!important}.titlebar{height:31px;min-height:31px}.toolbar{padding:9px 12px;gap:8px;flex-wrap:wrap;min-height:110px}.brand{flex:1}.brand h1{font-size:15px}.brand small{display:none}.toolbar-spacer{display:none}.toolbar-tools{gap:3px}.icon-button{width:35px;height:35px}.pin-button{width:35px}.segmented{order:3;flex:1}.segmented button{height:34px;flex:1;justify-content:center;font-size:12px}.sidebar-toggle{display:inline-flex}.compact-toggle{display:none}.sidebar{position:absolute;top:0;bottom:0;transform:translateX(-100%);transition:transform .18s;width:260px;box-shadow:8px 0 24px #0001}.drawer-open .sidebar{transform:translateX(0)}.drawer-open .drawer-shade{display:block;position:absolute;inset:0;background:#081a1230;z-index:3}.main-heading{height:49px;padding:0 17px}.view-note{display:none}.panel-content{padding:22px 18px}.panel-heading h2{font-size:20px}.panel-description{font-size:12px}.panel-tabs{gap:23px}.progress-summary{margin-top:23px}.panel-footer{padding:11px 18px}.tiles{grid-template-columns:1fr;padding:12px;gap:12px}.tile{height:420px}.tile .panel-content{padding:16px}.tile .panel-heading h2{font-size:16px}.tile .panel-tab{height:38px}.task-select{padding-top:13px;padding-bottom:13px}.tile-check{height:46px;width:38px}.app-footer{padding:0 12px;font-size:9px}.app-footer .last span{display:none}.task-title{font-size:13px}.task-source{font-size:11px}.filter-tabs button{padding:8px 12px}.search{height:38px}.prototype-help{padding:15px}.help-card{padding:22px}.leaf-row{padding:13px 0}.group-heading{min-height:43px}.icon-button,.panel-tab,.history-toggle{min-height:38px}.tile-header{height:44px}.tile-header>.icon-button{width:30px;min-height:32px}}
+.tiles .tile{height:100%}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Global controls live in the rail; the progress canvas gets the full height. */
+.sidebar{padding-top:0}
+.sidebar .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 5px;padding:18px 12px 12px;min-height:0;border:0;background:var(--sidebar);flex-shrink:0}
+.sidebar .brand{grid-column:1;grid-row:1;gap:7px;min-width:0}
+.sidebar .brand-logo{width:22px;height:24px}.sidebar .brand-logo svg{width:22px;height:22px}
+.sidebar .brand h1{font-size:13px}.sidebar .brand small{display:none}
+.sidebar .toolbar-spacer{display:none}
+.sidebar .toolbar-tools{grid-column:2;grid-row:1;gap:1px}
+.sidebar .toolbar-tools .icon-button{width:27px;height:29px;min-height:29px;padding:0}
+.sidebar .toolbar-tools .icon-button svg{width:14px;height:14px}
+.sidebar .pin-button span{display:none}
+.sidebar .segmented{grid-column:1/-1;grid-row:2;width:100%;order:initial;background:var(--hover)}
+.sidebar .segmented button{flex:1;justify-content:center;height:32px;font-size:11px;padding:0 7px}
+.sidebar .main-heading{height:36px;min-height:36px;border:0;padding:0 15px 10px;gap:4px;flex-shrink:0}
+.sidebar .grid-heading-note,.sidebar .view-note{font-size:10px}.sidebar .view-note{display:flex;margin-left:auto;gap:4px}
+.sidebar-heading{margin-top:10px;margin-bottom:12px}.sidebar .back-grid{font-size:10px}
+.sidebar .app-footer{height:auto;min-height:0;display:flex;flex-wrap:wrap;gap:4px;padding:11px 14px;align-items:center;flex-shrink:0;background:var(--sidebar)}
+.sidebar .app-footer .last{margin-left:auto}.sidebar .app-footer .last span{display:none}
+.title-menu{position:absolute;top:4px;left:79px;width:27px;height:27px;min-height:27px!important}
+.main{border:0}.single-view>.panel>.panel-content{padding-top:28px}
+.shell.compact .sidebar .toolbar{display:grid;padding:18px 14px 12px;gap:14px 5px}
+.shell.compact .sidebar .segmented{order:initial}.shell.compact .sidebar .main-heading{padding:0 15px 10px;height:36px}.shell.compact .sidebar .view-note{display:flex}
+@media(max-width:700px){.sidebar .toolbar{display:grid;padding:18px 14px 12px;gap:14px 5px;min-height:0}.sidebar .toolbar-tools .icon-button{width:33px;height:35px;min-height:35px}.sidebar .segmented button{height:38px;font-size:12px}.sidebar .main-heading{padding:0 16px 10px;height:36px}.sidebar .view-note{display:flex}.sidebar .app-footer{font-size:10px}.single-view>.panel>.panel-content{padding-top:20px}}
+
+:root[data-theme=dark]{--desk:#090b0f;--surface:#151920;--sidebar:#11141a;--canvas:#0f1217;--hover:#222833;--line:#2b303b;--ink:#e6e9ef;--muted:#9aa5b7;--faint:#738096;--accent:#9db6ff;--tint:#202d44;--running:#9db6ff;--review:#d8bb73;--review-bg:#373020;--danger:#df9985;--danger-bg:#382824}
+.main-body{display:block;position:relative;min-height:0}
+.frame-page{position:relative;display:none;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:transparent}
+.frame-page.visible{display:flex}.frame-page iframe{display:block;width:100%;min-height:0;flex:1;border:0;background:transparent}
+.frame-page>.tile-header{display:none}.mode-single>.frame-page.visible{height:100%;width:100%}
+.mode-tiles{display:grid;grid-template-columns:repeat(var(--tile-cols,2),minmax(0,1fr));grid-auto-rows:var(--tile-height,350px);align-content:start;gap:14px;padding:17px;background:var(--canvas);overflow:auto}
+.mode-tiles>.frame-page{border:1px solid var(--line);border-radius:8px}.mode-tiles>.frame-page>.tile-header{display:flex}
+.mode-tiles>.frame-page>.tile-header{height:30px;min-height:30px}.tile-header>[data-focus]{align-self:stretch}
+.frame-activation{display:none;position:absolute;inset:30px 0 0;z-index:2;background:transparent;border:0;border-radius:0;cursor:pointer}
+.mode-tiles>.frame-page:not(.focused)>.frame-activation{display:block}
+.mode-tiles>.frame-page:not(.focused)>iframe{pointer-events:none}
+.frame-activation:focus-visible{outline:2px solid var(--accent);outline-offset:-4px}
+.mode-tiles>.frame-page.focused{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.tiles-empty{height:100%;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted);font-size:12px}.tiles-empty h3{font-size:15px;color:var(--ink)}
+.frame-loading{color:var(--muted);font-size:12px;padding:12px 17px}.frame-loading[hidden]{display:none}
+.shell.compact .mode-tiles{grid-template-columns:1fr}
+@media(max-width:700px){.mode-tiles{grid-template-columns:1fr;padding:8px;gap:10px}.frame-page>.tile-header .icon-button{width:30px;height:32px;min-height:32px}.mode-tiles>.frame-page>.tile-header{height:34px;min-height:34px}.frame-activation{top:34px}}
+
+html[data-runtime=true] body{padding:0;background:var(--surface)}
+html[data-runtime=true] .prototype-label,html[data-runtime=true] .titlebar{display:none}
+html[data-runtime=true] .shell{height:100dvh;min-height:0;max-width:none;border:0;border-radius:0;box-shadow:none}
+html[data-runtime=true] .shell.compact{max-width:none}
+html[data-runtime=true] .sidebar .compact-toggle{display:inline-flex}
+html[data-runtime=true] .sidebar-toggle.runtime-menu{display:inline-flex;position:fixed;top:9px;left:7px;z-index:8;background:var(--sidebar);border:1px solid var(--line)}
+html[data-runtime=true]:not(.narrow) .sidebar-toggle.runtime-menu{display:none}
+html[data-runtime=true].narrow .mode-single>.frame-page.visible{padding-top:44px}
+html[data-runtime=true].narrow .mode-tiles{padding-top:49px}
+.connection-empty{height:100%;padding:28px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;text-align:center;color:var(--muted);font-size:12px}
+.connection-empty h2{color:var(--ink);font-size:17px}.connection-empty p{max-width:360px;line-height:1.8}.connection-empty button{padding:8px 14px;background:var(--tint);color:var(--accent);border-radius:6px}
+.sidebar .sidebar-footnote{line-height:1.7}.toolbar-tools button[aria-busy=true]{opacity:.5;pointer-events:none}
+
+/* Sidebar visibility is a user choice, never a window-width breakpoint. */
+html .shell .workspace>.sidebar{position:relative;top:auto;bottom:auto;transform:none;box-shadow:none;width:244px;flex:0 0 244px}
+html .shell.sidebar-collapsed .workspace>.sidebar{display:none}
+html .shell .drawer-shade{display:none!important}
+html .shell>.runtime-menu{display:none!important}
+html .shell.sidebar-collapsed>.runtime-menu{display:inline-flex!important}
+.sidebar-heading h2{margin-right:auto}.sidebar-heading>.counter{margin-right:6px}
+.sidebar-heading>[data-action=sidebar-collapse]{width:27px;height:27px;min-height:27px}
+html[data-runtime=true] .shell.sidebar-collapsed>.runtime-menu{position:absolute;top:9px;left:7px;z-index:8}
+html[data-runtime=true].narrow .mode-single>.frame-page.visible{padding-top:0}
+html[data-runtime=true].narrow .mode-tiles{padding-top:17px}
+html[data-runtime=true] .shell.sidebar-collapsed .mode-single>.frame-page.visible{padding-top:44px}
+html[data-runtime=true] .shell.sidebar-collapsed .mode-tiles{padding-top:49px}
+@media(max-width:1000px){html .shell .workspace>.sidebar{width:222px;flex-basis:222px}}
+@media(max-width:700px){html .shell .workspace>.sidebar{width:220px;flex-basis:220px}}
+@media(max-width:420px){html .shell .workspace>.sidebar{width:190px;flex-basis:190px}.sidebar .toolbar{padding:12px 8px}.sidebar .brand h1{font-size:12px}.sidebar .toolbar-tools .icon-button{width:26px}.sidebar .sidebar-heading{padding:0 12px}.sidebar .app-footer{padding:10px}.sidebar .task-list{padding:8px 5px}.sidebar .task-select{padding-left:8px}.sidebar .task-source{font-size:9px}.sidebar .task-title{font-size:11px}}
+</style>
+</head>
+<body>
+<div class="prototype-label"><span>TASK PROGRESS / DESKTOP WIDGET</span><span>浮窗交互原型 · 演示数据</span></div>
+
+<main class="shell" id="shell" aria-label="Task Progress 任务进度控件">
+<button class="icon-button sidebar-toggle title-menu runtime-menu" data-action="drawer" title="打开任务列表" aria-label="打开任务列表" aria-expanded="false"></button>
+  <div class="titlebar"><div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div><span>Task Progress</span><span class="demo-mark">UX PREVIEW</span></div>
+
+  <div class="workspace"><aside class="sidebar" aria-label="全部任务">  <header class="toolbar">
+    <div class="brand"><span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 32 32"><g fill="#647BFF"><path d="M16 10v7M5 23v-3a3 3 0 0 1 3-3h16a3 3 0 0 1 3 3v3M16 17v6" fill="none" stroke="#647BFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="12" y="2" width="8" height="9" rx="3"/><rect x="1" y="22" width="8" height="8" rx="2.5"/><rect x="12" y="22" width="8" height="8" rx="2.5"/><rect x="23" y="22" width="8" height="8" rx="2.5"/></g></svg></span><div><h1>任务进度</h1><small>TASK PROGRESS</small></div></div>
+    <div class="toolbar-spacer"></div>
+    <div class="segmented" role="group" aria-label="查看方式"><button class="active" data-action="single" aria-pressed="true"></button><button data-action="tile" aria-pressed="false"></button></div>
+    <div class="toolbar-tools"><button class="icon-button compact-toggle" data-action="compact" title="切换紧凑浮窗" aria-label="切换紧凑浮窗"></button><button class="icon-button pin-button" data-action="pin" aria-pressed="true" title="置顶" aria-label="置顶"></button><button class="icon-button" data-action="theme" title="切换明暗主题" aria-label="切换明暗主题"></button></div>
+  </header><div class="main-heading" id="main-heading"></div><div class="sidebar-heading"><h2>全部任务</h2><span class="counter" id="task-count">0</span><button class="icon-button" data-action="sidebar-collapse" title="收起任务列表" aria-label="收起任务列表"></button></div><label class="search"><span id="search-icon"></span><input id="search" placeholder="搜索任务或执行工具" aria-label="搜索任务或执行工具"><kbd>/</kbd></label><div class="filter-tabs" aria-label="任务筛选"><button class="active" data-filter="all" aria-pressed="true">全部</button><button data-filter="unfinished" aria-pressed="false">未完成</button></div><nav class="task-list" id="task-list" aria-label="选择任务"></nav><div class="sidebar-bottom" id="sidebar-bottom"></div>  <footer class="app-footer"><span class="live-dot"></span><span id="service-status">正在连接本机任务…</span><div class="last"><span>关闭浮窗不影响任务执行</span><button data-action="help">使用说明</button></div></footer></aside><button class="drawer-shade" data-action="drawer-close" aria-label="关闭任务列表"></button><section class="main" aria-label="任务进度查看区"><div class="main-body" id="main-body"></div></section></div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="prototype-help" id="help" hidden><div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title"><h2 id="help-title">一个浮窗，查看所有任务。</h2><p>任务来自本机 Task Progress 服务。查看和切换任务不会改变执行中的任务，关闭控件也不会停止执行。</p><ul><li>单任务：点击左侧任务，查看完整任务树和详情。</li><li>平铺：一键选入最多 8 个未完成任务，在左侧勾选调整。</li><li>平铺时先点击选中卡片，再滚动内部内容；未选中卡片上的滚轮用于浏览整个平铺区。右上角可放大或移出。</li><li>搜索、筛选与明暗主题均可操作；右侧直接复用现有 app.html 的任务树、详情、历史和导出。</li><li>侧栏只由用户手动收起或展开，缩小窗口不会自动折叠。</li><li>置顶和窗口大小由原生控件管理。</li></ul><button class="solid-button" data-action="help-close">开始查看</button></div></div>
+</main>
+<script type="application/json" id="prototype-payload">null</script>
+<script>
+(() => {
+"use strict";
+const icons={single:'<rect x="3" y="3" width="14" height="14" rx="2"/>',grid:'<rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/>',pin:'<path d="m7 3 6 0-1 5 3 3H5l3-3-1-5ZM10 11v6"/>',moon:'<path d="M16 12A7 7 0 0 1 8 3a7 7 0 1 0 8 9Z"/>',sun:'<circle cx="10" cy="10" r="3"/><path d="M10 1v2m0 14v2M1 10h2m14 0h2M3.6 3.6 5 5m10 10 1.4 1.4M3.6 16.4 5 15M15 5l1.4-1.4"/>',search:'<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/>',chevron:'<path d="m7 5 5 5-5 5"/>',menu:'<rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7 3v14"/>',check:'<path d="m4 10 4 4 8-8"/>',review:'<path d="M10 5v5l3 2"/>',close:'<path d="m5 5 10 10M15 5 5 15"/>',expand:'<path d="M12 3h5v5M17 3l-6 6M8 17H3v-5m0 5 6-6"/>',collapse:'<path d="M3 7h5V2M8 7 3 2m14 11h-5v5m0-5 5 5"/>',info:'<circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8h.01"/>',export:'<path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/>',arrow:'<path d="M16 10H4m5-5-5 5 5 5"/>',refresh:'<path d="M16.5 7A7 7 0 1 0 17 12M17 2v5h-5"/>',list:'<path d="M7 5h10M7 10h10M7 15h10M3 5h.1M3 10h.1M3 15h.1"/>'};
+const icon=(name,cls='')=>`<svg viewBox="0 0 20 20" aria-hidden="true" class="${cls}">${icons[name]||icons.info}</svg>`;
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const preview = JSON.parse(document.getElementById('prototype-payload').textContent);
+const isPreview = preview !== null;
+let tasks = isPreview ? preview.tasks.map(task => ({...task,
+  session_id: task.fixture.structuredContent.session_id,
+  task_instance_id: task.fixture.structuredContent.progress.task_instance_id,
+  percent: task.fixture.structuredContent.progress.accepted_resolved_percent,
+  closed: task.status === 'done', archived: false})) : [];
+let appHtml = isPreview ? new TextDecoder().decode(Uint8Array.from(atob(preview.appBase64), char => char.charCodeAt(0))) : '';
+const labels = {running:'进行中', executing:'进行中', in_progress:'进行中', review:'待验收', awaiting_review:'待验收',
+  blocked:'受阻', ready:'待开始', pending:'待开始', done:'已验收', completed:'已验收', resolved:'已验收',
+  waiting_synthesis:'待整体验收', closed:'已收束', handed_off:'已移交', cancelled:'已取消', failed:'失败', open:'未解决'};
+const byId = id => tasks.find(task => task.id === id);
+const $ = id => document.getElementById(id);
+const shell = $('shell'), pool = new Map();
+let stored = {};
+try { stored = JSON.parse(localStorage.getItem('task-progress-widget-v1') || '{}'); } catch (_) {}
+const state = {mode:'single', active:isPreview ? 'widget' : null, selected:[], initialized:false,
+  search:'', filter:'all', history:false, fromTile:false, theme:stored.theme === 'light' ? 'light' : 'dark',
+  pinned:true, compact:false, sidebarCollapsed:stored.sidebarCollapsed === true, busy:false, ready:isPreview, error:'', total:tasks.length, unreadable:0};
+const hasNative = () => !!window.webkit?.messageHandlers?.widgetControl;
+let token = location.hash.slice(1), sequence = 0, timer, toastTimer, access, fatal = false;
+const nativeRequests = new Map();
+const settingsKey = 'task-progress-widget-v1';
+
+function persist() {
+  try { localStorage.setItem(settingsKey, JSON.stringify({active:state.active, theme:state.theme, sidebarCollapsed:state.sidebarCollapsed})); } catch (_) {}
+}
+function notify(text) {
+  $('toast').textContent = text;
+  $('toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').classList.remove('show'), 3300);
+}
+function closeDrawer() {
+  shell.classList.remove('drawer-open');
+  document.querySelector('[data-action=drawer]').setAttribute('aria-expanded', !state.sidebarCollapsed);
+}
+function narrowLayout() {
+  document.documentElement.classList.toggle('narrow', shell.clientWidth <= 700);
+  layoutTiles();
+}
+function dotStatus(task) {
+  if (['executing','running','in_progress'].includes(task.status)) return 'running';
+  if (['review','awaiting_review','waiting_synthesis'].includes(task.status)) return 'review';
+  if (['blocked','failed','cancelled','open'].includes(task.status)) return 'blocked';
+  return task.closed ? 'done' : 'ready';
+}
+function isHistory(task) { return task.archived || task.closed; }
+function taskRows(list) {
+  return list.map(task => `<div class="task-row ${state.active === task.id ? 'active' : ''}" data-row="${esc(task.id)}">
+    <button class="task-select" data-task="${esc(task.id)}" aria-current="${state.active === task.id ? 'page' : 'false'}" title="${esc(task.title)}">
+      <span class="dot ${dotStatus(task)}"></span><span class="task-copy"><span class="task-title" style="display:block">${esc(task.title)}</span>
+      <span class="task-source"><span>${esc(task.source || '本机任务')} · ${esc(labels[task.status] || task.status)}</span><span>${task.percent ?? 0}%</span></span></span>
+    </button><button class="tile-check" role="checkbox" aria-label="平铺选择：${esc(task.title)}" aria-checked="${state.selected.includes(task.id)}"
+      aria-disabled="${!state.selected.includes(task.id) && state.selected.length === 8}" data-check="${esc(task.id)}"><span class="check-box">${state.selected.includes(task.id) ? icon('check') : ''}</span></button></div>`).join('');
+}
+function renderSidebar() {
+  const query = state.search.trim().toLowerCase();
+  const matching = tasks.filter(task => (state.filter !== 'unfinished' || !isHistory(task)) &&
+    `${task.title} ${task.source} ${labels[task.status] || task.status}`.toLowerCase().includes(query));
+  const active = matching.filter(task => !isHistory(task)), history = matching.filter(isHistory);
+  const scroll = $('task-list').scrollTop;
+  let content = active.length ? `<div class="section-label"><span>未完成</span><span class="count">${active.length}</span></div>${taskRows(active)}` : '';
+  if (history.length) content += `<div class="history-divider"><button class="history-toggle" data-action="history" aria-expanded="${state.history || !!query}"><span>已收束 / 历史 ${history.length}</span>${icon('chevron')}</button>${state.history || query ? taskRows(history) : ''}</div>`;
+  $('task-list').innerHTML = content || `<div class="empty-search">${state.ready ? '没有匹配的任务' : '正在读取任务…'}</div>`;
+  $('task-list').scrollTop = scroll;
+  $('task-count').textContent = state.total;
+  $('sidebar-bottom').innerHTML = state.mode === 'tile'
+    ? `<div class="selection-summary"><span>已选 <strong class="mono">${state.selected.length} / 8</strong></span><button data-action="reset-selection">恢复默认</button></div><p class="sidebar-footnote">勾选任务调整平铺；点击卡片后可滚动内部内容</p>`
+    : '<div class="selection-summary"><span>本机任务账本</span><span class="live-dot"></span></div><p class="sidebar-footnote">切换查看不会切换执行中的任务</p>';
+  if (state.unreadable) $('sidebar-bottom').insertAdjacentHTML('beforeend', `<p class="sidebar-footnote">${state.unreadable} 个会话暂不可读取</p>`);
+  document.querySelectorAll('[data-filter]').forEach(button => {
+    button.classList.toggle('active', state.filter === button.dataset.filter);
+    button.setAttribute('aria-pressed', state.filter === button.dataset.filter);
+  });
+  $('service-status').textContent = isPreview ? '演示数据 · 原版进度面板' : state.error || (state.ready ? '本机服务已连接' : '正在连接本机任务…');
+}
+function hostContext() { return {displayMode:'fullscreen', availableDisplayModes:['fullscreen'], theme:state.theme}; }
+function post(frame, message) { frame.contentWindow?.postMessage({jsonrpc:'2.0', ...message}, '*'); }
+async function request(path, body) {
+  const response = await fetch(path, {method:body === undefined ? 'GET' : 'POST',
+    headers:{Authorization:'Bearer ' + token, 'Content-Type':'application/json', Accept:'application/json'},
+    ...(body === undefined ? {} : {body:JSON.stringify(body)}), signal:AbortSignal.timeout(15000)});
+  if (response.status === 401) { fatal = true; throw new Error('访问已失效，请重新运行打开控件的命令。'); }
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || `本机服务暂不可用（${response.status}）`);
+  return value;
+}
+async function rpc(method, params) {
+  const wire = await request('/widget/rpc', {jsonrpc:'2.0', id:++sequence, method, params});
+  if (wire.error) throw new Error(wire.error.message);
+  if (wire.result?.isError) throw new Error(wire.result.content?.find(item => item.text)?.text || '无法读取任务进度。');
+  return wire.result;
+}
+async function snapshot(task, args = {}) {
+  if (args.session_id && args.session_id !== task.session_id) throw new Error('面板与任务会话不匹配。');
+  if (args.task_instance_id && args.task_instance_id !== task.task_instance_id) throw new Error('面板与任务实例不匹配。');
+  if (isPreview) return task.fixture;
+  return rpc('tools/call', {name:'get_progress_view', arguments:{session_id:task.session_id,
+    task_instance_id:task.task_instance_id, include_history:args.include_history === true}});
+}
+function getPage(task) {
+  if (pool.has(task.id)) return pool.get(task.id);
+  const page = document.createElement('section');
+  page.className = 'frame-page'; page.dataset.tile = task.id;
+  page.setAttribute('aria-label', task.title + '进度页面');
+  page.innerHTML = `<header class="tile-header"><button data-focus="${esc(task.id)}" aria-label="选中${esc(task.title)}" title="选中该任务"></button>
+    <button class="icon-button" data-maximize="${esc(task.id)}" aria-label="放大：${esc(task.title)}" title="放大查看">${icon('expand')}</button>
+    <button class="icon-button" data-remove="${esc(task.id)}" aria-label="移出平铺：${esc(task.title)}" title="移出平铺">${icon('close')}</button></header>
+    <div class="frame-loading">正在加载进度页面…</div>`;
+  const frame = document.createElement('iframe');
+  frame.dataset.appTask = task.id; frame.title = task.title + ' · 任务进度';
+  frame.setAttribute('sandbox', 'allow-scripts allow-downloads');
+  page.append(frame);
+  const activation = document.createElement('button');
+  activation.className = 'frame-activation'; activation.dataset.focus = task.id;
+  activation.setAttribute('aria-label', '选中' + task.title + '的进度页面');
+  activation.title = '点击选中后，可滚动和操作此任务的内容';
+  page.append(activation);
+  const item = {page, frame, activation, task};
+  pool.set(task.id, item); $('main-body').append(page); frame.srcdoc = appHtml;
+  return item;
+}
+function renderMain() {
+  const main = $('main-body');
+  main.classList.toggle('mode-single', state.mode === 'single');
+  main.classList.toggle('mode-tiles', state.mode === 'tile');
+  $('main-heading').innerHTML = `${state.fromTile && state.mode === 'single'
+    ? `<button class="back-grid" data-action="back-tiles">${icon('arrow')}返回平铺</button>`
+    : `<span class="grid-heading-note">${state.mode === 'tile' ? '多任务平铺' : '单任务查看'}</span>`}
+    <div class="view-note"><span class="live-dot"></span>${isPreview ? '原版面板' : '自动更新'}</div>`;
+  const visible = state.mode === 'single' ? (byId(state.active) ? [state.active] : []) : state.selected;
+  visible.forEach(id => { if (byId(id)) getPage(byId(id)); });
+  for (const [id,item] of pool) {
+    item.task = byId(id) || item.task;
+    const selected = visible.includes(id), interactive = selected && (state.mode === 'single' || id === state.active);
+    item.page.classList.toggle('visible', selected);
+    item.page.classList.toggle('focused', id === state.active);
+    item.frame.inert = !interactive; item.frame.tabIndex = interactive ? 0 : -1;
+    item.activation.disabled = interactive || state.mode !== 'tile';
+    item.page.style.order = Math.max(0, visible.indexOf(id));
+  }
+  let empty = main.querySelector('.connection-empty');
+  if (!visible.length) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'connection-empty'; main.append(empty); }
+    empty.innerHTML = state.mode === 'tile' && tasks.length
+      ? `<h2>选择要同时查看的任务</h2><p>在左侧勾选任务，最多同时显示 8 项。</p><button data-action="reset-selection">选择最近任务</button>`
+      : `<h2>${state.error ? '暂时无法读取任务' : state.ready ? '还没有任务' : '正在读取任务…'}</h2>
+        <p>${esc(state.error || '在已接入本机 Task Progress 服务的工具中建立任务后，这里会自动显示进展。')}</p>${!fatal ? '<button data-action="retry">刷新任务列表</button>' : ''}`;
+  } else empty?.remove();
+  requestAnimationFrame(narrowLayout);
+}
+function layoutTiles() {
+  if (state.mode !== 'tile' || !state.selected.length) return;
+  const grid = $('main-body'), gap = 14, width = grid.clientWidth - 34;
+  const columns = Math.min(4, Math.max(1, Math.floor((width + gap) / (260 + gap))), state.selected.length);
+  const rows = Math.ceil(state.selected.length / columns);
+  grid.style.setProperty('--tile-cols', columns);
+  grid.style.setProperty('--tile-height', Math.max(innerWidth <= 700 ? 420 : 290,
+    Math.floor((grid.clientHeight - 34 - gap * (rows - 1)) / rows)) + 'px');
+}
+function render() {
+  shell.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+  document.querySelector('[data-action=drawer]').setAttribute('aria-expanded', !state.sidebarCollapsed);
+  if (state.mode === 'tile' && state.selected.length && !state.selected.includes(state.active)) state.active = state.selected[0];
+  shell.classList.toggle('tile-mode', state.mode === 'tile');
+  document.querySelectorAll('[data-action=single],[data-action=tile]').forEach(button => {
+    const active = button.dataset.action === state.mode;
+    button.classList.toggle('active', active); button.setAttribute('aria-pressed', active);
+  });
+  renderSidebar(); renderMain(); persist();
+}
+function defaultSelection() {
+  return [...new Set([state.active, ...tasks.filter(task => !isHistory(task)).map(task => task.id)])]
+    .filter(id => byId(id)).slice(0, 8);
+}
+async function setMode(mode) {
+  if (mode === 'tile' && state.compact && hasNative()) {
+    try { await nativeAction('compact', false); state.compact = false; shell.classList.remove('compact'); }
+    catch (error) { notify(error.message); }
+  }
+  state.mode = mode; state.fromTile = false;
+  if (mode === 'tile' && !state.initialized) {
+    state.selected = defaultSelection(); state.initialized = true;
+    if (tasks.filter(task => !isHistory(task)).length > 8) notify('已平铺最近的 8 个任务，可在左侧调整选择');
+  }
+  render(); closeDrawer();
+}
+function toggleSelection(id) {
+  if (state.selected.includes(id)) state.selected = state.selected.filter(value => value !== id);
+  else { if (state.selected.length >= 8) { notify('最多平铺 8 个任务，请先取消一项'); return; } state.selected.push(id); }
+  render();
+}
+function setActive(id) {
+  if (isHistory(byId(id))) state.history = true;
+  if (state.mode === 'tile' && !state.selected.includes(id)) {
+    if (state.selected.length >= 8) { notify('该任务未在平铺中，请先取消一项再选入'); return; }
+    state.selected.push(id);
+  }
+  state.active = id; state.fromTile = false; render();
+  if (state.mode === 'tile') pool.get(id)?.page.scrollIntoView({block:'nearest', behavior:'smooth'});
+  closeDrawer();
+}
+async function nativeAction(action, value) {
+  if (!hasNative()) throw new Error('请通过原生任务控件使用此操作。');
+  const id = 'widget-' + (++sequence);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { nativeRequests.delete(id); reject(new Error('窗口操作未确认，请重试。')); }, 10000);
+    nativeRequests.set(id, {resolve, reject, timeout});
+    window.webkit.messageHandlers.widgetControl.postMessage({id, action, value});
+  });
+}
+window.addEventListener('task-progress-native-result', event => {
+  const result = event.detail, request = nativeRequests.get(result?.id);
+  if (!request) return;
+  nativeRequests.delete(result.id); clearTimeout(request.timeout);
+  if (result.error) request.reject(new Error(result.error)); else request.resolve(result.result);
+});
+async function download(contents) {
+  if (!Array.isArray(contents) || contents.length !== 2) throw new Error('导出内容不完整。');
+  if (hasNative()) return nativeAction('saveExports', contents);
+  for (const item of contents) {
+    const resource = item.resource, name = decodeURIComponent(new URL(resource.uri).pathname.split('/').pop());
+    if (!/^Task-Progress-[^/\\]+\.(xlsx|html)$/.test(name)) throw new Error('导出文件名无效。');
+    const bytes = resource.blob === undefined ? resource.text : Uint8Array.from(atob(resource.blob), char => char.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], {type:resource.mimeType})), link = document.createElement('a');
+    link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  return {};
+}
+window.addEventListener('message', async event => {
+  const item = [...pool.values()].find(value => value.frame.contentWindow === event.source);
+  if (!item || event.data?.jsonrpc !== '2.0') return;
+  const {method,params,id} = event.data, reply = result => { if (id !== undefined) post(item.frame, {id,result}); };
+  try {
+    if (method === 'ui/initialize') reply({protocolVersion:'2026-01-26', hostCapabilities:{downloadFile:{}}, hostContext:hostContext()});
+    else if (method === 'ui/notifications/initialized') {
+      const result = await snapshot(item.task);
+      post(item.frame, {method:'ui/notifications/tool-result', params:result});
+      item.page.querySelector('.frame-loading').hidden = true;
+    } else if (method === 'tools/call') {
+      const args = params?.arguments || {};
+      if (args.session_id !== item.task.session_id) throw new Error('面板与任务会话不匹配。');
+      if (params.name === 'get_progress_view') reply(await snapshot(item.task, args));
+      else if (['register_ui_view','check_ui_view','unregister_ui_view'].includes(params.name)) reply({structuredContent:{
+        session_id:item.task.session_id, view_id:args.view_id,
+        status:params.name === 'unregister_ui_view' ? 'unregistered' : 'registered', is_latest:true}});
+      else throw new Error('此控件只支持查看任务进度。');
+    } else if (method === 'ui/request-display-mode') reply({mode:'fullscreen'});
+    else if (method === 'ui/download-file') reply(await download(params.contents));
+    else if (id !== undefined) throw new Error('Method not found: ' + method);
+  } catch (error) {
+    if (id !== undefined) post(item.frame, {id, error:{code:-32603, message:error.message}});
+    else { item.page.querySelector('.frame-loading').textContent = error.message; }
+  }
+});
+async function refreshCatalogue(initial = false) {
+  if (isPreview || state.busy || fatal) return;
+  state.busy = true;
+  try {
+    let offset = 0, next = true, rows = [], unreadable = 0;
+    while (next) {
+      const page = await request('/widget/catalogue?limit=100&offset=' + offset);
+      rows.push(...page.tasks); unreadable = page.unreadable_sessions;
+      next = page.has_more; offset = page.next_offset;
+    }
+    const unique = new Map(rows.map(task => [task.id, task]));
+    const oldOrder = tasks.map(task => task.id), fresh = [...unique.values()].filter(task => !oldOrder.includes(task.id));
+    tasks = [...fresh, ...oldOrder.filter(id => unique.has(id)).map(id => unique.get(id))];
+    state.total = tasks.length; state.unreadable = unreadable; state.error = ''; state.ready = true;
+    const selection = access?.selection;
+    const requested = selection && tasks.find(task => task.session_id === selection.session_id && task.task_instance_id === selection.task_instance_id);
+    if (initial || !byId(state.active)) state.active = requested?.id || (byId(stored.active) ? stored.active : tasks[0]?.id) || null;
+    if (byId(state.active) && isHistory(byId(state.active))) state.history = true;
+    state.selected = state.selected.filter(id => unique.has(id));
+    for (const [id,item] of pool) if (!unique.has(id)) { item.page.remove(); pool.delete(id); }
+    render();
+  } catch (error) { state.error = error.message; render(); }
+  finally { state.busy = false; }
+}
+async function start() {
+  if (isPreview) { render(); return; }
+  try {
+    if (!token) throw new Error('请通过 open-progress-widget Skill 或打开命令启动控件。');
+    access = await request('/widget/session');
+    const resource = await rpc('resources/read', {uri:access.resource_uri});
+    appHtml = resource.contents[0].text;
+    await refreshCatalogue(true);
+    if (hasNative()) { await nativeAction('theme', state.theme); const actual = await nativeAction('state'); state.pinned = actual.pinned; }
+  } catch (error) { state.error = error.message; render(); }
+  clearInterval(timer);
+  timer = setInterval(() => { if (document.visibilityState === 'visible') void refreshCatalogue(); }, 3000);
+}
+document.addEventListener('click', async event => {
+  const button = event.target.closest('button'); if (!button) return;
+  if (button.dataset.task) { setActive(button.dataset.task); return; }
+  if (button.dataset.check) { toggleSelection(button.dataset.check); return; }
+  if (button.dataset.filter) { state.filter = button.dataset.filter; renderSidebar(); return; }
+  if (button.dataset.maximize) { state.active = button.dataset.maximize; state.mode = 'single'; state.fromTile = true; render(); return; }
+  if (button.dataset.remove) { state.selected = state.selected.filter(id => id !== button.dataset.remove); render(); return; }
+  if (button.dataset.focus) { state.active = button.dataset.focus; render(); pool.get(state.active)?.frame.focus({preventScroll:true}); return; }
+  switch (button.dataset.action) {
+    case 'single': await setMode('single'); break;
+    case 'tile': await setMode('tile'); break;
+    case 'back-tiles': state.mode = 'tile'; state.fromTile = false; render(); break;
+    case 'pin':
+    case 'compact': {
+      const action = button.dataset.action, value = action === 'pin' ? !state.pinned : !state.compact;
+      button.setAttribute('aria-busy', 'true');
+      try {
+        if (!isPreview) await nativeAction(action, value);
+        if (action === 'pin') { state.pinned = value; button.setAttribute('aria-pressed', value); }
+        else { state.compact = value; shell.classList.toggle('compact', value); button.innerHTML = icon(value ? 'expand' : 'collapse'); button.title = value ? '展开浮窗' : '切换紧凑浮窗'; button.setAttribute('aria-label', button.title); closeDrawer(); }
+        if (isPreview && action === 'pin') notify('置顶为交互示意，实际置顶由原生控件实现。');
+      } catch (error) { notify(error.message); }
+      finally { button.removeAttribute('aria-busy'); }
+      break;
+    }
+    case 'theme':
+      state.theme = state.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = state.theme;
+      button.innerHTML = icon(state.theme === 'light' ? 'moon' : 'sun');
+      for (const item of pool.values()) post(item.frame, {method:'ui/notifications/host-context-changed', params:hostContext()});
+      if (hasNative()) void nativeAction('theme', state.theme).catch(error => notify(error.message));
+      persist(); break;
+    case 'drawer': state.sidebarCollapsed = false; render(); break;
+    case 'sidebar-collapse': state.sidebarCollapsed = true; render(); break;
+    case 'drawer-close': closeDrawer(); break;
+    case 'history': state.history = !state.history; renderSidebar(); break;
+    case 'reset-selection': state.selected = defaultSelection(); state.initialized = true; render(); break;
+    case 'retry': state.error = ''; fatal = false; await start(); break;
+    case 'help': $('help').hidden = false; $('help').querySelector('button').focus(); break;
+    case 'help-close': $('help').hidden = true; break;
+  }
+});
+$('search').addEventListener('input', event => { state.search = event.target.value; renderSidebar(); });
+new ResizeObserver(narrowLayout).observe(shell);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { $('help').hidden = true; closeDrawer(); }
+  if (event.key === '/' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+    event.preventDefault(); if (state.sidebarCollapsed) { state.sidebarCollapsed = false; render(); } $('search').focus();
+  }
+});
+window.addEventListener('pagehide', () => clearInterval(timer));
+document.querySelector('[data-action=single]').innerHTML = icon('single') + '单任务';
+document.querySelector('[data-action=tile]').innerHTML = icon('grid') + '平铺';
+document.querySelector('[data-action=pin]').innerHTML = icon('pin');
+document.querySelector('[data-action=compact]').innerHTML = icon('collapse');
+document.querySelector('[data-action=drawer]').innerHTML = icon('menu');
+$('search-icon').innerHTML = icon('search');
+document.querySelector('[data-action=sidebar-collapse]').innerHTML = icon('menu');
+document.documentElement.dataset.theme = state.theme;
+document.querySelector('[data-action=theme]').innerHTML = icon(state.theme === 'light' ? 'moon' : 'sun');
+if (!isPreview && !hasNative()) for (const action of ['pin','compact']) {
+  const button = document.querySelector(`[data-action=${action}]`); button.disabled = true; button.title = '通过原生控件使用';
+}
+render(); void start();
+
+})();
+</script>
+</body>
+</html>

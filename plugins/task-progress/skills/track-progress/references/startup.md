@@ -4,7 +4,7 @@
 
 拆分应产生至少两个有独立结果边界的子任务。如果只能拆出一个子任务，就保留原任务，补充说明或调整依赖，不再套一层父子结构。不要为了编号、换执行者或设置依赖而创建只有一个子任务的分组；也不要为凑数量制造无独立结果的步骤。已有分组可以逐项追加真正新增的工作，这不等于把一个叶任务拆成单子任务。
 
-首次建立任务，或原任务已收尾且无待处理独立请求时，优先一次调用 `init_task_network`，传入至少两个阶段的 `tasks`，每项包含 `assignment.execution_mode`；如暂时无法一次确定，可先初始化再立即 `decompose_task`。服务端会把未规划 root 标为 `planning_status=required` 并拒绝直接开工。确为单步时传入具体 `atomic_reason`。可传稳定 `request_id` 安全重试同一个初始化调用。
+首次建立任务，或原任务已收尾且无待处理独立请求时，优先一次调用 `init_task_network`，传入至少两个阶段的 `tasks`，每项包含 `assignment.execution_mode`；只有一个工作包时直接列 root 下的任务，不另套唯一分组。如暂时无法一次确定，可先初始化再立即 `decompose_task`。服务端会把未规划 root 标为 `planning_status=required` 并拒绝直接开工。确为单步时传入具体 `atomic_reason`。可传稳定 `request_id` 安全重试同一个初始化调用。
 
 继续当前任务先 `get_progress`，复用现有任务实例；不要重复初始化。“打开 task process / task progress / 任务进度”意味着读取当前会话已有进度并按需展示，不代表开始新任务。压缩恢复、用户补充范围、阶段切换时检查并更新任务树。子智能体只更新获派节点，不创建主会话 root 或单独展示主面板。
 
