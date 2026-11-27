@@ -294,7 +294,7 @@ window.addEventListener('message',event=>{
   if(params.name==='get_progress_view')reply(result(args.task_instance_id));
   else if(['register_ui_view','check_ui_view','unregister_ui_view'].includes(params.name))reply({structuredContent:{session_id:demoSession,view_id:args.view_id,status:'latest',is_latest:true}});
   else reply({isError:true,content:[{type:'text',text:params.name==='save_export_files'?'网页演示宿主不支持文件导出；请安装插件后导出真实任务记录。':'网页演示不支持此宿主操作。'}]});
- }else if(id!==undefined)send({id,error:{code:-32601,message:'网页演示宿主不支持此操作；请在 Codex 中使用完整插件。'}});
+ }else if(id!==undefined)send({id,error:{code:-32601,message:'网页演示宿主不支持此操作；请在安装插件的客户端中操作。'}});
 });
 // Never shrink expanded details to fit: budget against the ordinary 584px card.
 // The 88% floor keeps desktop text legible; shorter windows scroll naturally.
@@ -341,14 +341,22 @@ function revealNative(selectors,expectedStep){
  }
  observer.observe(doc.body,{childList:true,subtree:true});timeout=setTimeout(finish,1500);reveal();
 }
+function showWorkspace(view){
+ const tab=demoFrame.contentDocument?.getElementById('workspace-tab-'+view);
+ if(tab && tab.getAttribute('aria-selected')!=='true')tab.click();
+}
 function revealSceneAction(){
- if(selected==='async'&&journeyStep===1)revealNative(['#steps > li[data-root-role="parallel"] > details','#steps > li[data-root-role="parallel"] .root-metadata'],1);
- if(selected==='async'&&journeyStep===8)revealNative(['#task-history-section','#task-history-list > li > details','#task-history-list .task-tree > li > details'],8);
- if(selected==='split'&&journeyStep===1)revealNative(['#steps > li > details','details[data-key$=":demo-split-build"]:has(details[data-key$=":demo-split-api"])'],1);
- if(selected==='append'&&journeyStep===1)revealNative(['#steps > li > details','details[data-key$=":demo-append-delivery"]:has(details[data-key$=":demo-append-accessibility"])'],1);
- if(selected==='plans'&&journeyStep===2)revealNative(['#history-section','#history-list > li > details','#history-list .task-tree > li > details'],2);
- if(selected==='archive'&&journeyStep===2)revealNative(['#task-history-section','#task-history-list > li > details','#task-history-list .task-tree > li > details'],2);
- if(selected==='archive'&&journeyStep===3)revealNative(['#task-history-section','#task-history-list > li > details','#task-history-list .task-tree > li > details','#task-history-list .root-metadata','#task-history-list .root-metadata .review-history'],3);
+ if(selected==='plans'&&journeyStep===2){
+  showWorkspace('revisions');
+  revealNative(['#history-section','#history-list > li > details','#history-list .task-tree > li > details'],2);
+ }else if((selected==='async'&&journeyStep===8)||(selected==='archive'&&[2,3].includes(journeyStep))){
+  showWorkspace('archives');
+  const selectors=['#task-history-section','#task-history-list > li > details','#task-history-list .task-tree > li > details'];
+  if(selected==='archive'&&journeyStep===3)selectors.push('#task-history-list .root-metadata','#task-history-list .root-metadata .review-history');
+  revealNative(selectors,journeyStep);
+ }else{
+  showWorkspace('plan');
+ }
 }
 function advance(){
  if(rootAccepted)return;
@@ -360,12 +368,18 @@ function advance(){
  else if(states.every(s=>s==='done')){rootAccepted=true;stopAuto();announce('主任务综合验收通过。计划、执行与验收形成完整记录（模拟）。');}
  render();
 }
-function reset(){stopAuto();journeyStep=0;states=['done','done','running','pending','pending'];rootAccepted=false;scenarioStarted=Date.now()-600000;render();announce(journeys[selected]?journeys[selected].notes[0]:'演示已重置：2 项已验收，1 项执行中，2 项待处理。');}
+function reset(){stopAuto();showWorkspace('plan');journeyStep=0;states=['done','done','running','pending','pending'];rootAccepted=false;scenarioStarted=Date.now()-600000;render();announce(journeys[selected]?journeys[selected].notes[0]:'演示已重置：2 项已验收，1 项执行中，2 项待处理。');}
 $('advance').addEventListener('click',advance);$('reset').addEventListener('click',reset);
 $('autoplay').addEventListener('click',()=>{if(timer){stopAuto();announce('自动演示已暂停。可继续手动推进。');return;}if(rootAccepted)reset();$('autoplay').setAttribute('aria-pressed','true');$('autoplay').textContent='Ⅱ 暂停演示';timer=setInterval(advance,2000);announce('自动演示已开始，每两秒推进一个状态。');});
 const tabs=[...document.querySelectorAll('[data-scenario]')];
 function choose(tab){const resetHost=selected==='async'&&tab.dataset.scenario!=='async';if(resetHost)bridgeReady=false;selected=tab.dataset.scenario;tabs.forEach(t=>{const active=t===tab;t.setAttribute('aria-selected',active);t.tabIndex=active?0:-1;});$('task-panel').setAttribute('aria-labelledby',tab.id);reset();if(resetHost)mountDemo();announce(`已切换到「${scenarios[selected].title}」。${journeys[selected]?.notes[0]||'2 项已验收，1 项执行中，2 项待处理。'}`);}
 tabs.forEach((tab,i)=>{tab.addEventListener('click',()=>choose(tab));tab.addEventListener('keydown',e=>{let next;if(['ArrowRight','ArrowDown'].includes(e.key))next=(i+1)%tabs.length;if(['ArrowLeft','ArrowUp'].includes(e.key))next=(i-1+tabs.length)%tabs.length;if(e.key==='Home')next=0;if(e.key==='End')next=tabs.length-1;if(next!==undefined){e.preventDefault();tabs[next].focus();choose(tabs[next]);}});});
+function openLinkedInstaller(){
+ const section=document.getElementById(location.hash.slice(1));
+ if(section?.matches('#install details'))section.open=true;
+}
+addEventListener('hashchange',openLinkedInstaller);
+openLinkedInstaller();
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').classList.add('visible');toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),2800);}
 async function copyText(text){if(navigator.clipboard&&window.isSecureContext){try{await navigator.clipboard.writeText(text);return;}catch{}}
  const input=document.createElement('textarea');input.value=text;input.setAttribute('readonly','');input.style.cssText='position:fixed;top:0;left:-9999px';document.body.append(input);input.select();let ok=false;try{ok=document.execCommand('copy');}finally{input.remove();}if(!ok)throw new Error('clipboard unavailable');}

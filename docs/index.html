@@ -2,25 +2,25 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080b12">
-<title>Task Progress — 让复杂任务，有迹可循</title>
-<meta name="description" content="为 Codex 的复杂工作打开一个清晰的任务面板。看计划、追进度、查证据，让每一步都值得信赖。">
+<title>Task Progress · Cindy、Codex 与 DeepSeekRuntime 的任务进度面板</title>
+<meta name="description" content="在任务树上查看 AI 的分工、依赖与验收证据。体验交互演示，或为 Cindy、Codex 和 DeepSeekRuntime 安装 Task Progress。">
 <link rel="stylesheet" href="assets/site.css"><script src="assets/site.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">跳到主要内容</a>
 <div class="ambient" aria-hidden="true"><div class="aurora"></div><div class="grid"></div><canvas id="particles"></canvas></div>
-<header class="nav-wrap"><nav class="nav shell" aria-label="主导航"><a class="brand" href="#" aria-label="Task Progress 首页"><span class="brand-icon" aria-hidden="true">⌘</span> Task Progress<span class="brand-beta">FOR CODEX</span></a><div class="nav-links"><a href="#demo">交互演示</a><a href="#features">为什么使用</a><a href="guide.html">使用手册 ↗</a></div><a class="nav-cta" href="#install">开始使用 <span>↗</span></a></nav></header>
+<header class="nav-wrap"><nav class="nav shell" aria-label="主导航"><a class="brand" href="#" aria-label="Task Progress 首页"><span class="brand-icon" aria-hidden="true">⌘</span> Task Progress</a><div class="nav-links"><a href="#demo">交互演示</a><a href="#features">功能</a><a href="guide.html">使用手册 ↗</a></div><a class="nav-cta" href="#install">开始使用 <span>↗</span></a></nav></header>
 <main id="main">
 <section class="hero shell">
-<div class="eyebrow"><span class="signal"></span> YOUR WORK, IN FOCUS <span class="eyebrow-line"></span></div>
-<h1>让复杂任务，<br><span class="gradient-text">有迹可循。</span></h1>
-<p class="hero-copy">任务交给 Codex，进展留在眼前。<br>从一份计划，到每一次执行，再到有据可查的结果。</p>
-<div class="hero-actions"><a class="button primary" href="#install">为 Codex 装上进度面板 <span>↗</span></a><a class="button quiet" href="#demo"><span class="play-icon">▷</span> 亲手推进一个任务</a></div>
+<div class="eyebrow"><span class="signal"></span> Cindy · Codex · DeepSeekRuntime <span class="eyebrow-line"></span></div>
+<h1>一张任务树，<br><span class="gradient-text">看清工作进度。</span></h1>
+<p class="hero-copy">谁在执行，哪一步还在等，哪些结果已经验收？<br>展开工作包，就能查看分工、前置依赖和交付证据。</p>
+<div class="hero-actions"><a class="button primary" href="#install">选择安装方式 <span>↗</span></a><a class="button quiet" href="#demo"><span class="play-icon">▷</span> 亲手推进一个任务</a></div>
 <div class="hero-facts"><span>本机保存</span><i></i><span>Excel / HTML 导出</span><i></i><a href="https://github.com/carpe-horam/task-progress-codex">MIT 开源 ↗</a></div>
 <div class="hero-coordinate" aria-hidden="true"><span>PLAN</span><span>EXECUTE</span><span>REVIEW</span></div>
 </section>
 <section id="demo" class="demo-section shell" aria-labelledby="demo-title">
-<div class="section-top"><div><span class="kicker">01 / INTERACTIVE PLAYGROUND</span><h2 id="demo-title">看见进展，也试着推动它。</h2></div><p>试试拆分任务、解锁依赖，或退回重试。<br>每一步，都在真实界面中发生。</p></div>
+<div class="section-top"><div><span class="kicker">交互演示</span><h2 id="demo-title">试着验收一个任务</h2></div><p>选择任务场景，再点「推进一步」。<br>观察执行者提交结果后，验收进度何时变化。</p></div>
 <div class="demo-glow"><div class="app-window">
 <div class="window-bar"><div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div><span>Task Progress <span class="slash">/</span> Workspace</span><span class="demo-tag">真实 UI · 模拟数据</span></div>
 <div class="workspace">
@@ -29,19 +29,51 @@
 </div>
 </div></div>
 <div class="playground-controls"><div><span class="kicker" id="scenario-step">DEMO CONTROLS</span><p id="scenario-description"><span id="event-message" role="status" aria-live="polite">你来推进，面板实时响应。</span></p></div><div class="demo-controls"><button class="button primary small" id="advance">推进一步 <span>→</span></button><button class="button secondary small" id="autoplay" aria-pressed="false">▷ 自动演示</button><button class="reset" id="reset" aria-label="重置当前演示">↻ 重置</button></div></div>
-<p class="demo-disclaimer">面板复用当前插件界面；任务、证据与宿主响应均为模拟，不运行模型、不写入本机任务。网页演示不支持文件导出或 Codex 独立进度页。<a href="guide.html">阅读使用手册 ↗</a></p>
+<p class="demo-disclaimer">演示使用插件界面和模拟任务。并行场景展示原生子智能体流程。Cindy Lead 通过 Orca Worker 委派，并将独立请求排队。导出报告请在安装后的面板中操作。<a href="guide.html">阅读使用手册 ↗</a></p>
 </section>
 <section id="features" class="features shell">
-<div class="section-top"><div><span class="kicker">02 / CLARITY AT EVERY STEP</span><h2>AI 在忙什么，<br><span class="muted">你不必靠猜。</span></h2></div><p>复杂工作需要的，<br>是一个始终清晰的全局视角。</p></div>
+<div class="section-top"><div><h2>从拆分工作到验收结果</h2></div></div>
 <div class="feature-grid"><article class="feature feature-main reveal"><span class="feature-index">01 — PLAN</span><div class="mini-network" aria-hidden="true"><div class="network-root">一个目标</div><div class="network-lines"></div><div class="network-nodes"><span>分析</span><span>实现</span><span>验证</span></div><div class="network-pulse"></div></div><h3>大目标，拆得清。</h3><p>把复杂任务展开成有依赖的任务树。哪一步可以开始、哪一步仍在等待，都有迹可循。</p></article><article class="feature reveal"><span class="feature-index">02 — EXECUTE</span><div class="activity-art" aria-hidden="true"><span><i class="complete-dot"></i>确认方案 <b>已完成</b></span><span class="active"><i class="running-dot"></i>实现界面 <b>进行中</b></span><span><i class="pending-dot"></i>检查结果 <b>等待依赖</b></span></div><h3>每一步，看得见。</h3><p>执行者、耗时、当前状态集中展示。插入请求、调整计划或重试之后，依然能找回上下文。</p></article><article class="feature reveal"><span class="feature-index">03 — REVIEW</span><div class="evidence-art" aria-hidden="true"><span>RESULT / EVIDENCE</span><div><i>✓</i> 提交结果</div><div><i>✓</i> 主会话复核</div><div><i>✓</i> 记录验收结论</div></div><h3>做完了，有依据。</h3><p>执行结束与验收完成分别记录。保留摘要、证据和历史，让结果可以检查，也可以回顾。</p></article></div>
 <div class="export-strip reveal"><span class="export-symbol">↗</span><div><h3>把过程，变成可带走的记录。</h3><p>导出 Excel 与 HTML，留档、分享，或在下一次工作前回顾。</p></div><div class="file-types"><span>.xlsx</span><span>.html</span></div></div>
 </section>
-<section id="install" class="install-section"><div class="shell install-grid"><div class="install-copy"><span class="kicker">03 / MAKE IT YOUR WORKSPACE</span><h2>下一个任务，<br><span class="gradient-text">从清晰开始。</span></h2><p>两条安装命令，一个真实任务。<br>让你的 Codex 工作流多一份掌控感。</p><a class="text-link" href="https://github.com/carpe-horam/task-progress-codex">浏览 GitHub 源码 <span>↗</span></a></div><div class="install-steps"><article class="install-step"><div class="step-heading"><span>01</span><h3>在终端安装</h3><button class="copy" data-copy="install-code">复制命令 ⧉</button></div><pre id="install-code"><code>codex plugin marketplace add carpe-horam/task-progress-codex
-codex plugin add task-progress@task-progress-codex</code></pre><p>安装后重启 Codex。首次连接会安装或更新本机共享后台服务。</p></article><article class="install-step"><div class="step-heading"><span>02</span><h3>给它一个真实任务</h3><button class="copy" data-copy="prompt-code">复制提示词 ⧉</button></div><div id="prompt-code" class="prompt">用 Task Progress 帮我完成 [描述你的任务]。先规划步骤和验收标准，持续更新进度，遇到阻塞说明原因，最后检查结果并保留证据。</div><p>随时说「打开任务进度」，查看任务面板。</p></article><details class="requirements"><summary>安装前需要什么？<span>+</span></summary><p>需要支持插件与 stdio MCP 的 Codex、可通过 <code>python</code> 启动的 Python 3，以及支持 MCP Apps 的客户端来显示交互面板。</p><p>macOS 使用 LaunchAgent；Linux 需要可用的 systemd 用户会话；Windows 使用当前登录用户的任务计划程序。</p><a href="https://github.com/carpe-horam/task-progress-codex/blob/main/docs/installation.md">完整安装与升级说明 ↗</a></details></div></div></section>
-<section class="faq shell" id="faq"><div><span class="kicker">04 / A FEW GOOD QUESTIONS</span><h2>开始之前，<br>你可能想知道。</h2></div><div class="faq-list"><details><summary>它会替我自动执行任务吗？<span>+</span></summary><p>Codex 负责规划、执行和协调；Task Progress 保存并展示状态、依赖和证据。插件本身不会唤醒或控制宿主 agent，也不会自动执行队列中的工作。</p></details><details><summary>我的任务数据保存在哪里？<span>+</span></summary><p>任务数据保存在本机，各个会话分别记录进度。你可以通过面板导出 Excel 和 HTML 报告。</p></details><details><summary>进度 100%，就代表全部完成了吗？<span>+</span></summary><p>百分比表示已解决且验收完成的叶任务比例。子任务全部完成后，仍需要主会话对整体结果做综合验收。</p></details><details><summary>适合用在哪些任务里？<span>+</span></summary><p>功能开发、Bug 排查、重构和多智能体协作，都适合用它跟踪多步骤工作。简单问答不需要建立任务树。</p></details></div></section>
-<section class="closing shell"><span class="kicker">LESS GUESSWORK. MORE CLARITY.</span><h2>让下一次复杂工作，<br>从容一点。</h2><a class="button primary" href="#install">开始使用 Task Progress <span>↗</span></a><a class="closing-github" href="https://github.com/carpe-horam/task-progress-codex">喜欢这个项目？在 GitHub 收藏它 ☆</a></section>
+<section id="install" class="install-section" aria-labelledby="install-title">
+  <div class="shell install-grid">
+    <div class="install-copy">
+      <h2 id="install-title">在你的工作环境中<br><span class="gradient-text">打开任务进度</span></h2>
+      <p>选择你使用的客户端。安装完成后，把下面的任务示例发到会话中。</p>
+      <a class="text-link" href="https://github.com/carpe-horam/task-progress-codex/releases/latest">查看 GitHub 发布说明 ↗</a>
+    </div>
+    <div class="install-steps">
+      <details class="requirements" id="install-cindy" open>
+        <summary>Cindy<span aria-hidden="true">+</span></summary>
+        <p>GitHub 提供插件源码。从发布标签检出仓库，在仓库根目录按构建说明生成干净的打包目录，交给 Cindy Forge 打包，然后在 Cindy 中安装生成的插件。</p>
+        <a href="https://github.com/carpe-horam/task-progress-codex/blob/main/plugins/task-progress/cindy/README.md">Cindy 构建与打包步骤 ↗</a>
+      </details>
+      <details class="requirements" id="install-codex">
+        <summary>Codex<span aria-hidden="true">+</span></summary>
+        <p>需要支持插件和 stdio MCP 的 Codex，且其 PATH 中的 <code>python</code> 指向 Python 3。交互面板需要 MCP Apps 支持。</p>
+        <div class="install-step"><div class="step-heading"><h3>在终端运行</h3><button class="copy" data-copy="install-code">复制命令</button></div>
+          <pre id="install-code"><code>codex plugin marketplace add carpe-horam/task-progress-codex
+codex plugin add task-progress@task-progress-codex</code></pre>
+        </div>
+        <p>重启 Codex，首次连接会安装或更新本机共享后台服务。</p>
+        <a href="https://github.com/carpe-horam/task-progress-codex/blob/main/docs/installation.md">平台要求、升级与排查 ↗</a>
+      </details>
+      <details class="requirements" id="install-dsh">
+        <summary>DeepSeekRuntime<span aria-hidden="true">+</span></summary>
+        <p>检出完整仓库，在桌面端依次选择 Plugins → Add plugin → Local directory，选中 <code>plugins/task-progress/dsh</code>。重新加载页面或重启应用后，当前 profile 的会话即可使用进度卡片。</p>
+        <a href="https://github.com/carpe-horam/task-progress-codex/blob/main/plugins/task-progress/dsh/README.md">命令行安装与连接自检 ↗</a>
+      </details>
+      <article class="install-step"><div class="step-heading"><h3>试试你的第一个任务</h3><button class="copy" data-copy="prompt-code">复制提示词</button></div>
+        <div id="prompt-code" class="prompt">用 Task Progress 跟踪这次导出故障。先复现问题，再修复，最后用原始样例验证。每一步写下结果和证据。</div>
+        <p>在同一会话说「打开任务进度」，展开验证任务即可查看记录。</p>
+      </article>
+    </div>
+  </div>
+</section>
+<section class="faq shell" id="faq"><div><span class="kicker">常见问题</span><h2>开始之前，<br>你可能想知道。</h2></div><div class="faq-list"><details><summary>它会替我自动执行任务吗？<span>+</span></summary><p>宿主中的智能体负责规划、执行和协调。Task Progress 记录任务状态、依赖和证据。Cindy Lead 可以在获准后委派给 Orca Worker，再根据回报验收结果。</p></details><details><summary>我的任务数据保存在哪里？<span>+</span></summary><p>任务数据保存在本机，各个会话分别记录进度。你可以通过面板导出 Excel 和 HTML 报告。</p></details><details><summary>进度 100%，就代表全部完成了吗？<span>+</span></summary><p>百分比表示已解决且验收完成的叶任务比例。子任务全部完成后，仍需要主会话对整体结果做综合验收。</p></details><details><summary>适合用在哪些任务里？<span>+</span></summary><p>功能开发、Bug 排查、重构和多智能体协作，都适合用它跟踪多步骤工作。简单问答不需要建立任务树。</p></details></div></section>
 </main>
-<footer class="site-footer shell"><a class="brand" href="#"><span class="brand-icon">⌘</span> Task Progress</a><span>为 Codex 的复杂工作，提供清晰视角。</span><div><a href="guide.html">交互手册</a><a href="https://github.com/carpe-horam/task-progress-codex/issues">反馈</a><a href="https://github.com/carpe-horam/task-progress-codex/blob/main/LICENSE">MIT License</a></div></footer>
+<footer class="site-footer shell"><a class="brand" href="#"><span class="brand-icon">⌘</span> Task Progress</a><span>Cindy · Codex · DeepSeekRuntime</span><div><a href="guide.html">交互手册</a><a href="https://github.com/carpe-horam/task-progress-codex/issues">反馈</a><a href="https://github.com/carpe-horam/task-progress-codex/blob/main/LICENSE">MIT License</a></div></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <noscript><p class="no-script">启用 JavaScript 可体验互动演示与复制功能。安装命令和使用手册仍可直接阅读。</p></noscript>
 </body></html>

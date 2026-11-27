@@ -26,7 +26,7 @@
         <rect x="70" y="55" width="8" height="6" rx="2" fill="#b4c3ff" stroke="none"/>
         <circle cx="66" cy="73" r="3"/><circle cx="82" cy="73" r="3"/>
       </g>
-      <text x="104" y="70" font-size="15" font-weight="600" letter-spacing="2.1" fill="#bac7e1">BUILT FOR CODEX</text>
+      <text x="104" y="70" font-size="15" font-weight="600" letter-spacing="2.1" fill="#bac7e1">CINDY · CODEX · DEEPSEEKRUNTIME</text>
       <text x="54" y="176" font-size="77" font-weight="750" letter-spacing="-3.5" fill="#f4f7ff">Task Progress</text>
       <text x="58" y="229" font-size="29" font-weight="450" fill="#c7d1e7">Big tasks. A clear path forward.</text>
       <path d="M58 268H562" stroke="#35455f"/>
@@ -36,7 +36,7 @@
       <text x="198" y="314" font-size="17" fill="#acbbd3">EXECUTE</text>
       <path d="M292 308h35m-5-4 5 4-5 4" fill="none" stroke="#6b7b96" stroke-width="1.5"/>
       <text x="348" y="314" font-size="17" fill="#acbbd3">REVIEW</text>
-      <text x="58" y="373" font-size="13" fill="#8192ae">A TASK WORKSPACE FOR YOUR CODEX CONVERSATIONS</text>
+      <text x="58" y="373" font-size="13" fill="#8192ae">A TASK WORKSPACE FOR YOUR AGENT CONVERSATIONS</text>
 
       <g fill="none" stroke-width="2" stroke-linejoin="round">
         <path d="M926 115v34H793v26m133-26h133v26" stroke="#627ca8"/>
