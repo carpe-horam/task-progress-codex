@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import secrets
 import signal
 import socket
 import stat
@@ -22,6 +23,11 @@ import sys
 import threading
 import time
 import uuid
+
+_widget_spec = importlib.util.spec_from_file_location('task_progress_widget_store', Path(__file__).with_name('widget_store.py'))
+_widget_module = importlib.util.module_from_spec(_widget_spec)
+_widget_spec.loader.exec_module(_widget_module)
+WidgetStore = _widget_module.WidgetStore
 
 DEFAULT_PORT = 53421
 MAX_REQUEST_BYTES = 64 * 1024 * 1024  # Two base64-encoded 20 MiB exports + metadata.
@@ -92,8 +98,67 @@ class SharedMCPServer(ThreadingHTTPServer):
         self._slots = threading.BoundedSemaphore(max_workers)
         self._counter_lock = threading.Lock()
         self._request_count = 0
+        self._widget_lock = threading.Lock()
+        self._widget_views = {}
+        self.widget_store = WidgetStore(core)
         super().__init__(("127.0.0.1", port), MCPRequestHandler)
         self.timeout = 0.25
+
+    def widget_link(self, session_id=None, task_instance_id=None):
+        selected = None
+        if session_id is not None:
+            data = self.widget_store.snapshot(session_id, task_instance_id)['structuredContent']
+            selected = data['widget_view_binding']
+        elif task_instance_id is not None:
+            raise ValueError('task_instance_id requires session_id.')
+        now = time.time()
+        with self._widget_lock:
+            self._widget_views = {token: view for token, view in self._widget_views.items()
+                                   if view['expires_at'] > now}
+            token = next((token for token, view in self._widget_views.items() if view['selection'] == selected), None)
+            if token is None:
+                if len(self._widget_views) >= 256:
+                    raise ValueError('Too many active widget instances.')
+                token = secrets.token_urlsafe(32)
+                self._widget_views[token] = {'selection': selected, 'expires_at': now + 12 * 60 * 60}
+            expires = self._widget_views[token]['expires_at']
+        return {"url": f"http://127.0.0.1:{self.server_port}/widget#{token}",
+                'selection': selected, 'expires_at': expires}
+
+    def widget_session(self, authorization):
+        if not authorization.startswith("Bearer "):
+            return None
+        with self._widget_lock:
+            view = self._widget_views.get(authorization[7:])
+            return view if view and view['expires_at'] > time.time() else None
+
+    def widget_rpc(self, message, access):
+        # This is a narrow App bridge, never a browser-accessible general MCP proxy.
+        if not isinstance(message, dict):
+            return self.core._err(None, -32600, 'Invalid widget request.')
+        if (message.get('jsonrpc') != '2.0' or 'id' not in message or
+                isinstance(message['id'], bool) or not isinstance(message['id'], (str, int, type(None)))):
+            return self.core._err(message.get('id'), -32600, 'Invalid widget JSON-RPC request.')
+        params = message.get("params")
+        allowed = False
+        if isinstance(params, dict):
+            if message.get("method") == "resources/read":
+                allowed = params.get("uri") == self.core.RESOURCE_URI
+            elif message.get("method") == "tools/call":
+                args = params.get("arguments")
+                allowed = params.get('name') == 'get_progress_view' and isinstance(args, dict)
+                if allowed:
+                    try:
+                        if set(args) - {'session_id', 'task_instance_id', 'include_history'}:
+                            raise ValueError('Unsupported widget view arguments.')
+                        result = self.widget_store.snapshot(args.get('session_id'), args.get('task_instance_id'),
+                                                          include_history=args.get('include_history', False))
+                        return self.core._ok(message['id'], result)
+                    except (ValueError, self.core.ProgressError) as error:
+                        return self.core._err(message['id'], -32602, str(error))
+        if not allowed:
+            return self.core._err(message.get('id'), -32602, 'Widget access is read-only.')
+        return self.core.handle(message)
 
     def get_request(self):
         connection, address = super().get_request()
@@ -142,12 +207,16 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         # Never log payloads, credentials or session IDs; launchd captures startup errors.
         pass
 
-    def _reply(self, status_code: int, payload=None, *, allow: str | None = None):
+    def _reply(self, status_code: int, payload=None, *, allow: str | None = None,
+               content_type="application/json"):
         body = b"" if payload is None else (payload.encode("utf-8") if isinstance(payload, str)
                                             else json.dumps(payload).encode("utf-8"))
         self.send_response(status_code)
         if body:
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
@@ -161,20 +230,57 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         if body:
             self.wfile.write(body)
 
-    def _guard(self) -> bool:
+    def _guard(self, *, widget=False, public=False) -> bool:
         # A browser page cannot use the user's loopback daemon via DNS rebinding
         # or cross-origin requests. Native MCP clients do not send Origin.
         expected_host = f"127.0.0.1:{self.server.server_port}"
-        if self.headers.get_all("Host", []) != [expected_host] or self.headers.get_all("Origin"):
+        origins = self.headers.get_all("Origin", [])
+        if (self.headers.get_all("Host", []) != [expected_host] or
+                (origins and (not widget or origins != [f"http://{expected_host}"]))):
             self._reply(403, {"error": "Untrusted HTTP origin or host."})
             return False
+        if public:
+            return True
         values = self.headers.get_all("Authorization", [])
+        if widget:
+            self.widget_access = self.server.widget_session(values[0]) if len(values) == 1 else None
+            if self.widget_access is None:
+                self._reply(401, {'error': '控件访问已失效，请重新运行打开命令。'})
+                return False
+            return True
         if len(values) != 1 or not hmac.compare_digest(values[0].encode("utf-8"), self.server.authorization.encode("utf-8")):
             self._reply(401, {"error": "Task Progress credentials are required."})
             return False
         return True
 
     def do_GET(self):
+        if self.path == "/widget/session":
+            if self._guard(widget=True):
+                self._reply(200, {**self.widget_access, 'scope': 'local_catalogue',
+                                  'resource_uri': self.server.core.RESOURCE_URI})
+            return
+        if self.path.startswith('/widget/catalogue'):
+            if self._guard(widget=True):
+                from urllib.parse import urlsplit, parse_qs
+                try:
+                    url = urlsplit(self.path)
+                    if url.path != '/widget/catalogue':
+                        self._reply(404, {'error': 'Unknown widget endpoint.'}); return
+                    query = parse_qs(url.query, strict_parsing=True)
+                    if set(query) - {'offset', 'limit', 'query'} or any(len(value) != 1 for value in query.values()):
+                        raise ValueError('Invalid catalogue query.')
+                    result = self.server.widget_store.catalogue(offset=int(query.get('offset', ['0'])[0]),
+                        limit=int(query.get('limit', ['100'])[0]), query=query.get('query', [''])[0])
+                except (ValueError, self.server.core.ProgressError) as error:
+                    self._reply(400, {'error': str(error)})
+                else:
+                    self._reply(200, result)
+            return
+        if self.path == "/widget":
+            if self._guard(widget=True, public=True):
+                page = Path(__file__).with_name("assets") / "widget-panel.html"
+                self._reply(200, page.read_text(encoding="utf-8"), content_type="text/html; charset=utf-8")
+            return
         if not self._guard():
             return
         if self.path == "/healthz":
@@ -185,9 +291,10 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             self._reply(404, {"error": "Unknown endpoint."})
 
     def do_POST(self):
-        if not self._guard():
+        widget = self.path == "/widget/rpc"
+        if not self._guard(widget=widget):
             return
-        if self.path != "/mcp":
+        if self.path not in ("/mcp", "/widget/open", "/widget/rpc"):
             self._reply(404, {"error": "Unknown endpoint."}); return
         if self.headers.get_content_type() != "application/json":
             self._reply(415, {"error": "Use application/json."}); return
@@ -213,8 +320,19 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         except (TimeoutError, socket.timeout):
             self._reply(408, {"error": "Request body timed out."}); return
         self.server.record_request()
+        if self.path == "/widget/open":
+            try:
+                if not isinstance(message, dict) or set(message) - {'session_id', 'task_instance_id'}:
+                    raise ValueError('Invalid widget selection.')
+                link = self.server.widget_link(**message)
+            except (ValueError, self.server.core.ProgressError) as error:
+                self._reply(400, {"error": str(error)})
+            else:
+                self._reply(200, link)
+            return
         try:
-            response = self.server.core.handle(message)
+            response = (self.server.widget_rpc(message, self.widget_access) if widget
+                        else self.server.core.handle(message))
         except Exception:
             response = self.server.core._err(message.get("id") if isinstance(message, dict) else None,
                                              -32603, "Internal server error.")

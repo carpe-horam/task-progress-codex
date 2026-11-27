@@ -43,6 +43,14 @@ class CindyPrepareTest(unittest.TestCase):
                              json.loads((core / ".codex-plugin/plugin.json").read_text())["version"])
             self.assertEqual(json.loads((stage / "ghost.json").read_text())["id"], "task-progress")
             self.assertEqual((stage / "ghost.json").read_bytes(), (core / "ghost.json").read_bytes())
+            manifest = json.loads((stage / "ghost.json").read_text())
+            self.assertIn("open-progress-widget", [item["name"] for item in manifest["skill"]["items"]])
+            for item in manifest["skill"]["items"]:
+                self.assertEqual((stage / item["dir"] / "SKILL.md").read_bytes(),
+                                 (core / item["dir"] / "SKILL.md").read_bytes())
+            for name in ("open_progress.py", "ProgressWidget.swift"):
+                relative = Path("skills/open-progress-widget/scripts") / name
+                self.assertEqual((stage / relative).read_bytes(), (SHARED / relative).read_bytes())
             skill = json.loads((stage / "ghost.json").read_text())["skill"]["items"][0]
             self.assertEqual(skill["dir"], "skills/track-progress")
             skill_file = stage / skill["dir"] / "SKILL.md"
@@ -67,6 +75,12 @@ class CindyPrepareTest(unittest.TestCase):
                                      (shared_skill / reference).read_bytes())
             self.assertEqual((packaged_skill / route).read_bytes(),
                              (core / "skills/track-progress" / route).read_bytes())
+            for relative in ('widget_store.py', 'assets/widget-panel.html',
+                             'skills/open-progress-widget/SKILL.md',
+                             'skills/open-progress-widget/scripts/open_progress.py',
+                             'skills/open-progress-widget/scripts/ProgressWidget.swift'):
+                with self.subTest(widget_source=relative):
+                    self.assertEqual((core / relative).read_bytes(), (SHARED / relative).read_bytes())
             self.assertEqual((core / "execution_lifecycle.py").read_bytes(),
                              (SHARED / "execution_lifecycle.py").read_bytes())
             self.assertIn('Path(__file__).with_name("ghost.json")', (core / "server.py").read_text())

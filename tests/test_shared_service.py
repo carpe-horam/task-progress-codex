@@ -17,6 +17,23 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugins/task-progress"
 
 
 class CoreStorageIsolationTests(unittest.TestCase):
+    def test_widget_tokens_expire_without_exposing_native_credentials(self):
+        spec = importlib.util.spec_from_file_location('browser_expiry_service', PLUGIN / 'shared_service.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            core = module.load_core(Path(temporary) / 'sessions')
+            task = core.init_task_network(task_title='Expiring browser link', atomic_reason='One operation')['structuredContent']
+            with module.SharedMCPServer(0, 'Bearer native-service-secret', core) as service:
+                with patch.object(module.time, 'time', return_value=100):
+                    link = service.widget_link(task['session_id'])
+                    token = 'Bearer ' + link['url'].split('#')[1]
+                    self.assertEqual(service.widget_session(token)['selection']['session_id'], task['session_id'])
+                with patch.object(module.time, 'time', return_value=link['expires_at']):
+                    self.assertIsNone(service.widget_session(token))
+                    self.assertNotEqual(service.widget_link(task['session_id'])['url'], link['url'])
+                self.assertIsNone(service.widget_session('Bearer native-service-secret'))
+
     def test_explicit_session_directory_never_probes_default_legacy_store(self):
         spec = importlib.util.spec_from_file_location("isolated_shared_service", PLUGIN / "shared_service.py")
         service = importlib.util.module_from_spec(spec)
@@ -150,6 +167,42 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(len({r["session_id"] for r in results}), 1)
         self.assertEqual(len({r["task_instance_id"] for r in results}), 1)
 
+    def test_widget_catalogue_is_read_only_and_cli_never_exposes_credentials(self):
+        first = self.rpc('init_task_network', {'task_title': 'Browser A', 'atomic_reason': 'One operation'})
+        second = self.rpc('init_task_network', {'task_title': 'Browser B', 'atomic_reason': 'One operation'})
+        status, _, link = self.http(path='/widget/open', payload={'session_id': first['session_id']})
+        self.assertEqual(status, 200, link)
+        token = link['url'].split('#')[1]
+        self.assertNotIn(token, self.authorization)
+        headers = {'Authorization': 'Bearer ' + token, 'Origin': f'http://127.0.0.1:{self.port}'}
+        self.assertEqual(self.http('GET', '/widget/session', headers=headers)[2]['selection']['session_id'], first['session_id'])
+        catalogue = self.http('GET', '/widget/catalogue', headers=headers)[2]
+        self.assertEqual({item['session_id'] for item in catalogue['tasks']}, {first['session_id'], second['session_id']})
+        def read(sid, name='get_progress_view'):
+            return self.http(path='/widget/rpc', headers=headers, payload={'jsonrpc': '2.0', 'id': 7,
+                'method': 'tools/call', 'params': {'name': name, 'arguments': {'session_id': sid}}})[2]
+        self.assertEqual(read(first['session_id'])['result']['structuredContent']['progress']['task_title'], 'Browser A')
+        self.assertEqual(read(second['session_id'])['result']['structuredContent']['progress']['task_title'], 'Browser B')
+        self.assertIn('error', read('00000000-0000-4000-8000-000000000099'))
+        self.assertIn('error', read(first['session_id'], 'clear_progress'))
+        self.assertIn('error', read(first['session_id'], 'register_ui_view'))
+        self.assertEqual(self.http('GET', '/healthz', headers=headers)[0], 403)  # Origin still forbidden for native endpoints.
+        self.assertEqual(self.http('GET', '/widget/session', headers={'Authorization': 'Bearer invalid'})[0], 401)
+        hostile = {**headers, 'Origin': 'https://untrusted.example'}
+        self.assertEqual(self.http('GET', '/widget/session', headers=hostile)[0], 403)
+        self.assertEqual(self.http('GET', '/widget/session', headers={**headers, 'Host': 'untrusted.example'})[0], 403)
+        self.assertEqual(self.http(path='/widget/open', payload={'session_id': 'missing'})[0], 400)
+        command = [sys.executable, str(PLUGIN / 'progress_widget.py'), '--session', first['session_id'],
+                   '--port', str(self.port), '--state-dir', str(self.state), '--check']
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['selection']['session_id'], first['session_id'])
+        self.assertFalse(receipt['widget_open_requested'])
+        self.assertNotIn('url', receipt)
+        self.assertNotIn(self.authorization, result.stdout + result.stderr)
+        self.stop(); self.start()
+        self.assertEqual(self.http('GET', '/widget/session', headers={'Authorization': 'Bearer ' + token})[0], 401)
     def test_http_tools_dispatch_submit_review_and_main_only_synthesis(self):
         main = {"execution_mode": "main_session", "self_execution_reason": "Coordinator checks one integration decision"}
         sub = {"execution_mode": "subagent", "model": "fixture", "reasoning_effort": "high",

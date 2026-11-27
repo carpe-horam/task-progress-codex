@@ -13,7 +13,7 @@ CINDY = Path(__file__).resolve().parent
 SHARED = CINDY.parent
 CORE_FILES = (
     "app.html", "server.py", "execution_lifecycle.py", "execution_worker.py",
-    "legacy_history.py", "mcp_bridge.py", "service_manager.py", "shared_service.py",
+    "legacy_history.py", "mcp_bridge.py", "service_manager.py", "shared_service.py", "widget_store.py",
 )
 PATCHED_FILES = ("app.html", "server.py", "mcp_bridge.py", "service_manager.py")
 
@@ -39,7 +39,7 @@ def generate(destination: Path) -> None:
                            cwd=destination, stdin=patch, check=True)
         # BSD patch may create a backup when context shifts. It is not a runtime file.
         (destination / (name + ".orig")).unlink(missing_ok=True)
-    for directory in ("scripts", "skills", ".codex-plugin"):
+    for directory in ("scripts", "skills", "assets", ".codex-plugin"):
         shutil.copytree(SHARED / directory, destination / directory,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copy2(CINDY / "ghost.json", destination / "ghost.json")
@@ -74,9 +74,12 @@ def main() -> None:
             shutil.copytree(CINDY / "assets", stage / "assets")
             shutil.copytree(CINDY / "node", stage / "node")
             shutil.copytree(generated, stage / "core")
-            skill_dir = stage / "skills" / "track-progress"
-            skill_dir.parent.mkdir()
-            shutil.copytree(generated / "skills" / "track-progress", skill_dir)
+            manifest = json.loads((stage / "ghost.json").read_text(encoding="utf-8"))
+            for skill in manifest["skill"]["items"]:
+                relative = Path(skill["dir"])
+                skill_dir = stage / relative
+                skill_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(generated / relative, skill_dir)
             print(f"Prepared self-contained Cindy Forge source: {stage}")
         elif args.check:
             if not core.is_dir() or files(core) != files(generated):

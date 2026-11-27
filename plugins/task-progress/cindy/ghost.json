@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -18,6 +18,10 @@
       "dir": "skills/track-progress",
       "name": "track-progress",
       "description": "在主会话与执行者开始实质工作前先做粗粒度规划；适用于实现、修复、研究、审查、合并 worktree、验证和提交 PR。多阶段任务先建 HTN 计划，执行中动态拆分和补充。"
+    }, {
+      "dir": "skills/open-progress-widget",
+      "name": "open-progress-widget",
+      "description": "在 macOS 打开可置顶的 Task Progress 原生浮窗，默认定位当前会话的任务，支持切换任务或最多8项平铺。用于 Codex CLI 和其他已接入同一本机服务的 Agent；不打开浏览器，不修改任务状态。"
     }]
   },
   "subscribe": {
@@ -3607,5 +3611,5 @@
       }
     }
   },
-  "releaseNotes": "Cindy Lead 的一次性委派与跨阶段工作包统一创建或复用 Orca Worker，保留 Lead 主账本、派发证据和独立验收。"
+  "releaseNotes": "新增 macOS 原生任务进度浮窗及 /open-progress-widget Skill，默认定位当前会话、黑色置顶，支持8项平铺、选中滚动和手动侧栏。Worker 双向通信默认尝试 steer 并检查投递回执，任务规划避免单一工作包的冗余层级。"
 }

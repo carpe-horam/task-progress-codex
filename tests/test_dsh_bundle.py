@@ -119,7 +119,7 @@ class DshBundlePackagingTest(unittest.TestCase):
 
     def test_skills_stay_the_codex_bodies(self):
         skill_dirs = sorted(path.parent.name for path in (PLUGIN / "skills").glob("*/SKILL.md"))
-        self.assertEqual(skill_dirs, ["cleanup-task-progress-history", "track-progress"])
+        self.assertEqual(skill_dirs, ["cleanup-task-progress-history", "open-progress-widget", "track-progress"])
         for name in skill_dirs:
             frontmatter = (PLUGIN / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertTrue(frontmatter.startswith("---\nname: "), f"{name} must keep YAML frontmatter")
@@ -437,7 +437,7 @@ class DshBundleBehaviourTest(unittest.TestCase):
         """
         data = self.run_node(script)
         names = sorted(data["result"]["registered"])
-        self.assertEqual(names, ["cleanup-task-progress-history", "track-progress"])
+        self.assertEqual(names, ["cleanup-task-progress-history", "open-progress-widget", "track-progress"])
         self.assertEqual(data["result"]["skipped"], [])
         for skill in data["skills"]:
             self.assertGreater(skill["descriptionLength"], 0)

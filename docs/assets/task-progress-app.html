@@ -546,7 +546,7 @@ h1{font-size:18px;line-height:1.35}
     <rect x="12" y="22" width="8" height="8" rx="2.5"/>
     <rect x="23" y="22" width="8" height="8" rx="2.5"/>
   </g>
-</svg>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh" id="open-progress-panel" type="button">打开进度页</button><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
+</svg>Task Progress</div><div class="topline-actions"><span id="auto-refresh-status" class="auto-refresh-status hidden" aria-live="polite"><span class="auto-refresh-dot" aria-hidden="true"></span><span id="auto-refresh-label">自动刷新暂停</span><time id="auto-refresh-time" class="auto-refresh-time"></time></span><button class="refresh" id="open-progress-panel" type="button">打开进度页</button><button class="refresh hidden" id="export-all" type="button" title="同时导出任务 Excel 和可视化 HTML">↓ 导出</button><button class="refresh hidden" id="export-local" type="button" title="将 Excel 和 HTML 保存到本机下载目录">保存到本机</button><button class="refresh" id="refresh" disabled title="刷新当前会话进度"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 6A5.3 5.3 0 1 0 13 10M13 2v4H9"/></svg><span id="refresh-label">刷新</span></button></div></div>
   <p id="export-feedback" class="export-feedback hidden" role="status" aria-live="polite"></p>
     <div id="summary" class="hidden">
       <div class="titleline"><h1 id="task-title"></h1><span id="task-status" class="badge"><span class="dot" aria-hidden="true"></span><span id="task-status-label"></span></span></div>
@@ -2235,10 +2235,13 @@ h1{font-size:18px;line-height:1.35}
     for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
     return btoa(binary);
   }
-  async function exportCurrentProgress() {
-    if (!latestProgress || isInlineStale() || disposed) return;
-    const feedback = $('export-feedback'); const button = $('export-all');
-    feedback.classList.remove('error'); feedback.classList.remove('hidden'); feedback.title = ''; feedback.textContent = '正在导出…'; button.disabled = true;
+  async function exportCurrentProgress(saveLocally = false) {
+    const feedback = $('export-feedback');
+    const button = $('export-all');
+    const localButton = $('export-local');
+    if (!latestProgress || isInlineStale() || disposed || button.disabled) return;
+    feedback.classList.remove('error', 'hidden'); feedback.title = ''; feedback.textContent = '正在导出…';
+    button.disabled = localButton.disabled = true;
     try {
       const complete = await ensureFullHistory();
       if (!complete) throw new Error('完整历史未加载，未导出不完整报告。');
@@ -2267,17 +2270,23 @@ h1{font-size:18px;line-height:1.35}
         { name: htmlName, mime_type: 'text/html', encoding: 'utf-8', content: buildVisualHtml(data) }
       ];
 
-      if (hostCapabilities?.downloadFile) {
+      if (!saveLocally && hostCapabilities?.downloadFile) {
         try {
           const result = await request('ui/download-file', { contents: [
             { type: 'resource', resource: { uri: 'file:///' + encodeURIComponent(xlsxName), mimeType: xlsxMime, blob: files[0].content } },
             { type: 'resource', resource: { uri: 'file:///' + encodeURIComponent(htmlName), mimeType: 'text/html', text: files[1].content } }
           ] });
-          if (result?.isError) throw new Error('下载已取消。');
+          if (result?.isError) throw new Error('宿主未确认下载。');
           feedback.textContent = '已开始下载 Excel 和 HTML：' + xlsxName + '、' + htmlName;
+          localButton.classList.add('hidden');
           return;
         } catch (error) {
-          if (!/method not found/i.test(error?.message || '')) throw error;
+          if (!/method not found/i.test(error?.message || '')) {
+            feedback.classList.add('error');
+            feedback.textContent = '宿主未确认下载。可重试导出，或选择「保存到本机」。';
+            localButton.classList.remove('hidden');
+            return;
+          }
         }
       }
 
@@ -2290,10 +2299,11 @@ h1{font-size:18px;line-height:1.35}
       if (!output?.saved || !Array.isArray(output.files) || output.files.length !== 2) throw new Error('尚未确认两个文件均已保存。');
       feedback.textContent = '已导出 Excel 和 HTML\n保存位置：' + output.output_directory;
       feedback.title = output.files.map(file => file.path).join('\n');
+      localButton.classList.add('hidden');
     } catch (error) {
       feedback.classList.add('error'); feedback.textContent = /超时|timeout/i.test(error?.message || '') ? '导出超时，尚未确认文件是否保存。请先检查下载目录。' : /尚未确认/.test(error?.message || '') ? '尚未确认文件是否保存，请先检查下载目录。' : '导出失败：' + (error?.message || '无法生成文件');
     } finally {
-      button.disabled = false;
+      button.disabled = localButton.disabled = false;
     }
   }
   function executionSummary(assignment, status) {
@@ -4562,7 +4572,10 @@ h1{font-size:18px;line-height:1.35}
     renderSessionWork(progress);
     latestProgress = hasProgress ? progress : null;
     $('export-all').classList.toggle('hidden', !hasProgress || isInlineStale() || disposed);
-    if (!hasProgress) $('export-feedback').classList.add('hidden');
+    if (!hasProgress || isInlineStale() || disposed) {
+      $('export-feedback').classList.add('hidden');
+      $('export-local').classList.add('hidden');
+    }
     const steps = Array.isArray(progress?.steps) ? progress.steps : [];
     const network = progress?.schema_version === 2;
     const flat = network && progress.mode!=='legacy_archive';
@@ -4654,7 +4667,8 @@ h1{font-size:18px;line-height:1.35}
     syncLinearDialog(); renderStatusChips(); updateHistoryLinks(); applyStatusFilter();
     syncButton();
   }
-  $('export-all').addEventListener('click', exportCurrentProgress);
+  $('export-all').addEventListener('click', () => exportCurrentProgress());
+  $('export-local').addEventListener('click', () => exportCurrentProgress(true));
   function receiveResult(result, fromRefresh = false) {
     if ((isInlineStale() && fromRefresh) || disposed) return;
     const structured = result?.structuredContent;
@@ -4933,7 +4947,7 @@ h1{font-size:18px;line-height:1.35}
   render(null);
   async function initializeBridge() {
     try {
-      const result = await request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.3.8' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' });
+      const result = await request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.3.9' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' });
       if (disposed) return;
       if (displayMode === null) displayMode = result?.hostContext?.displayMode ?? null;
       availableDisplayModes = result?.hostContext?.availableDisplayModes ?? availableDisplayModes;

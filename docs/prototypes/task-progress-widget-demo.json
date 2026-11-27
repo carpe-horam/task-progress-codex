@@ -1,0 +1,356 @@
+[
+  {
+    "id": "widget",
+    "title": "跨工具任务进度浮窗",
+    "source": "Codex CLI",
+    "time": "刚刚",
+    "status": "running",
+    "description": "在一个可置顶的浮窗中切换任务，或同时查看多个任务的进度。",
+    "groups": [
+      {
+        "title": "统一任务视图",
+        "children": [
+          {
+            "title": "读取并隔离各会话的任务",
+            "status": "done",
+            "owner": "主会话",
+            "note": ""
+          },
+          {
+            "title": "保留任务树与验收状态",
+            "status": "done",
+            "owner": "主会话",
+            "note": ""
+          },
+          {
+            "title": "提供任务列表与快速切换",
+            "status": "done",
+            "owner": "主会话",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "title": "完成浮窗交互",
+        "children": [
+          {
+            "title": "实现单任务与最多 8 项平铺",
+            "status": "running",
+            "owner": "主会话",
+            "note": "已完成布局，正在核对交互"
+          },
+          {
+            "title": "验证置顶、缩放与状态恢复",
+            "status": "ready",
+            "owner": "主会话",
+            "note": ""
+          },
+          {
+            "title": "检查窄窗与主题切换",
+            "status": "ready",
+            "owner": "主会话",
+            "note": ""
+          },
+          {
+            "title": "验收完整使用流程",
+            "status": "ready",
+            "owner": "主会话",
+            "note": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "worker",
+    "title": "Worker 协同通信规则",
+    "source": "Cindy Worker",
+    "time": "2 分钟前",
+    "status": "review",
+    "description": "双向通信默认尝试插话，依据真实投递回执处理排队。",
+    "leaves": [
+      {
+        "title": "补充主会话默认插话规则",
+        "status": "done",
+        "owner": "Worker A",
+        "note": ""
+      },
+      {
+        "title": "补充 Worker 回报与排队规则",
+        "status": "done",
+        "owner": "Worker A",
+        "note": ""
+      },
+      {
+        "title": "核对中断机制边界",
+        "status": "review",
+        "owner": "主会话",
+        "note": "执行者已提交，等待主会话独立验收"
+      }
+    ]
+  },
+  {
+    "id": "compat",
+    "title": "插件兼容性核查",
+    "source": "Claude Code",
+    "time": "4 分钟前",
+    "status": "running",
+    "description": "核对任务面板在不同工具中的状态与显示一致性。",
+    "leaves": [
+      {
+        "title": "检查 MCP 工具接入",
+        "status": "done",
+        "owner": "Agent A",
+        "note": ""
+      },
+      {
+        "title": "核对任务状态投影",
+        "status": "done",
+        "owner": "Agent A",
+        "note": ""
+      },
+      {
+        "title": "验证面板自动刷新",
+        "status": "running",
+        "owner": "Agent B",
+        "note": ""
+      },
+      {
+        "title": "补充兼容性证据",
+        "status": "ready",
+        "owner": "Agent B",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "export",
+    "title": "HTML 与 Excel 导出",
+    "source": "Codex CLI",
+    "time": "6 分钟前",
+    "status": "blocked",
+    "description": "保留执行结果、独立验收与历史记录，生成可带走的报告。",
+    "leaves": [
+      {
+        "title": "整理报告数据",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      },
+      {
+        "title": "检查历史记录完整性",
+        "status": "running",
+        "owner": "Agent C",
+        "note": ""
+      },
+      {
+        "title": "生成并核对报告",
+        "status": "blocked",
+        "owner": "主会话",
+        "note": "等待前置任务 2"
+      }
+    ]
+  },
+  {
+    "id": "runtime",
+    "title": "Runtime 任务状态同步",
+    "source": "Cindy Worker",
+    "time": "8 分钟前",
+    "status": "running",
+    "description": "让执行状态、等待原因和验收结果在各端保持一致。",
+    "leaves": [
+      {
+        "title": "同步执行事件",
+        "status": "done",
+        "owner": "Worker B",
+        "note": ""
+      },
+      {
+        "title": "处理等待与重试",
+        "status": "running",
+        "owner": "Worker B",
+        "note": ""
+      },
+      {
+        "title": "验证重连后的状态",
+        "status": "ready",
+        "owner": "Worker B",
+        "note": ""
+      },
+      {
+        "title": "检查跨会话隔离",
+        "status": "ready",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "deps",
+    "title": "依赖关系与等待定位",
+    "source": "Claude Code",
+    "time": "12 分钟前",
+    "status": "review",
+    "description": "从等待行直接定位前置任务，区分依赖阻塞与等待执行。",
+    "leaves": [
+      {
+        "title": "提供前置任务定位",
+        "status": "done",
+        "owner": "Agent D",
+        "note": ""
+      },
+      {
+        "title": "补充定位后的高亮反馈",
+        "status": "done",
+        "owner": "Agent D",
+        "note": ""
+      },
+      {
+        "title": "验证上下游等待关系",
+        "status": "review",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "theme",
+    "title": "深色模式与窄窗适配",
+    "source": "Codex CLI",
+    "time": "16 分钟前",
+    "status": "running",
+    "description": "在有限空间内保留可读的任务名称、状态和操作。",
+    "leaves": [
+      {
+        "title": "统一明暗主题变量",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      },
+      {
+        "title": "适配紧凑任务详情",
+        "status": "running",
+        "owner": "主会话",
+        "note": ""
+      },
+      {
+        "title": "检查 320 px 展示",
+        "status": "ready",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "restore",
+    "title": "任务恢复与历史查看",
+    "source": "Cindy Worker",
+    "time": "19 分钟前",
+    "status": "ready",
+    "description": "恢复任务时保留计划与执行记录，切换查看不改变任务归属。",
+    "leaves": [
+      {
+        "title": "恢复上次查看的任务",
+        "status": "ready",
+        "owner": "Worker C",
+        "note": ""
+      },
+      {
+        "title": "保存展开和滚动位置",
+        "status": "ready",
+        "owner": "Worker C",
+        "note": ""
+      },
+      {
+        "title": "核对历史任务边界",
+        "status": "ready",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "queue",
+    "title": "新增请求排队机制",
+    "source": "Codex CLI",
+    "time": "24 分钟前",
+    "status": "running",
+    "description": "新增独立请求进入队列，完成当前任务后再继续处理。",
+    "leaves": [
+      {
+        "title": "保存新增请求",
+        "status": "done",
+        "owner": "Agent E",
+        "note": ""
+      },
+      {
+        "title": "展示待处理队列",
+        "status": "running",
+        "owner": "Agent E",
+        "note": ""
+      },
+      {
+        "title": "验收顺序激活行为",
+        "status": "ready",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "storage",
+    "title": "本机任务存储隔离",
+    "source": "Codex CLI",
+    "time": "今天 14:20",
+    "status": "done",
+    "description": "已核对不同任务的数据隔离与历史保留。",
+    "leaves": [
+      {
+        "title": "隔离会话数据",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      },
+      {
+        "title": "验证持久化与重启恢复",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      },
+      {
+        "title": "整体验收",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "hooks",
+    "title": "任务启动与恢复提醒",
+    "source": "Claude Code",
+    "time": "今天 11:06",
+    "status": "done",
+    "description": "已完成启动、恢复与请求分流提醒的核对。",
+    "leaves": [
+      {
+        "title": "启动前提醒规划",
+        "status": "done",
+        "owner": "Agent F",
+        "note": ""
+      },
+      {
+        "title": "恢复任务时读取上下文",
+        "status": "done",
+        "owner": "Agent F",
+        "note": ""
+      },
+      {
+        "title": "验证提醒不重复",
+        "status": "done",
+        "owner": "主会话",
+        "note": ""
+      }
+    ]
+  }
+]

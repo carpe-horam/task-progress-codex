@@ -34,7 +34,7 @@
 
 ### 1. 选择宿主并安装
 
-[下载或检出 v0.3.8 源码](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.8)。该 release 是源码版，没有安装附件。以下路径均相对于解压或克隆后的仓库。
+[下载或检出 v0.3.9 源码](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.9)。该 release 是源码版，没有安装附件。以下路径均相对于解压或克隆后的仓库。
 
 - **Cindy**：按 [Cindy 构建说明](plugins/task-progress/cindy/README.md)运行 `prepare.py --stage`，将生成目录交给 Cindy Forge 打包，再在 Cindy 中安装产出的插件。
 - **Codex**：需要支持插件和 stdio MCP 的 Codex，及 PATH 中名为 `python` 的 Python 3。执行：
@@ -60,6 +60,18 @@
 ### 3. 随时打开进度
 
 在会话中说 **“打开任务进度”**。面板会自动刷新；展开任务看详情，完成后用「导出」保存 Excel 和 HTML 报告。
+
+**CLI / 无内嵌面板的 Agent（macOS）**：使用随包的 `open-progress-widget` Skill，或从源码目录运行命令，直接打开可置顶的原生进度浮窗：
+
+```sh
+python3 plugins/task-progress/progress_widget.py --ensure-service
+```
+
+首次运行需要 Python 3 和 Xcode Command Line Tools；原生窗口会编译并缓存。`--ensure-service` 安装或更新随包的本机后台服务；已连接该服务的 CLI 与 Agent 共用任务账本。可省略该选项连接已运行的服务。
+
+左栏列出本机服务中的当前、并行和历史任务，支持搜索与自动更新；右侧直接复用原版进度面板，默认黑色。可单任务查看或最多 8 项平铺，只有选中的卡片允许内部滚动。置顶、紧凑窗和明暗主题都在左栏。导出文件保存到 `Downloads/Task Progress Exports`；关闭窗口不停止任务。
+
+`/open-progress-widget` 默认从当前 Agent 会话的 Task Progress 回执恢复身份，传入 `--session <session_id> --task-instance <task_instance_id>`，直接选中本会话任务；也可用这两个参数指定历史或并行实例。没有可确认的身份时才打开任务列表；直接运行不带定位参数的命令也显示列表。`--check` 只检查服务与任务定位，不打开窗口或返回访问凭据。独立复制 Skill 仍需先安装后台服务。浮窗在命令执行的 macOS 桌面打开，不会打开浏览器；远程无桌面环境不能直接显示本机控件，其他独立存储中的任务不会自动汇入此服务。
 
 ## 从规划到交付
 

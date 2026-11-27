@@ -18,3 +18,5 @@
 - `clear_progress({"session_id":"<已确认归档会话的插件 ID>"})` 会清除该 ID 下的当前任务与 `task_history`，不支持仅删除某个历史任务。不要迁移或删除旧版全局状态，也不要扩大到其他未明确指定且未确认归档的会话。
 
 若环境提供 `set_thread_title`，可在重要阶段更新标题；不要为标题频繁调用工具。
+
+CLI 或其他不支持内嵌 MCP Apps 的客户端，用户要求查看任务进度时使用同包 [open-progress-widget](../../open-progress-widget/SKILL.md) Skill 打开 macOS 原生置顶浮窗；可列出本机服务中的任务，已知本会话准确的 Task Progress `session_id` 时可直接定位。不要用反复 `render_progress` 代替浮窗入口，也不为展示重建任务；窗口自行刷新，关闭后保留账本，不打开浏览器。
