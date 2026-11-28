@@ -27,11 +27,11 @@ codex plugin add task-progress@task-progress-codex
 
 ### 从旧版本升级
 
-已有同名 Marketplace 时，重新登记目标发布标签（以下以 v0.3.9 为例），再重新安装插件。固定旧标签的 Marketplace 执行 upgrade 仍会停留在该标签：
+已有同名 Marketplace 时，重新登记目标发布标签（以下以 v0.3.10 为例），再重新安装插件。固定旧标签的 Marketplace 执行 upgrade 仍会停留在该标签：
 
 ```sh
 codex plugin marketplace remove task-progress-codex
-codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.3.9
+codex plugin marketplace add carpe-horam/task-progress-codex --ref v0.3.10
 codex plugin add task-progress@task-progress-codex
 ```
 
@@ -75,6 +75,8 @@ codex plugin add task-progress@task-progress-codex
 本机用户的 Codex 连接共享 `http://127.0.0.1:53421/mcp` 上的 **一个 Python 后台服务进程**。每条 MCP stdio 连接另有轻量 Python 桥接进程，仅负责启动检查、读取私有凭据与 HTTP 转发，不载入任务引擎或持有任务状态。关闭连接只结束桥接；服务由原生服务管理器托管，继续运行。请求不会经过 `http_headers_helper`；凭据助手不负责启动或托管后台服务。
 
 会话连接和 UI 标签页仍独立，任务按 `session_id` 隔离。服务只监听环回地址，校验 Host 和 Bearer 凭据并拒绝浏览器跨域请求。桥接使用直连 HTTP，不使用系统代理，也不会自动重试可能已经执行的写请求。
+
+任务目录另外按接入宿主隔离：Codex、Cindy 和 DeepSeekRuntime 不互相展示列表、总数或历史详情，即使 Cindy 内选择 Codex 模型也仍属 Cindy。升级需同时更新来源桥接与后台服务。Cindy 按已保存的明确会话绑定补齐存量来源；无来源证据的旧记录保留在独立的“来源待确认”列表，不能将其全部当作 Codex。独立浮窗脚本可用 `--source codex|cindy|dsh|unknown` 指定正确来源；随 Cindy 打包的入口缺省 cindy，Codex 包缺省 codex。详见[来源隔离](protocol/task-source-isolation.md)。
 
 安装器将后台运行文件复制到持久版本目录，插件缓存更新不会删除正在使用的文件：
 

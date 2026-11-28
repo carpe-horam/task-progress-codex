@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import hmac
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -28,6 +29,25 @@ _widget_spec = importlib.util.spec_from_file_location('task_progress_widget_stor
 _widget_module = importlib.util.module_from_spec(_widget_spec)
 _widget_spec.loader.exec_module(_widget_module)
 WidgetStore = _widget_module.WidgetStore
+
+
+def runtime_compatibility(root=None):
+    """Identity of the shared protocol/engine, independent of host packaging.
+
+    Cindy's sole server adaptation selects ghost.json instead of plugin.json.
+    UI assets and service-manager wrappers are deliberately not protocol input;
+    Cindy remains the preferred runtime when both hosts are installed.
+    """
+    root = Path(root or Path(__file__).parent)
+    digest = hashlib.sha256()
+    for name in ('shared_service.py', 'widget_store.py', 'server.py',
+                 'execution_lifecycle.py', 'execution_worker.py', 'legacy_history.py'):
+        data = (root / name).read_bytes()
+        if name == 'server.py':
+            data = data.replace(b'PLUGIN_MANIFEST_PATH = Path(__file__).with_name("ghost.json")',
+                                b'PLUGIN_MANIFEST_PATH = Path(__file__).with_name(".codex-plugin") / "plugin.json"')
+        digest.update(name.encode() + b'\0' + data + b'\0')
+    return digest.hexdigest()
 
 DEFAULT_PORT = 53421
 MAX_REQUEST_BYTES = 64 * 1024 * 1024  # Two base64-encoded 20 MiB exports + metadata.
@@ -101,13 +121,18 @@ class SharedMCPServer(ThreadingHTTPServer):
         self._widget_lock = threading.Lock()
         self._widget_views = {}
         self.widget_store = WidgetStore(core)
+        self.compatibility_id = runtime_compatibility()
         super().__init__(("127.0.0.1", port), MCPRequestHandler)
         self.timeout = 0.25
 
-    def widget_link(self, session_id=None, task_instance_id=None):
+    def widget_link(self, session_id=None, task_instance_id=None, source=None):
+        if source is None:
+            source = self.widget_store.session_source(session_id) if session_id else 'unknown'
+        if source not in self.widget_store.SOURCES:
+            raise ValueError('Invalid task source.')
         selected = None
         if session_id is not None:
-            data = self.widget_store.snapshot(session_id, task_instance_id)['structuredContent']
+            data = self.widget_store.snapshot(session_id, task_instance_id, source=source)['structuredContent']
             selected = data['widget_view_binding']
         elif task_instance_id is not None:
             raise ValueError('task_instance_id requires session_id.')
@@ -115,15 +140,54 @@ class SharedMCPServer(ThreadingHTTPServer):
         with self._widget_lock:
             self._widget_views = {token: view for token, view in self._widget_views.items()
                                    if view['expires_at'] > now}
-            token = next((token for token, view in self._widget_views.items() if view['selection'] == selected), None)
+            token = next((token for token, view in self._widget_views.items()
+                          if view['selection'] == selected and view['source'] == source), None)
             if token is None:
                 if len(self._widget_views) >= 256:
                     raise ValueError('Too many active widget instances.')
                 token = secrets.token_urlsafe(32)
-                self._widget_views[token] = {'selection': selected, 'expires_at': now + 12 * 60 * 60}
+                self._widget_views[token] = {'selection': selected, 'source': source, 'expires_at': now + 12 * 60 * 60}
             expires = self._widget_views[token]['expires_at']
         return {"url": f"http://127.0.0.1:{self.server_port}/widget#{token}",
-                'selection': selected, 'expires_at': expires}
+                'selection': selected, 'source': source, 'expires_at': expires}
+
+    def mcp_request(self, message, source=None):
+        if source is not None and source not in self.widget_store.SOURCES[:-1]:
+            return self.core._err(message.get('id') if isinstance(message, dict) else None,
+                                  -32602, 'Invalid client source.')
+        if isinstance(message, dict) and message.get('method') == 'task-progress/register-source':
+            if message.get('jsonrpc') != '2.0' or 'id' not in message:
+                return self.core._err(message.get('id'), -32600, 'Invalid source registration envelope.')
+            params = message.get('params', {})
+            ids = params.get('session_ids') if isinstance(params, dict) else None
+            owner = params.get('source') if isinstance(params, dict) else None
+            if (not isinstance(params, dict) or set(params) != {'session_ids', 'source'} or owner not in self.widget_store.SOURCES[:-1]
+                    or source not in (None, owner) or not isinstance(ids, list) or not 1 <= len(ids) <= 100):
+                return self.core._err(message.get('id'), -32602, 'Invalid source registration.')
+            results = []
+            for sid in ids:
+                try:
+                    self.widget_store.claim_source(sid, owner)
+                    results.append({'session_id': sid, 'registered': True})
+                except (ValueError, self.core.ProgressError, OSError):
+                    results.append({'session_id': sid, 'registered': False})
+            return self.core._ok(message.get('id'), {'sessions': results})
+        params = message.get('params', {}) if isinstance(message, dict) else {}
+        args = params.get('arguments', params) if isinstance(params, dict) else {}
+        sid = args.get('session_id') if isinstance(args, dict) else None
+        if source and sid:
+            owner = self.widget_store.session_source(sid)
+            if owner not in ('unknown', source):
+                return self.core._err(message.get('id'), -32602, 'Task belongs to a different source.')
+        response = self.core.handle(message)
+        if source and response:
+            wire = json.loads(response)
+            result = wire.get('result', {})
+            data = result.get('structuredContent', {}) if isinstance(result, dict) else {}
+            sid = data.get('session_id')
+            if sid and not result.get('isError') and self.core._session_file(sid).is_file():
+                self.widget_store.claim_source(sid, source)
+        return response
 
     def widget_session(self, authorization):
         if not authorization.startswith("Bearer "):
@@ -152,7 +216,8 @@ class SharedMCPServer(ThreadingHTTPServer):
                         if set(args) - {'session_id', 'task_instance_id', 'include_history'}:
                             raise ValueError('Unsupported widget view arguments.')
                         result = self.widget_store.snapshot(args.get('session_id'), args.get('task_instance_id'),
-                                                          include_history=args.get('include_history', False))
+                                                          include_history=args.get('include_history', False),
+                                                          source=access.get('source', 'unknown'))
                         return self.core._ok(message['id'], result)
                     except (ValueError, self.core.ProgressError) as error:
                         return self.core._err(message['id'], -32602, str(error))
@@ -195,7 +260,8 @@ class SharedMCPServer(ThreadingHTTPServer):
                 "version": self.core._plugin_version(), "pid": os.getpid(),
                 "instance_id": self.instance_id, "runtime_path": str(Path(__file__).resolve()),
                 "port": self.server_port, "uptime_seconds": round(time.time() - self.started_at, 3),
-                "request_count": count}
+                "request_count": count, "runtime_compatibility": self.compatibility_id,
+                "runtime_host": "cindy" if self.core.PLUGIN_MANIFEST_PATH.name == "ghost.json" else "codex"}
 
 
 class MCPRequestHandler(BaseHTTPRequestHandler):
@@ -270,7 +336,8 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                     if set(query) - {'offset', 'limit', 'query'} or any(len(value) != 1 for value in query.values()):
                         raise ValueError('Invalid catalogue query.')
                     result = self.server.widget_store.catalogue(offset=int(query.get('offset', ['0'])[0]),
-                        limit=int(query.get('limit', ['100'])[0]), query=query.get('query', [''])[0])
+                        limit=int(query.get('limit', ['100'])[0]), query=query.get('query', [''])[0],
+                        source=self.widget_access['source'])
                 except (ValueError, self.server.core.ProgressError) as error:
                     self._reply(400, {'error': str(error)})
                 else:
@@ -322,7 +389,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         self.server.record_request()
         if self.path == "/widget/open":
             try:
-                if not isinstance(message, dict) or set(message) - {'session_id', 'task_instance_id'}:
+                if not isinstance(message, dict) or set(message) - {'session_id', 'task_instance_id', 'source'}:
                     raise ValueError('Invalid widget selection.')
                 link = self.server.widget_link(**message)
             except (ValueError, self.server.core.ProgressError) as error:
@@ -332,7 +399,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             response = (self.server.widget_rpc(message, self.widget_access) if widget
-                        else self.server.core.handle(message))
+                        else self.server.mcp_request(message, self.headers.get('X-Task-Progress-Source')))
         except Exception:
             response = self.server.core._err(message.get("id") if isinstance(message, dict) else None,
                                              -32603, "Internal server error.")

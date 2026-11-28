@@ -43,6 +43,9 @@ def generate(destination: Path) -> None:
         shutil.copytree(SHARED / directory, destination / directory,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copy2(CINDY / "ghost.json", destination / "ghost.json")
+    widget_opener = destination / 'skills/open-progress-widget/scripts/open_progress.py'
+    widget_opener.write_text(widget_opener.read_text(encoding='utf-8').replace(
+        "DEFAULT_SOURCE = 'codex'", "DEFAULT_SOURCE = 'cindy'"), encoding='utf-8')
     app = (destination / "app.html").read_text(encoding="utf-8")
     start, end = app.index("<script>"), app.rindex("</script>")
     (destination / "panel-app.html").write_text(

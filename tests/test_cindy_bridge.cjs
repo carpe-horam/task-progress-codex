@@ -28,6 +28,9 @@ async function main() {
       return { ok: true, json: async () => ({ ...kv }) };
     },
     Date,
+    setTimeout,
+    clearTimeout,
+    AbortController,
     String,
     JSON,
     Error

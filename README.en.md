@@ -34,7 +34,7 @@ Building a feature, tracking down a stubborn bug, or coordinating several agents
 
 ### 1. Install for your host
 
-[Download or check out the v0.3.9 source](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.9). This release contains source code and has no attached installer. Paths below are relative to the extracted or cloned repository.
+[Download or check out the v0.3.10 source](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.10). This release contains source code and has no attached installer. Paths below are relative to the extracted or cloned repository.
 
 - **Cindy**: follow the [build guide](plugins/task-progress/cindy/README.md) to stage with `prepare.py --stage`, package the staged directory with Cindy Forge, then install the resulting plugin in Cindy.
 - **Codex**: requires plugin and stdio MCP support and Python 3 available as `python` on PATH. Run:

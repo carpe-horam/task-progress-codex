@@ -6,7 +6,7 @@
   "icon": "assets/icon.png",
   "description": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
   "whenToUse": "在 Cindy 中规划并跟踪多阶段任务，记录依赖、执行状态与验收证据。",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "kind": "chip",
   "launch": "resident",
   "sessionContext": true,
@@ -3611,5 +3611,5 @@
       }
     }
   },
-  "releaseNotes": "新增 macOS 原生任务进度浮窗及 /open-progress-widget Skill，默认定位当前会话、黑色置顶，支持8项平铺、选中滚动和手动侧栏。Worker 双向通信默认尝试 steer 并检查投递回执，任务规划避免单一工作包的冗余层级。"
+  "releaseNotes": "宿主归档单向同步整会话，持久队列支持失败重试和重启恢复；浮窗按会话去重，并按 Cindy、Codex、DeepSeekRuntime 来源隔离。未知存量独立显示，兼容核心的双端重连复用 Cindy 共享服务。"
 }

@@ -134,6 +134,23 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(int(headers["X-Task-Progress-Pid"]), self.proc.pid)
         return message["result"]["structuredContent"]
 
+    def test_host_archive_is_persistent_across_daemon_restart(self):
+        task = self.rpc('init_task_network', {'task_title': 'Host archived goal', 'atomic_reason': 'One fixture'})
+        sid = task['session_id']
+        before = (self.root / 'sessions' / (sid + '.json')).read_bytes()
+        request = {'jsonrpc': '2.0', 'id': 1, 'method': 'task-progress/archive-host-session',
+                   'params': {'session_id': sid, 'host_session_id': 'host-http', 'source': 'cindy'}}
+        status, _, response = self.http(payload=request)
+        self.assertEqual(status, 200)
+        self.assertTrue(response['result']['changed'])
+        self.stop()
+        self.start()
+        status, _, response = self.http(payload=request)
+        self.assertEqual(status, 200)
+        self.assertFalse(response['result']['changed'])
+        self.assertEqual((self.root / 'sessions' / (sid + '.json')).read_bytes(), before)
+        self.assertEqual(self.rpc('get_progress', {'session_id': sid})['progress']['status'], 'in_progress')
+
     def test_multiple_clients_share_one_pid_without_mixing_request_ids_or_sessions(self):
         def create(index):
             # Independent clients deliberately reuse JSON-RPC ID 1.
@@ -193,7 +210,7 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(self.http('GET', '/widget/session', headers={**headers, 'Host': 'untrusted.example'})[0], 403)
         self.assertEqual(self.http(path='/widget/open', payload={'session_id': 'missing'})[0], 400)
         command = [sys.executable, str(PLUGIN / 'progress_widget.py'), '--session', first['session_id'],
-                   '--port', str(self.port), '--state-dir', str(self.state), '--check']
+                   '--port', str(self.port), '--state-dir', str(self.state), '--source', 'unknown', '--check']
         result = subprocess.run(command, capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
@@ -311,6 +328,82 @@ class SharedServiceTests(unittest.TestCase):
         self.assertEqual(config["command"], "python")
         self.assertEqual(config["args"], ["mcp_bridge.py"])
         self.assertEqual(config["cwd"], ".")
+
+
+    def test_client_sources_isolate_catalogues_details_and_survive_restart(self):
+        def create(source):
+            _, _, wire = self.http(headers={'X-Task-Progress-Source':source}, payload={
+                'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'init_task_network',
+                'arguments':{'task_title':'Same title','atomic_reason':'Source fixture'}}})
+            self.assertNotIn('error',wire)
+            return wire['result']['structuredContent']['session_id']
+        codex, cindy = create('codex'), create('cindy')
+        old = self.rpc('init_task_network',{'task_title':'Unclassified','atomic_reason':'Legacy fixture'})['session_id']
+        tokens = {}
+        for source,sid in [('codex',codex),('cindy',cindy),('unknown',old)]:
+            status,_,link = self.http(path='/widget/open',payload={'source':source})
+            self.assertEqual(status,200)
+            tokens[source] = {'Authorization':'Bearer '+link['url'].split('#')[1]}
+            page = self.http('GET','/widget/catalogue?limit=1',headers=tokens[source])[2]
+            self.assertEqual(page['total'],1)
+            self.assertEqual(page['tasks'][0]['session_id'],sid)
+        self.assertNotEqual(tokens['codex'],tokens['cindy'])
+        def read(headers,sid):
+            return self.http(path='/widget/rpc',headers=headers,payload={'jsonrpc':'2.0','id':2,
+                'method':'tools/call','params':{'name':'get_progress_view','arguments':{'session_id':sid}}})[2]
+        self.assertNotIn('error',read(tokens['cindy'],cindy))
+        for headers,sid in [(tokens['cindy'],codex),(tokens['cindy'],old),(tokens['unknown'],cindy)]:
+            self.assertIn('error',read(headers,sid))
+        self.assertEqual(self.http(path='/widget/open',payload={'source':'codex','session_id':cindy})[0],400)
+        self.assertEqual(self.http('GET','/widget/catalogue?source=codex',headers=tokens['cindy'])[0],400)
+        foreign = self.http(headers={'X-Task-Progress-Source':'codex'},payload={'jsonrpc':'2.0','id':3,
+            'method':'tools/call','params':{'name':'get_progress','arguments':{'session_id':cindy}}})[2]
+        self.assertIn('error',foreign)
+        wrong_archive = self.http(headers={'X-Task-Progress-Source':'cindy'},payload={
+            'jsonrpc':'2.0','id':4,'method':'task-progress/archive-host-session',
+            'params':{'session_id':codex,'host_session_id':'wrong-binding','source':'cindy'}})[2]
+        self.assertIn('error',wrong_archive)
+        self.assertFalse((self.root/'sessions'/(codex+'.host-archive.json')).exists())
+        self.stop();self.start()
+        token = self.http(path='/widget/open',payload={'source':'cindy'})[2]['url'].split('#')[1]
+        page = self.http('GET','/widget/catalogue',headers={'Authorization':'Bearer '+token})[2]
+        self.assertEqual([r['session_id'] for r in page['tasks']],[cindy])
+
+    def test_legacy_source_registration_uses_explicit_ids_and_cannot_reassign(self):
+        old = self.rpc('init_task_network',{'task_title':'Legacy','atomic_reason':'Old fixture'})['session_id']
+        path = self.root/'sessions'/(old+'.json');before = path.read_bytes()
+        def register(source,ids):
+            return self.http(headers={'X-Task-Progress-Source':source},payload={'jsonrpc':'2.0','id':1,
+                'method':'task-progress/register-source','params':{'source':source,'session_ids':ids}})[2]
+        missing = '00000000-0000-4000-8000-000000000099'
+        rows = register('cindy',[old,missing])['result']['sessions']
+        self.assertEqual([r['registered'] for r in rows],[True,False])
+        self.assertTrue(register('cindy',[old])['result']['sessions'][0]['registered'])
+        self.assertFalse(register('codex',[old])['result']['sessions'][0]['registered'])
+        self.assertEqual(before,path.read_bytes())
+        self.assertFalse((self.root/'sessions'/(missing+'.source.json')).exists())
+
+    def test_real_bridges_send_distinct_host_sources_to_http(self):
+        # Importing the bridge does not run main/install. Its actual forward()
+        # talks to this test's isolated HTTP daemon, not the native user job.
+        from unittest.mock import patch
+        import importlib.util
+        for source,directory in [('codex',PLUGIN),('cindy',PLUGIN/'cindy/core')]:
+            with self.subTest(source=source), patch.dict(os.environ,{'TASK_PROGRESS_SOURCE':'codex'}):
+                sys.path.insert(0,str(directory))
+                try:
+                    spec = importlib.util.spec_from_file_location('source_bridge_'+source,directory/'mcp_bridge.py')
+                    bridge = importlib.util.module_from_spec(spec);spec.loader.exec_module(bridge)
+                finally:
+                    sys.path.pop(0)
+                with patch.object(bridge,'PORT',self.port):
+                    wire = bridge.forward({'jsonrpc':'2.0','id':1,'method':'tools/call',
+                        'params':{'name':'init_task_network','arguments':{'task_title':'Bridge fixture',
+                        'atomic_reason':'One source fixture'}}},self.authorization)
+                self.assertNotIn('error',wire)
+                sid = wire['result']['structuredContent']['session_id']
+                persisted = json.loads((self.root/'sessions'/(sid+'.source.json')).read_text())
+                self.assertEqual(persisted['source'],source)
 
 
 if __name__ == "__main__":

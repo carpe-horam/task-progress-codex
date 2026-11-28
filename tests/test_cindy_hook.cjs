@@ -29,7 +29,14 @@ function harness(initialKv = {}, nodeResult = null, failures = {}) {
     cindy: {
       onHostMessage: callback => { handler = callback; },
       ...(failures.taskView ? { taskView: failures.taskView } : {}),
-      node: { request: async request => { calls.push(request); if (failures.node) throw new Error('private backend details'); return typeof nodeResult === 'function' ? nodeResult(request) : nodeResult; } },
+      node: { request: async request => {
+        if (request.method === 'task-progress/register-source') {
+          if (failures.node) return {ok:false};
+          return {ok:true,result:{sessions:request.params.session_ids.map(session_id=>({session_id,registered:true}))}};
+        }
+        calls.push(request); if (failures.node) throw new Error('private backend details');
+        return typeof nodeResult === 'function' ? nodeResult(request) : nodeResult;
+      } },
       send: value => { if (failures.send) throw new Error('private transport details'); sent.push(value); },
     },
     AbortController, Date, Map, Object, JSON, setTimeout, clearTimeout,
@@ -40,7 +47,8 @@ function harness(initialKv = {}, nodeResult = null, failures = {}) {
     recordHookReceipt: (msg, options) => sandbox.recordHookReceipt(msg, options),
     waitForPluginKvWrites: () => sandbox.waitForPluginKvWrites(),
     readReviewState: (...args) => sandbox.readReviewState(...args),
-    syncPanelFocus: () => sandbox.syncPanelFocus() };
+    syncPanelFocus: () => sandbox.syncPanelFocus(),
+    archiveStartup: () => vm.runInNewContext('hostArchiveWorkQueue', sandbox) };
 }
 
 const session = '00000000-0000-0000-0000-000000000001';
@@ -88,11 +96,13 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
     assert.equal(committed.value.nested.value,'committed');
     assert.equal(client.getKv().nested.value,'committed');
   }
-  let failFocusRead = true;
+  let failFocusRead = false;
   const focusKvFailure = harness({taskProgressActiveHostSessionId:'old-host'}, null, {
     taskView:async()=>({ok:true,sessionId:'new-host'}),
     beforeFetch:()=>{if(failFocusRead){failFocusRead=false;throw new Error('temporary read failure');}},
   });
+  await focusKvFailure.archiveStartup();
+  failFocusRead = true; // Inject the focus read failure after startup recovery.
   await focusKvFailure.syncPanelFocus();
   assert.equal(focusKvFailure.getKv().taskProgressActiveHostSessionId,'old-host','KV failure must not be mistaken for a lost host focus');
   assert.equal(focusKvFailure.broadcasts.length,0);
@@ -682,6 +692,8 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
       return {ok:true,json:async()=>({taskProgressSessionsByHostSession:{host:reboundSession}})};
     },
   });
+  await rebind.archiveStartup();
+  rebindReads = 0;
   await rebind.dispatch({type:'event',name:'did-session-switched',data:{sessionId:'host'}});
   const rebound = rebind.broadcasts.find(item=>item.type==='bind-session');
   assert.equal(rebound.session_id,reboundSession,'an old diagnostic receipt cannot override the latest binding');
@@ -696,6 +708,8 @@ const event = { type: 'event', name: 'will-compose-context', hookId: 'hook-1', d
         return {ok:true,json:async()=>broken === 'null' ? null : []};
       },
     });
+    await uncertainSwitch.archiveStartup();
+    reads = 0;
     const switchedEvent = {type:'event',name:'did-session-switched',data:{sessionId:'host'}};
     await uncertainSwitch.dispatch(switchedEvent);
     assert.equal(uncertainSwitch.broadcasts.some(item=>item.type==='bind-session'),false,`${broken} state must not clear the binding`);

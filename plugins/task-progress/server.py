@@ -169,6 +169,39 @@ def _read_order(session_id: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"state_revision": 0, "view_sequence": 0}
 
 
+def _host_archive_file(session_id: str) -> Path:
+    return SESSION_DIR / f"{_normalize_session_id(session_id)}.host-archive.json"
+
+
+def _read_host_archive(session_id: str) -> dict[str, Any] | None:
+    path = _host_archive_file(session_id)
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def archive_host_session(session_id: str, host_session_id: str, source: str) -> dict[str, Any]:
+    """One-way host observation; preserve every execution/result byte.
+
+    The resident host adapter supplies its observed binding. This is not an
+    acceptance result or host authentication. No active/unarchive operation
+    exists, and ordinary task writes cannot erase this separate marker.
+    """
+    sid = _normalize_session_id(session_id)
+    if source != "cindy" or not isinstance(host_session_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", host_session_id):
+        raise ProgressError("Invalid host archive source or session identity.")
+    with _session_lock(sid):
+        if _read(sid) is None:
+            raise ProgressError("Task session does not exist; no archive was created.")
+        marker = _read_host_archive(sid)
+        if marker and (marker.get("source"), marker.get("host_session_id")) != (source, host_session_id):
+            raise ProgressError("Host archive binding conflicts with the recorded source.")
+        changed = marker is None
+        if changed:
+            marker = {"source": source, "host_session_id": host_session_id,
+                      "archived_at": _now(), "reason": "host_session_archived"}
+            _atomic_json(_host_archive_file(sid), marker)
+    return {"session_id": sid, "archived": True, "changed": changed, "host_archive": marker}
+
+
 def _atomic_json(path: Path, data: dict[str, Any]) -> None:
     temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -6155,6 +6188,18 @@ def handle(message: Any) -> str | None:
 
     if method == "notifications/initialized":
         return None
+
+    # Resident adapter RPC, deliberately absent from the public Agent tools.
+    # The widget's read-only allowlist rejects this method as well.
+    if method == "task-progress/archive-host-session":
+        try:
+            if set(params) != {"session_id", "host_session_id", "source"}:
+                raise ProgressError("Invalid host archive parameters.")
+            return _ok(message_id, archive_host_session(**params))
+        except ProgressError as exc:
+            return _err(message_id, -32602, str(exc))
+        except (OSError, ValueError, TypeError):
+            return _err(message_id, -32603, "Host archive could not be persisted.")
 
     if method == "tools/list":
         return _ok(message_id, {"tools": TOOLS})

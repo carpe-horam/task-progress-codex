@@ -53,6 +53,24 @@ function assertUnavailable(response, id, reason) {
   assert.match(response.error.message, reason);
 }
 
+test('resident worker forwards host archive RPC and exact target identity', {timeout:5000}, async t => {
+  const worker = startWorker(t, `
+import json
+import sys
+for line in sys.stdin:
+    request = json.loads(line)
+    if 'id' in request:
+        print(json.dumps({'jsonrpc':'2.0','id':request['id'],
+                          'result':{'method':request['method'],'params':request.get('params')}}), flush=True)
+`);
+  const params = {session_id:'00000000-0000-4000-8000-000000000001',host_session_id:'host-test',source:'cindy'};
+  worker.send({id:'host-archive-wire',method:'task-progress/archive-host-session',params});
+  const response = await worker.receive();
+  assert.equal(response.id,'host-archive-wire');
+  assert.equal(response.result.method,'task-progress/archive-host-session');
+  assert.deepEqual(response.result.params,params);
+});
+
 test('Python spawn failure returns a JSON-RPC error for each call', { timeout: 5000 }, async t => {
   const worker = startWorker(t);
   worker.send({ method: 'notifications/initialized' });
