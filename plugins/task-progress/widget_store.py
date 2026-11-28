@@ -6,10 +6,43 @@ import threading
 
 
 class WidgetStore:
+    SOURCES = ('codex', 'cindy', 'dsh', 'unknown')
+
     def __init__(self, core):
         self.core = core
         self._cache = {}
         self._lock = threading.Lock()
+
+    def session_source(self, sid):
+        sid = self.core._normalize_session_id(sid)
+        path = self.core.SESSION_DIR / (sid + '.source.json')
+        if path.is_symlink():
+            raise ValueError('Unsafe task source record.')
+        if not path.exists():
+            return 'unknown'
+        import json
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value, dict):
+            raise ValueError('Invalid task source record.')
+        source = value.get('source')
+        if type(value.get('version')) is not int or value['version'] != 1 or source not in self.SOURCES[:-1]:
+            raise ValueError('Invalid task source record.')
+        return source
+
+    def claim_source(self, sid, source):
+        if source not in self.SOURCES[:-1]:
+            raise ValueError('Invalid task source.')
+        sid = self.core._normalize_session_id(sid)
+        with self.core._session_lock(sid):
+            if self.core._read(sid) is None:
+                raise ValueError('Task session does not exist.')
+            previous = self.session_source(sid)
+            if previous not in ('unknown', source):
+                raise ValueError('Task belongs to a different source.')
+            if previous == 'unknown':
+                self.core._atomic_json(self.core.SESSION_DIR / (sid + '.source.json'),
+                                       {'version': 1, 'source': source})
+        return sid
 
     def _instances(self, document):
         seen = set()
@@ -51,11 +84,14 @@ class WidgetStore:
         return {'id': sid + ':' + iid, 'session_id': sid, 'task_instance_id': iid,
                 'title': progress.get('display_title') or progress.get('task_title') or '未命名任务',
                 'status': status, 'percent': percent, 'closed': closed, 'archived': archived,
+                'historical': archived,
                 'source': model if isinstance(model, str) and model else '本机任务',
                 'created_at': instance.get('created_at'), 'updated_at': instance.get('updated_at'),
                 'state_revision': instance.get('state_revision', 0)}
 
-    def catalogue(self, *, offset=0, limit=100, query=''):
+    def catalogue(self, *, offset=0, limit=100, query='', source=None):
+        if source is not None and source not in self.SOURCES:
+            raise ValueError('Invalid task source.')
         if (isinstance(offset, bool) or not isinstance(offset, int) or offset < 0 or
                 isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100 or
                 not isinstance(query, str) or len(query) > 200):
@@ -72,14 +108,24 @@ class WidgetStore:
                 continue
             present.add(sid)
             try:
+                owner = self.session_source(sid)
+                if source is not None and owner != source:
+                    continue
                 stat = path.stat()
-                fingerprint = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+                archive_path = self.core._host_archive_file(sid)
+                archive_stat = archive_path.stat() if archive_path.exists() else None
+                fingerprint = (stat.st_ino, stat.st_mtime_ns, stat.st_size,
+                               (archive_stat.st_ino, archive_stat.st_mtime_ns, archive_stat.st_size) if archive_stat else None)
                 with self._lock:
                     cached = self._cache.get(sid)
                 if cached and cached[0] == fingerprint:
                     items = cached[1]
                 else:
                     with self.core._session_lock(sid):
+                        # A legacy unknown session may be claimed after the
+                        # first source read, before its document is locked.
+                        if source is not None and self.session_source(sid) != source:
+                            continue
                         document = self.core._read(sid)
                         if document is None:
                             continue
@@ -87,16 +133,27 @@ class WidgetStore:
                             raise ValueError('Session identity mismatch.')
                         items = [self._summary(sid, iid, instance, archived)
                                  for iid, instance, archived in self._instances(document)]
+                        host_archive = self.core._read_host_archive(sid)
+                        if host_archive:
+                            for item in items:
+                                item.update(archived=True, host_archive=host_archive)
                     with self._lock:
                         self._cache[sid] = (fingerprint, items)
-                rows.extend(items)
+                # Catalogue identity and pagination belong to the session. Keep
+                # fixed-instance identities nested for explicit record viewing.
+                row = dict(items[0])
+                row.update(id=sid, instances=items, task_source=owner,
+                           closed=all(item['closed'] or item['historical'] for item in items))
+                rows.append(row)
             except (OSError, ValueError, KeyError, TypeError, AttributeError, self.core.ProgressError):
                 failed += 1
         with self._lock:
             self._cache = {sid: item for sid, item in self._cache.items() if sid in present}
         term = query.strip().casefold()
         if term:
-            rows = [row for row in rows if term in (row['title'] + ' ' + row['source']).casefold()]
+            rows = [row for row in rows if any(
+                term in (item['title'] + ' ' + item['source']).casefold()
+                for item in row['instances'])]
         rows.sort(key=lambda row: row.get('updated_at') or row.get('created_at') or '', reverse=True)
         rows.sort(key=lambda row: bool(row['archived'] or row['closed']))
         total = len(rows)
@@ -104,11 +161,13 @@ class WidgetStore:
                 'has_more': offset + limit < total, 'next_offset': offset + limit if offset + limit < total else None,
                 'unreadable_sessions': failed}
 
-    def snapshot(self, sid, iid=None, *, include_history=False):
+    def snapshot(self, sid, iid=None, *, include_history=False, source=None):
         sid = self.core._normalize_session_id(sid)
         if not isinstance(include_history, bool):
             raise ValueError('include_history must be boolean.')
         with self.core._session_lock(sid):
+            if source is not None and (source not in self.SOURCES or self.session_source(sid) != source):
+                raise ValueError('Task is outside this source list.')
             document = self.core._read(sid)
             if document is None:
                 raise ValueError('任务已不存在，请刷新任务列表。')
@@ -117,9 +176,14 @@ class WidgetStore:
             if target is None:
                 raise ValueError('任务实例已不存在，请刷新任务列表。')
             iid, instance, archived = target
-            projected_archive = archived and isinstance(instance.get('nodes'), list)
+            # Frozen archives include both HTN and legacy linear records. They
+            # must never be routed through the current-instance lookup.
+            projected_archive = archived
             if projected_archive:
-                progress = self.core._project_titles(self.core._project_leaf_metrics(deepcopy(instance)))
+                frozen = deepcopy(instance)
+                if isinstance(frozen.get('nodes'), dict):
+                    frozen = self.core._progress_payload(frozen)
+                progress = self.core._project_titles(self.core._project_leaf_metrics(frozen))
                 progress = self.core._project_execution_records(progress, include_history)
                 progress['history_summary'] = {'task_count': len(progress.get('task_history', [])),
                     'plan_count': len(progress.get('history', [])), 'legacy_task_count': 0}
@@ -141,5 +205,13 @@ class WidgetStore:
         state.pop('session_work', None)
         state['progress'].pop('session_work', None)
         state['progress'].pop('parallel_tasks', None)
-        state['widget_view_binding'] = {'session_id': sid, 'task_instance_id': iid, 'archived': archived}
+        host_archive = self.core._read_host_archive(sid)
+        if host_archive:
+            state['host_archive'] = host_archive
+        state['widget_view_binding'] = {'session_id': sid, 'task_instance_id': iid,
+                                       'archived': bool(archived or host_archive)}
+        # Current-instance projection reacquires the core lock separately.
+        # Do not return newly classified data to an older unknown token.
+        if source is not None and self.session_source(sid) != source:
+            raise ValueError('Task is outside this source list.')
         return result

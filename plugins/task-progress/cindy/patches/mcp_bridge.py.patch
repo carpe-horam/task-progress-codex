@@ -1,5 +1,8 @@
 --- a/mcp_bridge.py
 +++ b/mcp_bridge.py
+@@ -17,1 +17,1 @@
+-CLIENT_SOURCE = os.environ.get('TASK_PROGRESS_SOURCE', 'codex')
++CLIENT_SOURCE = 'cindy'
 @@ -73,6 +73,13 @@
                  result = forward(message, authorization)
              except (OSError, ValueError, http.client.HTTPException):

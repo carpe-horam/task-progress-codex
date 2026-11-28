@@ -40,20 +40,20 @@ class BridgeRecoveryTest(unittest.TestCase):
         self.assertEqual(responses[0]['error']['code'], -32603)
         self.assertTrue(responses[1]['result']['ok'])
 
-    def run_with_health(self, version, local_version='0.2.57'):
+    def run_with_health(self, version, local_version='0.2.57', extra=None, client_source='cindy'):
         calls=[]
         class Manager:
             state_dir=CORE
             def health(self):
                 return {'service':'task-progress','transport':'streamable-http','port':53421,
                         'pid':12,'instance_id':'fixture','runtime_path':'/fixture/shared_service.py',
-                        'version':version}
+                        'version':version, **(extra or {})}
             def install(self): calls.append('install')
         class Stream:
             def __init__(self, raw): self.buffer=raw
         incoming=io.BytesIO(b'{"jsonrpc":"2.0","id":1,"method":"tools/call"}\n')
         outgoing=io.BytesIO()
-        with patch.object(bridge,'_package_version',return_value=local_version), patch.object(bridge,'ServiceManager',Manager), patch.object(bridge,'read_authorization',return_value='test'), patch.object(bridge,'forward',return_value={'jsonrpc':'2.0','id':1,'result':{'ok':True}}), patch.object(sys,'stdin',Stream(incoming)), patch.object(sys,'stdout',Stream(outgoing)):
+        with patch.object(bridge,'CLIENT_SOURCE',client_source), patch.object(bridge,'_package_version',return_value=local_version), patch.object(bridge,'ServiceManager',Manager), patch.object(bridge,'read_authorization',return_value='test'), patch.object(bridge,'forward',return_value={'jsonrpc':'2.0','id':1,'result':{'ok':True}}), patch.object(sys,'stdin',Stream(incoming)), patch.object(sys,'stdout',Stream(outgoing)):
             self.assertEqual(bridge.main(),0)
         return calls, [json.loads(line) for line in outgoing.getvalue().splitlines()]
 
@@ -69,6 +69,17 @@ class BridgeRecoveryTest(unittest.TestCase):
     def test_incompatible_protocol_is_not_reused(self):
         calls,_=self.run_with_health('0.3.0','0.2.57')
         self.assertEqual(calls,['install'])
+
+    def test_equal_codex_reuses_preferred_cindy_only_with_matching_engine(self):
+        good = {'runtime_host':'cindy','runtime_compatibility':bridge.runtime_compatibility()}
+        for source in ('codex','dsh'):
+            calls,_ = self.run_with_health('0.3.9','0.3.9',good,source)
+            self.assertEqual(calls,[])
+        for bad in ({}, {**good,'runtime_compatibility':'different'}, {**good,'runtime_host':'codex'}):
+            calls,_ = self.run_with_health('0.3.9','0.3.9',bad,'codex')
+            self.assertEqual(calls,['install'])
+        calls,_ = self.run_with_health('0.3.9','0.3.9',good,'cindy')
+        self.assertEqual(calls,['install'], 'Cindy still reconciles same-host updates')
 
 
 if __name__ == '__main__':

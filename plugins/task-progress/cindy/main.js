@@ -51,6 +51,237 @@ const MUTATING_TASK_TOOLS = new Set(['decompose_task','delete_task','update_task
 const unsavedHostBindings = new Map();
 let hookReceiptSequence = 0;
 
+// Archive is a one-way observation, independent of review enablement and
+// execution outcomes. Keep retries scoped to the binding we actually observed.
+const pendingHostArchives = new Map();
+const unpersistedHostArchives = new Map();
+const syncedHostArchives = new Set();
+let hostArchiveRecoveryNeeded = true;
+let hostArchiveSyncRunning = false;
+let hostArchiveWorkQueue = Promise.resolve();
+let sourceRegistrationPending = true;
+const HOST_SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
+const TASK_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function archiveOutbox(state) {
+  const entries = state.taskProgressHostArchiveOutbox;
+  if (entries === undefined) return {};
+  if (!entries || Object.prototype.toString.call(entries) !== '[object Object]')
+    throw new Error('Invalid durable archive queue');
+  for (const [key, entry] of Object.entries(entries)) {
+    if (!entry || entry.version !== 1 || typeof entry.host_session_id !== 'string' ||
+        !HOST_SESSION_ID.test(entry.host_session_id) ||
+        typeof entry.session_id !== 'string' || !TASK_SESSION_ID.test(entry.session_id) ||
+        key !== entry.host_session_id + ':' + entry.session_id ||
+        typeof entry.observed_at !== 'string' || !entry.observed_at || entry.observed_at.length > 64)
+      throw new Error('Invalid durable archive queue entry');
+  }
+  return entries;
+}
+
+function rememberHostArchive(host, sid) {
+  if (!HOST_SESSION_ID.test(host) || typeof sid !== 'string' || !TASK_SESSION_ID.test(sid)) return;
+  const key = host + ':' + sid;
+  if (!syncedHostArchives.has(key) && !unpersistedHostArchives.has(key))
+    unpersistedHostArchives.set(key, {version:1, host_session_id:host, session_id:sid,
+      observed_at:new Date().toISOString()});
+}
+
+async function restoreHostArchiveOutbox() {
+  await waitForPluginKvWrites();
+  const state = await readReviewState();
+  const entries = archiveOutbox(state);
+  for (const [key, entry] of Object.entries(entries)) {
+    const previous = pendingHostArchives.get(key);
+    if (!previous || previous.observed_at !== entry.observed_at) {
+      // An old result cannot acknowledge a replacement queue record.
+      if (previous) syncedHostArchives.delete(key);
+      pendingHostArchives.set(key, entry);
+    }
+  }
+  hostArchiveRecoveryNeeded = false;
+  return state;
+}
+
+async function persistHostArchives() {
+  if (!unpersistedHostArchives.size) return;
+  const candidates = [...unpersistedHostArchives];
+  const saved = await updateRequiredPluginKv(state => {
+    const existing = archiveOutbox(state), entries = {...existing};
+    let changed = false;
+    for (const [key, entry] of candidates) {
+      // Bind the observation to the exact target at durable enqueue time.
+      if (state.taskProgressSessionsByHostSession?.[entry.host_session_id] !== entry.session_id ||
+          syncedHostArchives.has(key) || entries[key]) continue;
+      entries[key] = entry; changed = true;
+    }
+    return changed ? {...state, taskProgressHostArchiveOutbox:entries} : null;
+  });
+  const entries = archiveOutbox(saved);
+  for (const [key] of candidates) {
+    unpersistedHostArchives.delete(key);
+    if (entries[key] && !pendingHostArchives.has(key)) pendingHostArchives.set(key, entries[key]);
+  }
+}
+
+async function acknowledgeHostArchive(key, entry) {
+  await updateRequiredPluginKv(state => {
+    const entries = {...archiveOutbox(state)}, stored = entries[key];
+    if (!stored) return null;
+    if (stored.observed_at !== entry.observed_at) throw new Error('Archive queue entry changed');
+    delete entries[key];
+    return {...state, taskProgressHostArchiveOutbox:entries};
+  });
+  pendingHostArchives.delete(key);
+}
+
+async function boundedArchiveRequest(operation, timeoutMs = 3000) {
+  let timer;
+  try {
+    return await Promise.race([Promise.resolve().then(operation), new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Host archive sync timed out')), timeoutMs);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+async function flushHostArchives(attempted = new Set()) {
+  for (const [key, entry] of pendingHostArchives) {
+    if (attempted.has(key)) continue;
+    const host = entry.host_session_id, sid = entry.session_id;
+    await waitForPluginKvWrites();
+    const current = await readReviewState();
+    const stored = archiveOutbox(current)[key];
+    if (!stored) { pendingHostArchives.delete(key); continue; }
+    if (stored.observed_at !== entry.observed_at) {
+      syncedHostArchives.delete(key);
+      pendingHostArchives.set(key, stored);
+      continue; // Defer this replacement, but do not block unrelated work.
+    }
+    if (!syncedHostArchives.has(key) && current.taskProgressSessionsByHostSession?.[host] !== sid) {
+      // Keep the original durable intent for inspection/recovery; never
+      // delete it or redirect it to the replacement binding.
+      panelBus.postMessage({type:'host-archive-sync-state', status:'binding_changed', session_id:sid});
+      continue;
+    }
+    attempted.add(key);
+    try {
+      if (!syncedHostArchives.has(key)) {
+        const response = await boundedArchiveRequest(() => cindy.node.request({
+          method: 'task-progress/archive-host-session',
+          params: {session_id:sid, host_session_id:host, source:'cindy'}, timeoutMs:3000
+        }));
+        if (response?.ok !== true || response.result?.session_id !== sid || response.result?.archived !== true)
+          throw new Error('Host archive was not acknowledged');
+        syncedHostArchives.add(key);
+      }
+      await acknowledgeHostArchive(key, entry);
+      panelBus.postMessage({type:'host-archive-synced', session_id:sid});
+    } catch (_) {
+      // The operation is monotonic and idempotent, including an uncertain
+      // transport result. Retain it for the next reconciliation pass.
+      panelBus.postMessage({type:'host-archive-sync-state', status:'pending', session_id:sid});
+      // Rotate the failed item so a missing/conflicting first session cannot
+      // starve healthy tasks forever. Stop this flush after one failure to
+      // avoid paying one network timeout per saved task during an outage.
+      pendingHostArchives.delete(key);
+      pendingHostArchives.set(key, entry);
+      return;
+    }
+  }
+}
+
+function queueHostArchiveWork(operation) {
+  const work = hostArchiveWorkQueue.then(operation);
+  hostArchiveWorkQueue = work.catch(() => {
+    panelBus.postMessage({type:'host-archive-sync-state', status:'unavailable'});
+  });
+  return hostArchiveWorkQueue;
+}
+
+function observeHostArchive(msg) {
+  const host = msg.data?.sessionId, state = msg.data?.state;
+  if (!HOST_SESSION_ID.test(typeof host === 'string' ? host : '')) return;
+  if (msg.name !== 'did-session-archived' && !(msg.name === 'did-task-state-changed' &&
+      (state?.status === 'archived' || state?.activity?.recordStatus === 'archived'))) return;
+  return queueHostArchiveWork(async () => {
+    const current = await readReviewState();
+    const sid = current.taskProgressSessionsByHostSession?.[host];
+    if (typeof sid !== 'string' || !sid) return;
+    rememberHostArchive(host, sid);
+    await persistHostArchives();
+    await flushHostArchives();
+  });
+}
+
+async function syncHostArchives() {
+  if (hostArchiveSyncRunning) return;
+  hostArchiveSyncRunning = true;
+  try {
+    await queueHostArchiveWork(async () => {
+      // Restore and confirm pending intents before consulting current host
+      // state. An active host must not erase an older archived observation.
+      const restoredState = await restoreHostArchiveOutbox();
+      await persistHostArchives();
+      const attempted = new Set();
+      await flushHostArchives(attempted);
+      if (typeof cindy.sessionStates !== 'function') {
+        await registerBoundTaskSources(restoredState);
+        return;
+      }
+      const current = await readReviewState();
+      const mappings = current.taskProgressSessionsByHostSession || {};
+      const hosts = Object.keys(mappings).filter(host => HOST_SESSION_ID.test(host) &&
+        typeof mappings[host] === 'string' && mappings[host]);
+      for (let offset = 0; offset < hosts.length; offset += 100) {
+        const batch = hosts.slice(offset, offset + 100);
+        let response;
+        try {
+          response = await boundedArchiveRequest(() => cindy.sessionStates({sessionIds:batch}));
+          // Incomplete or mismatched replies provide no authority to write.
+          if (response?.ok !== true || !Array.isArray(response.sessions) || response.sessions.length !== batch.length ||
+              response.sessions.some((item, index) => item?.sessionId !== batch[index] ||
+                !['active','archived','deleted','out_of_scope'].includes(item.status)))
+            throw new Error('Host archive state could not be verified');
+        } catch (_) {
+          // Failed batches remain unknown. Revisit them next tick without
+          // hiding valid archived sessions in later batches of this pass.
+          panelBus.postMessage({type:'host-archive-sync-state', status:'unavailable'});
+          continue;
+        }
+        for (const item of response.sessions) {
+          if (item.status === 'archived') rememberHostArchive(item.sessionId, mappings[item.sessionId]);
+        }
+        await persistHostArchives();
+        await flushHostArchives(attempted);
+      }
+      await registerBoundTaskSources(current);
+    });
+  } finally { hostArchiveSyncRunning = false; }
+}
+
+// Only explicit host bindings establish the source of old sessions. A Codex
+// model running inside Cindy is still a Cindy task, never a Codex-host task.
+async function registerBoundTaskSources(state) {
+  try {
+    sourceRegistrationPending = false;
+    const ids = [...new Set(Object.entries(state.taskProgressSessionsByHostSession || {})
+      .filter(([host,sid]) => HOST_SESSION_ID.test(host) && typeof sid === 'string' && TASK_SESSION_ID.test(sid))
+      .map(([,sid]) => sid))];
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const response = await boundedArchiveRequest(() => cindy.node.request({method:'task-progress/register-source',
+        params:{session_ids:ids.slice(offset, offset + 100), source:'cindy'}, timeoutMs:3000}));
+      const batch = ids.slice(offset, offset + 100);
+      if (response?.ok !== true || !Array.isArray(response.result?.sessions) ||
+          response.result.sessions.length !== batch.length || response.result.sessions.some((item,index) =>
+            item.session_id !== batch[index] || item.registered !== true)) sourceRegistrationPending = true;
+    }
+  } catch (_) {
+    sourceRegistrationPending = true;
+    // No fallback classification. Startup and periodic reconciliation retry
+    // from the saved bindings after a service outage or uncertain KV read.
+  }
+}
+
 // Focus events deliberately omit companion sessions on Cindy 0.1.143. The
 // task-view peek reports the raw foreground session without opening a tab.
 // Never infer focus from tool calls or the last eligible switch event.
@@ -1007,6 +1238,12 @@ panelBus.onmessage = async function (event) {
 };
 
 cindy.onHostMessage(async function (msg) {
+  if (msg.type === 'event') {
+    // Archival must work for non-focused sessions and with auto-review disabled.
+    // An active/restored event never clears an archive observation.
+    void observeHostArchive(msg);
+    if (msg.dropped > 0) void syncHostArchives();
+  }
   if(msg.type==='event' && msg.name==='did-session-switched')focusSwitchGeneration++;
   const eventFocusGeneration=focusSwitchGeneration;
   const staleReviewEvent=msg.type==='event' ? staleReviewHostEvent(msg) : false;
@@ -1315,3 +1552,19 @@ cindy.onHostMessage(async function (msg) {
     }
   } else await executeTool();
 });
+
+// Reconcile existing bindings at startup and after missed/offline events.
+// Old hosts still receive real-time events; never substitute active for a
+// missing API, denied query, unknown identity, or failed response.
+if (typeof setTimeout === 'function') {
+  void syncHostArchives();
+}
+// Event delivery works on older hosts as well. Its retries must not depend on
+// the optional startup query API being available.
+if (typeof setInterval === 'function') {
+  const archiveTimer = setInterval(() => {
+    if (sourceRegistrationPending || hostArchiveRecoveryNeeded || pendingHostArchives.size || unpersistedHostArchives.size ||
+        typeof cindy.sessionStates === 'function') void syncHostArchives();
+  }, 60000);
+  if (archiveTimer && typeof archiveTimer.unref === 'function') archiveTimer.unref();
+}

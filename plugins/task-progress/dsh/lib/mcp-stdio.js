@@ -34,6 +34,7 @@ export class StdioMcpBridge {
       cwd: this.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: {...process.env, TASK_PROGRESS_SOURCE:'dsh'},
     })
     this.proc = proc
     this.lines = createInterface({ input: proc.stdout })

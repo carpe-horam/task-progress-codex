@@ -50,7 +50,7 @@ class CindyPrepareTest(unittest.TestCase):
                                  (core / item["dir"] / "SKILL.md").read_bytes())
             for name in ("open_progress.py", "ProgressWidget.swift"):
                 relative = Path("skills/open-progress-widget/scripts") / name
-                self.assertEqual((stage / relative).read_bytes(), (SHARED / relative).read_bytes())
+                self.assertEqual((stage / relative).read_bytes(), (core / relative).read_bytes())
             skill = json.loads((stage / "ghost.json").read_text())["skill"]["items"][0]
             self.assertEqual(skill["dir"], "skills/track-progress")
             skill_file = stage / skill["dir"] / "SKILL.md"
@@ -80,7 +80,12 @@ class CindyPrepareTest(unittest.TestCase):
                              'skills/open-progress-widget/scripts/open_progress.py',
                              'skills/open-progress-widget/scripts/ProgressWidget.swift'):
                 with self.subTest(widget_source=relative):
-                    self.assertEqual((core / relative).read_bytes(), (SHARED / relative).read_bytes())
+                    if relative.endswith('open_progress.py'):
+                        self.assertEqual((core / relative).read_text(), (SHARED / relative).read_text().replace(
+                            "DEFAULT_SOURCE = 'codex'", "DEFAULT_SOURCE = 'cindy'"))
+                    else:
+                        self.assertEqual((core / relative).read_bytes(), (SHARED / relative).read_bytes())
+            self.assertIn("CLIENT_SOURCE = 'cindy'", (core / 'mcp_bridge.py').read_text())
             self.assertEqual((core / "execution_lifecycle.py").read_bytes(),
                              (SHARED / "execution_lifecycle.py").read_bytes())
             self.assertIn('Path(__file__).with_name("ghost.json")', (core / "server.py").read_text())

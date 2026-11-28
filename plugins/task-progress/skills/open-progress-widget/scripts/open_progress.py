@@ -15,8 +15,10 @@ import subprocess
 import sys
 import tempfile
 
+DEFAULT_SOURCE = 'codex'
 
-def create_link(session_id=None, *, task_instance_id=None, port=53421, state_dir=None):
+
+def create_link(session_id=None, *, task_instance_id=None, port=53421, state_dir=None, source=None):
     path = Path(state_dir or Path.home() / '.cache/task-progress/service') / 'http-headers.json'
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or (os.name == 'posix' and
@@ -29,6 +31,8 @@ def create_link(session_id=None, *, task_instance_id=None, port=53421, state_dir
     try:
         selection = {key: value for key, value in {'session_id': session_id, 'task_instance_id': task_instance_id}.items()
                      if value is not None}
+        if source is not None:
+            selection['source'] = source
         connection.request('POST', '/widget/open', json.dumps(selection),
                            {'Authorization': authorization, 'Content-Type': 'application/json',
                             'Accept': 'application/json'})
@@ -94,6 +98,8 @@ def open_widget(url):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--session', help='Select a Task Progress session; omit to show the local task catalogue')
+    parser.add_argument('--source', choices=('codex', 'cindy', 'dsh', 'unknown'), default=DEFAULT_SOURCE,
+                        help='Show only this host source; unclassified legacy tasks are separate')
     parser.add_argument('--task-instance', help='Select one exact task instance within --session')
     parser.add_argument('--check', action='store_true', help='Check service/session access without opening a widget')
     parser.add_argument('--ensure-service', action='store_true', help='Install/update and start the bundled local service first')
@@ -116,8 +122,9 @@ def main(argv=None):
             sys.path.insert(0, str(package))
             from service_manager import ServiceManager
             ServiceManager(plugin_root=package).install()
-        result = create_link(args.session, task_instance_id=args.task_instance, port=args.port, state_dir=args.state_dir)
-        receipt = {'selection': result['selection'], 'widget_open_requested': not args.check}
+        result = create_link(args.session, task_instance_id=args.task_instance, port=args.port, state_dir=args.state_dir,
+                             source=args.source)
+        receipt = {'selection': result['selection'], 'source': result.get('source'), 'widget_open_requested': not args.check}
         if not args.check:
             receipt.update(open_widget(result['url']))
         print(json.dumps(receipt, ensure_ascii=False))

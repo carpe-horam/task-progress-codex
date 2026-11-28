@@ -34,7 +34,7 @@
 
 ### 1. 选择宿主并安装
 
-[下载或检出 v0.3.9 源码](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.9)。该 release 是源码版，没有安装附件。以下路径均相对于解压或克隆后的仓库。
+[下载或检出 v0.3.10 源码](https://github.com/carpe-horam/task-progress-codex/releases/tag/v0.3.10)。该 release 是源码版，没有安装附件。以下路径均相对于解压或克隆后的仓库。
 
 - **Cindy**：按 [Cindy 构建说明](plugins/task-progress/cindy/README.md)运行 `prepare.py --stage`，将生成目录交给 Cindy Forge 打包，再在 Cindy 中安装产出的插件。
 - **Codex**：需要支持插件和 stdio MCP 的 Codex，及 PATH 中名为 `python` 的 Python 3。执行：

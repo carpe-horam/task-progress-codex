@@ -90,6 +90,7 @@ html[data-runtime=true] .shell.sidebar-collapsed .mode-tiles{padding-top:49px}
 @media(max-width:1000px){html .shell .workspace>.sidebar{width:222px;flex-basis:222px}}
 @media(max-width:700px){html .shell .workspace>.sidebar{width:220px;flex-basis:220px}}
 @media(max-width:420px){html .shell .workspace>.sidebar{width:190px;flex-basis:190px}.sidebar .toolbar{padding:12px 8px}.sidebar .brand h1{font-size:12px}.sidebar .toolbar-tools .icon-button{width:26px}.sidebar .sidebar-heading{padding:0 12px}.sidebar .app-footer{padding:10px}.sidebar .task-list{padding:8px 5px}.sidebar .task-select{padding-left:8px}.sidebar .task-source{font-size:9px}.sidebar .task-title{font-size:11px}}
+.instance-picker{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:11px;flex-shrink:0;border-bottom:1px solid var(--line);min-width:0}.instance-picker select{min-width:0;flex:1;max-width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:4px}.frame-page:not(.focused) .instance-picker{pointer-events:none}
 </style>
 </head>
 <body>
@@ -104,7 +105,7 @@ html[data-runtime=true] .shell.sidebar-collapsed .mode-tiles{padding-top:49px}
     <div class="toolbar-spacer"></div>
     <div class="segmented" role="group" aria-label="查看方式"><button class="active" data-action="single" aria-pressed="true"></button><button data-action="tile" aria-pressed="false"></button></div>
     <div class="toolbar-tools"><button class="icon-button compact-toggle" data-action="compact" title="切换紧凑浮窗" aria-label="切换紧凑浮窗"></button><button class="icon-button pin-button" data-action="pin" aria-pressed="true" title="置顶" aria-label="置顶"></button><button class="icon-button" data-action="theme" title="切换明暗主题" aria-label="切换明暗主题"></button></div>
-  </header><div class="main-heading" id="main-heading"></div><div class="sidebar-heading"><h2>全部任务</h2><span class="counter" id="task-count">0</span><button class="icon-button" data-action="sidebar-collapse" title="收起任务列表" aria-label="收起任务列表"></button></div><label class="search"><span id="search-icon"></span><input id="search" placeholder="搜索任务或执行工具" aria-label="搜索任务或执行工具"><kbd>/</kbd></label><div class="filter-tabs" aria-label="任务筛选"><button class="active" data-filter="all" aria-pressed="true">全部</button><button data-filter="unfinished" aria-pressed="false">未完成</button></div><nav class="task-list" id="task-list" aria-label="选择任务"></nav><div class="sidebar-bottom" id="sidebar-bottom"></div>  <footer class="app-footer"><span class="live-dot"></span><span id="service-status">正在连接本机任务…</span><div class="last"><span>关闭浮窗不影响任务执行</span><button data-action="help">使用说明</button></div></footer></aside><button class="drawer-shade" data-action="drawer-close" aria-label="关闭任务列表"></button><section class="main" aria-label="任务进度查看区"><div class="main-body" id="main-body"></div></section></div>
+  </header><div class="main-heading" id="main-heading"></div><div class="sidebar-heading"><h2 id="catalogue-title">全部任务</h2><span class="counter" id="task-count">0</span><button class="icon-button" data-action="sidebar-collapse" title="收起任务列表" aria-label="收起任务列表"></button></div><label class="search"><span id="search-icon"></span><input id="search" placeholder="搜索任务或执行工具" aria-label="搜索任务或执行工具"><kbd>/</kbd></label><div class="filter-tabs" aria-label="任务筛选"><button class="active" data-filter="all" aria-pressed="true">全部</button><button data-filter="unfinished" aria-pressed="false">未完成</button></div><nav class="task-list" id="task-list" aria-label="选择任务"></nav><div class="sidebar-bottom" id="sidebar-bottom"></div>  <footer class="app-footer"><span class="live-dot"></span><span id="service-status">正在连接本机任务…</span><div class="last"><span>关闭浮窗不影响任务执行</span><button data-action="help">使用说明</button></div></footer></aside><button class="drawer-shade" data-action="drawer-close" aria-label="关闭任务列表"></button><section class="main" aria-label="任务进度查看区"><div class="main-body" id="main-body"></div></section></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="prototype-help" id="help" hidden><div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title"><h2 id="help-title">一个浮窗，查看所有任务。</h2><p>任务来自本机 Task Progress 服务。查看和切换任务不会改变执行中的任务，关闭控件也不会停止执行。</p><ul><li>单任务：点击左侧任务，查看完整任务树和详情。</li><li>平铺：一键选入最多 8 个未完成任务，在左侧勾选调整。</li><li>平铺时先点击选中卡片，再滚动内部内容；未选中卡片上的滚轮用于浏览整个平铺区。右上角可放大或移出。</li><li>搜索、筛选与明暗主题均可操作；右侧直接复用现有 app.html 的任务树、详情、历史和导出。</li><li>侧栏只由用户手动收起或展开，缩小窗口不会自动折叠。</li><li>置顶和窗口大小由原生控件管理。</li></ul><button class="solid-button" data-action="help-close">开始查看</button></div></div>
@@ -134,7 +135,7 @@ const shell = $('shell'), pool = new Map();
 let stored = {};
 try { stored = JSON.parse(localStorage.getItem('task-progress-widget-v1') || '{}'); } catch (_) {}
 const state = {mode:'single', active:isPreview ? 'widget' : null, selected:[], initialized:false,
-  search:'', filter:'all', history:false, fromTile:false, theme:stored.theme === 'light' ? 'light' : 'dark',
+  search:'', filter:'all', history:false, fromTile:false, instanceSelections:{}, theme:stored.theme === 'light' ? 'light' : 'dark',
   pinned:true, compact:false, sidebarCollapsed:stored.sidebarCollapsed === true, busy:false, ready:isPreview, error:'', total:tasks.length, unreadable:0};
 const hasNative = () => !!window.webkit?.messageHandlers?.widgetControl;
 let token = location.hash.slice(1), sequence = 0, timer, toastTimer, access, fatal = false;
@@ -165,6 +166,10 @@ function dotStatus(task) {
   return task.closed ? 'done' : 'ready';
 }
 function isHistory(task) { return task.archived || task.closed; }
+function viewTask(task) {
+  const instance = task.instances?.find(item => item.task_instance_id === state.instanceSelections[task.id]);
+  return instance ? {...instance, id:task.id, instances:task.instances} : task;
+}
 function taskRows(list) {
   return list.map(task => `<div class="task-row ${state.active === task.id ? 'active' : ''}" data-row="${esc(task.id)}">
     <button class="task-select" data-task="${esc(task.id)}" aria-current="${state.active === task.id ? 'page' : 'false'}" title="${esc(task.title)}">
@@ -176,7 +181,7 @@ function taskRows(list) {
 function renderSidebar() {
   const query = state.search.trim().toLowerCase();
   const matching = tasks.filter(task => (state.filter !== 'unfinished' || !isHistory(task)) &&
-    `${task.title} ${task.source} ${labels[task.status] || task.status}`.toLowerCase().includes(query));
+    (task.instances || [task]).some(item => `${item.title} ${item.source} ${labels[item.status] || item.status}`.toLowerCase().includes(query)));
   const active = matching.filter(task => !isHistory(task)), history = matching.filter(isHistory);
   const scroll = $('task-list').scrollTop;
   let content = active.length ? `<div class="section-label"><span>未完成</span><span class="count">${active.length}</span></div>${taskRows(active)}` : '';
@@ -219,13 +224,17 @@ async function snapshot(task, args = {}) {
     task_instance_id:task.task_instance_id, include_history:args.include_history === true}});
 }
 function getPage(task) {
-  if (pool.has(task.id)) return pool.get(task.id);
+  const recordSignature = JSON.stringify(task.instances?.map(item => [item.task_instance_id, item.title, item.historical]));
+  const previous = pool.get(task.id);
+  if (previous?.task.task_instance_id === task.task_instance_id && previous.recordSignature === recordSignature) return previous;
+  if (previous) { previous.page.remove(); pool.delete(task.id); }
   const page = document.createElement('section');
   page.className = 'frame-page'; page.dataset.tile = task.id;
   page.setAttribute('aria-label', task.title + '进度页面');
   page.innerHTML = `<header class="tile-header"><button data-focus="${esc(task.id)}" aria-label="选中${esc(task.title)}" title="选中该任务"></button>
     <button class="icon-button" data-maximize="${esc(task.id)}" aria-label="放大：${esc(task.title)}" title="放大查看">${icon('expand')}</button>
     <button class="icon-button" data-remove="${esc(task.id)}" aria-label="移出平铺：${esc(task.title)}" title="移出平铺">${icon('close')}</button></header>
+    ${(task.instances?.length || 0) > 1 ? `<label class="instance-picker">任务记录<select data-instance="${esc(task.id)}" aria-label="查看此会话的任务记录">${task.instances.map((item,index) => `<option value="${esc(item.task_instance_id)}" ${item.task_instance_id === task.task_instance_id ? 'selected' : ''}>${index === 0 ? '当前' : item.historical ? '历史' : '并行'} · ${esc(item.title)}</option>`).join('')}</select></label>` : ''}
     <div class="frame-loading">正在加载进度页面…</div>`;
   const frame = document.createElement('iframe');
   frame.dataset.appTask = task.id; frame.title = task.title + ' · 任务进度';
@@ -236,7 +245,7 @@ function getPage(task) {
   activation.setAttribute('aria-label', '选中' + task.title + '的进度页面');
   activation.title = '点击选中后，可滚动和操作此任务的内容';
   page.append(activation);
-  const item = {page, frame, activation, task};
+  const item = {page, frame, activation, task, recordSignature};
   pool.set(task.id, item); $('main-body').append(page); frame.srcdoc = appHtml;
   return item;
 }
@@ -249,9 +258,13 @@ function renderMain() {
     : `<span class="grid-heading-note">${state.mode === 'tile' ? '多任务平铺' : '单任务查看'}</span>`}
     <div class="view-note"><span class="live-dot"></span>${isPreview ? '原版面板' : '自动更新'}</div>`;
   const visible = state.mode === 'single' ? (byId(state.active) ? [state.active] : []) : state.selected;
-  visible.forEach(id => { if (byId(id)) getPage(byId(id)); });
+  visible.forEach(id => { if (byId(id)) getPage(viewTask(byId(id))); });
   for (const [id,item] of pool) {
-    item.task = byId(id) || item.task;
+    const freshTask = byId(id) ? viewTask(byId(id)) : item.task;
+    if (freshTask.task_instance_id !== item.task.task_instance_id) {
+      item.page.remove(); pool.delete(id); continue;
+    }
+    item.task = freshTask;
     const selected = visible.includes(id), interactive = selected && (state.mode === 'single' || id === state.active);
     item.page.classList.toggle('visible', selected);
     item.page.classList.toggle('focused', id === state.active);
@@ -389,7 +402,16 @@ async function refreshCatalogue(initial = false) {
     tasks = [...fresh, ...oldOrder.filter(id => unique.has(id)).map(id => unique.get(id))];
     state.total = tasks.length; state.unreadable = unreadable; state.error = ''; state.ready = true;
     const selection = access?.selection;
-    const requested = selection && tasks.find(task => task.session_id === selection.session_id && task.task_instance_id === selection.task_instance_id);
+    const requested = selection && tasks.find(task => task.session_id === selection.session_id);
+    if (initial && requested && selection.task_instance_id) {
+      if (!(requested.instances || [requested]).some(item => item.task_instance_id === selection.task_instance_id))
+        throw new Error('指定的任务记录已不存在，请重新打开控件。');
+      state.instanceSelections[requested.id] = selection.task_instance_id;
+    }
+    // Follow the current instance by default; only explicit non-current record
+    // selections stay fixed as the session's foreground changes.
+    if (initial && requested && requested.task_instance_id === selection?.task_instance_id)
+      delete state.instanceSelections[requested.id];
     if (initial || !byId(state.active)) state.active = requested?.id || (byId(stored.active) ? stored.active : tasks[0]?.id) || null;
     if (byId(state.active) && isHistory(byId(state.active))) state.history = true;
     state.selected = state.selected.filter(id => unique.has(id));
@@ -403,6 +425,7 @@ async function start() {
   try {
     if (!token) throw new Error('请通过 open-progress-widget Skill 或打开命令启动控件。');
     access = await request('/widget/session');
+    $('catalogue-title').textContent = ({cindy:'Cindy 任务', codex:'Codex 任务', dsh:'DeepSeekRuntime 任务', unknown:'来源待确认'})[access.source] || '任务';
     const resource = await rpc('resources/read', {uri:access.resource_uri});
     appHtml = resource.contents[0].text;
     await refreshCatalogue(true);
@@ -411,6 +434,15 @@ async function start() {
   clearInterval(timer);
   timer = setInterval(() => { if (document.visibilityState === 'visible') void refreshCatalogue(); }, 3000);
 }
+document.addEventListener('change', event => {
+  const select = event.target.closest('select[data-instance]');
+  if (!select) return;
+  const task = byId(select.dataset.instance);
+  if (!task?.instances?.some(item => item.task_instance_id === select.value)) return;
+  if (select.value === task.task_instance_id) delete state.instanceSelections[task.id];
+  else state.instanceSelections[task.id] = select.value;
+  renderMain();
+});
 document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button) return;
   if (button.dataset.task) { setActive(button.dataset.task); return; }

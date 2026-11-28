@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 from pathlib import Path
 import re
 import sys
 
 from service_manager import PORT, ServiceError, ServiceManager
-from shared_service import MAX_REQUEST_BYTES, read_authorization
+from shared_service import MAX_REQUEST_BYTES, read_authorization, runtime_compatibility
+
+CLIENT_SOURCE = os.environ.get('TASK_PROGRESS_SOURCE', 'codex')
 
 
 _PLUGIN_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[-+][A-Za-z0-9.-]+)?\Z")
@@ -37,7 +40,7 @@ def _package_version():
 
 
 def _healthy_newer_compatible_service(manager):
-    """Keep only a newer authenticated daemon from this HTTP protocol family."""
+    """Keep newer daemons, or an equal compatible preferred Cindy runtime."""
     try:
         health = manager.health()
     except (ServiceError, OSError, ValueError):
@@ -46,8 +49,20 @@ def _healthy_newer_compatible_service(manager):
         return False
     client_version = _version_family(_package_version())
     running_version = _version_family(health.get("version"))
-    return bool(client_version and running_version and running_version[:2] == client_version[:2]
-                and running_version > client_version)
+    if not client_version or not running_version or running_version[:2] != client_version[:2]:
+        return False
+    if running_version > client_version:
+        return True
+    # Codex/DSH must not replace Cindy's equivalent shared engine merely
+    # because its manifest, UI or manager wrapper has a different release hash.
+    # Same-host connections still reconcile same-version local updates.
+    if (running_version == client_version and CLIENT_SOURCE in ('codex', 'dsh')
+            and health.get('runtime_host') == 'cindy'):
+        try:
+            return health.get('runtime_compatibility') == runtime_compatibility()
+        except OSError:
+            return False
+    return False
 
 
 def forward(message, authorization):
@@ -58,6 +73,7 @@ def forward(message, authorization):
             "Authorization": authorization,
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "X-Task-Progress-Source": CLIENT_SOURCE,
         })
         response = connection.getresponse()
         body = response.read(MAX_REQUEST_BYTES + 1)
@@ -75,8 +91,8 @@ def forward(message, authorization):
 def main():
     manager = ServiceManager()
     try:
-        # Keep a strictly newer daemon in the same protocol family. Otherwise
-        # install reconciles this package, including same-version new digests.
+        # Prefer the compatible Cindy shared engine across host connections.
+        # Otherwise reconcile this package, including same-host new digests.
         # Native launchd/systemd/Task Scheduler owns the daemon, never this bridge.
         if not _healthy_newer_compatible_service(manager):
             manager.install()

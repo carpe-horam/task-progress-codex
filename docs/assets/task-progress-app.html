@@ -4947,7 +4947,7 @@ h1{font-size:18px;line-height:1.35}
   render(null);
   async function initializeBridge() {
     try {
-      const result = await request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.3.9' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' });
+      const result = await request('ui/initialize', { appInfo: { name: 'task-progress', version: '0.3.10' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' });
       if (disposed) return;
       if (displayMode === null) displayMode = result?.hostContext?.displayMode ?? null;
       availableDisplayModes = result?.hostContext?.availableDisplayModes ?? availableDisplayModes;
